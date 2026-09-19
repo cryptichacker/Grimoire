@@ -1,0 +1,134 @@
+---
+tags: [hacking, bug-bounty, injection, rce, reports]
+type: log
+---
+
+# RCE
+
+## Up
+- [[Injection]]
+
+Disclosed **Remote Code Execution** reports reached via injection chains — **OS command injection**, **insecure deserialization**, **malicious file upload**, and SSTI-that-lands-as-pure-RCE. See [[Pattern]] → Injection (RCE).
+
+## Reports
+
+### 2026-09-19 — Remote code execution via Java object deserialization in an exposed Oracle PeopleSoft service (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #329376](https://hackerone.com/reports/329376)
+- Type: RCE (insecure deserialization, CWE-502, in COTS enterprise software)
+- Summary: A DoD web system running Oracle PeopleSoft exposed a `monitor` service that accepted serialized Java objects. Sending crafted objects of particular types allowed arbitrary code execution, and the same path could be used for denial of service.
+- Technique / pattern: Commercial off-the-shelf enterprise suites — PeopleSoft, WebLogic, SharePoint, JBoss, Sitecore — ship diagnostic, monitoring and integration servlets that deserialize by design and are frequently left reachable when the product is published to the internet. Fingerprint the product and version from telltale paths, cookies and asset bundles, map that to published CVEs and vendor advisories, then prove reachability with an out-of-band DNS or HTTP callback rather than a shell.
+- Takeaway: Patch-gap hunting on COTS software outperforms novel bug hunting on these targets. The first question about any enterprise product on a public address is which of its management endpoints are still listening.
+
+### 2026-09-19 — Unauthenticated RCE in Taskcluster web-server via a GraphQL filter argument (Mozilla) — $12,000
+- Source: [HackerOne #3782701](https://hackerone.com/reports/3782701)
+- Type: RCE (code injection via a query-library `$where` operator reaching `new Function()`)
+- Summary: Taskcluster's `/graphql` endpoint accepted a `filter` argument that was handed to the `sift` library (17.1.3), which compiles `$where` strings into functions with `new Function()`. With `CSP_ENABLED` unset and anonymous requests permitted, an unauthenticated attacker executed JavaScript in the Node process, ran shell commands via `process.getBuiltinModule("child_process").execSync()`, and read `process.env` for Postgres credentials, Taskcluster tokens, OAuth secrets and encryption keys.
+- Technique / pattern: Query and filter libraries that mimic MongoDB's operator syntax (`sift`, `mingo`, `json-rules-engine`-style evaluators, and Mongo itself) implement `$where`, `$function` or `$expr` by compiling a *string* into code. Wherever an API exposes a structured filter object to the client, try the engine's scripting operator with a harmless arithmetic probe (`6*7`) and a type check (`typeof process`) before anything else. Read the library version's source to confirm whether the string path is gated by a flag, and check the anonymous role's scopes — a resolver that merely runs is enough, no data access required.
+- Takeaway: Never pass client-supplied filter objects to a query library without stripping scripting operators. Treat "filter", "query", "where" and "sort" arguments as code sinks, and confirm the dangerous path is disabled by configuration rather than assuming the default is safe.
+
+### 2026-09-19 — Authenticated Elasticsearch Painless script execution via Query.search.sort_query (HackerOne) — n/a
+- Source: [HackerOne #3694007](https://hackerone.com/reports/3694007)
+- Type: RCE (script injection into a search backend via a pass-through JSON parameter)
+- Summary: The `sort_query` parameter of HackerOne's GraphQL `Query.search` accepted arbitrary Elasticsearch JSON with no validation, so an authenticated user could inject Painless scripts that the backing cluster compiled and executed per document (CVSS 8.8).
+- Technique / pattern: A careful, low-blast-radius methodology worth copying. (1) Prove the parameter is parsed, by sending a valid structured sort and observing the ordering change. (2) Prove *compilation*, by alternating deliberately malformed and well-formed scripts and correlating HTTP 500 with compile errors and 200 with success — an error-code oracle establishes a compiler is present without executing anything meaningful. (3) Prove *per-document execution*, by comparing a script returning a constant against one reading internal metadata (`_seq_no`) and showing the resulting orderings diverge. (4) Keep every script confined to the researcher's own documents and to engine metadata. Generalize: any parameter forwarded verbatim to a search engine, rules engine or reporting backend inherits that engine's scripting surface.
+- Takeaway: Build search queries server-side from an allow-list of sortable fields; never forward client JSON into the engine. When testing a scripting sink on a live target, use compile-error oracles and metadata reads to demonstrate execution without touching other tenants' data.
+
+### 2026-09-19 — OS command injection in aws-cdk-lib NodejsFunction via the unsanitized OsCommand helper (AWS VDP) — n/a
+- Source: [HackerOne #3637898](https://hackerone.com/reports/3637898)
+- Type: RCE (OS command injection in build tooling; supply-chain trigger, CWE-78)
+- Summary: When a developer listed dependencies in `nodeModules`, AWS CDK read version strings from `package.json` and passed them to `OsCommand.writeJson()`, which built `echo '${data}'` without escaping embedded single quotes. A malicious npm package could set a crafted version string that broke out of the quoting and executed commands inside the Docker bundling container, which bind-mounts the host project directory — so `cdk synth` or `cdk deploy` with a compromised dependency ran attacker code near AWS credentials and source (CVSS 8.6).
+- Technique / pattern: Audit the **build and packaging toolchain** as an injection target, not just the running application. Grep bundlers, CI helpers and IaC synthesizers for shell strings assembled with `echo '...'`, `sh -c`, template literals and naive single-quote wrapping. Then ask which of the interpolated values come from *package metadata* rather than from the developer: versions, names, scripts, `files` globs and repository URLs are all attacker-controlled the moment one dependency is malicious or typosquatted. Single-quote wrapping is defeated by a single `'`, so that is the whole payload.
+- Takeaway: Build commands as argument arrays (`execFile`/`spawn` with a list), never as shell strings. Data read out of a dependency's manifest is untrusted input, and developer machines and CI runners are the highest-value place for it to execute.
+
+### 2026-09-19 — Apache Solr RCE via Velocity template on an exposed instance (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #822002](https://hackerone.com/reports/822002)
+- Type: RCE (template injection against an unauthenticated service — SSTI that is pure RCE)
+- Summary: Port scanning found an internet-reachable Apache Solr instance with no authentication holding defense-related data. The researcher abused Solr's Velocity response writer to evaluate template expressions through crafted GET requests, executing `id` and `cat /etc/passwd` as the Solr service account.
+- Technique / pattern: The exploit primitive here is a *documented feature* of the product, reachable because the service was exposed and unauthenticated — the same shape as Flink's jar/plan endpoints or an open Jupyter kernel. Method: enumerate non-HTTP-80 services during recon, fingerprint each product and version from its admin UI and response headers, then read the vendor documentation for any feature that evaluates expressions, scripts or templates (Solr's VelocityResponseWriter and `params.resource.loader.enabled`, Elasticsearch scripting, Jenkins script console, Groovy consoles). Confirm with a benign expression before any command.
+- Takeaway: Search and data platforms bundle template/scripting engines that assume a trusted network. Rate an exposed instance by the features it ships enabled, not by whether a CVE exists — and keep these services off public addresses with authentication on regardless.
+
+### 2026-09-18 — Remote code execution via insecure deserialization in Telerik UI (CVE-2019-18935 chained with CVE-2017-11317) (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #1174185](https://hackerone.com/reports/1174185)
+- Type: RCE (insecure deserialization + arbitrary file upload, known CVE chain)
+- Summary: An exposed Telerik.Web.UI.WebResource.axd endpoint was affected by two known flaws: a weak/known encryption key permitting arbitrary file upload (CVE-2017-11317) and a JavaScriptSerializer deserialization sink (CVE-2019-18935). Chained, they gave remote code execution on the underlying host.
+- Technique / pattern: Fingerprint third-party components from their telltale handler paths (.axd, .ashx, vendor JS bundles, version strings) and match the identified version against published CVEs before hunting for novel bugs. Where a component has both an upload primitive and a deserialization sink, the chain - place a payload on disk, then trigger deserialization that loads it - is the documented path.
+- Takeaway: Patch-gap hunting on internet-exposed enterprise components is high yield: the bug is public, and the work is inventory and version fingerprinting rather than exploit development.
+
+### 2026-09-18 — Insecure deserialization leads to RCE on Sitecore (CVE-2025-27218) (Mars) — n/a
+- Source: [HackerOne #3090123](https://hackerone.com/reports/3090123)
+- Type: RCE via insecure deserialization (.NET BinaryFormatter)
+- Summary: A Sitecore instance deserialised attacker-controlled data taken from the ThumbnailsAccessToken header using BinaryFormatter, so a crafted serialized object executed operating-system commands on the server and allowed file read and exfiltration.
+- Technique / pattern: Treat custom headers as deserialization sinks, not just bodies and cookies. Fingerprint the platform, look up which formatter that product version uses, then generate a gadget chain for exactly that formatter and confirm execution out-of-band (a DNS or HTTP callback) before attempting anything further - callbacks prove code execution without touching data.
+- Takeaway: BinaryFormatter on any attacker-reachable input is remote code execution by design; an out-of-band callback is the safe, sufficient proof.
+
+### 2026-09-18 — Remote code execution via .NET __VSTATE deserialization (8x8) — n/a
+- Source: [HackerOne #1391576](https://hackerone.com/reports/1391576)
+- Type: RCE via insecure deserialization (.NET LosFormatter / __VSTATE)
+- Summary: A third-party community platform integrated into an 8x8 subdomain deserialised the __VSTATE form field with LosFormatter, so a gadget-chain payload submitted through an ordinary web form ran arbitrary code on the server.
+- Technique / pattern: Inventory the hidden form fields a page posts back: __VSTATE, __VIEWSTATE and similar ASP.NET state fields carry serialized server objects, and are exploitable whenever MAC validation is absent or the key is known. Build the chain for the specific formatter in use, apply the expected encoding layers (compress, then base64), and validate with an out-of-band DNS callback.
+- Takeaway: Acquired and vendor-supplied applications on a subdomain inherit the parent's trust but not its security review - enumerate and fingerprint them separately.
+
+### 2026-09-18 — Unsafe deserialization escalating a SQL injection to remote command execution (Liberapay) — n/a
+- Source: [HackerOne #361341](https://hackerone.com/reports/361341)
+- Type: Insecure deserialization (escalation of an injection primitive)
+- Summary: Liberapay deserialized data that an attacker could influence only by way of a SQL injection; on its own the deserialization was not reachable, but combined with an injection primitive it upgraded database access into remote command execution.
+- Technique / pattern: Treat deserialization sinks as impact multipliers: after finding a write primitive (SQLi, cache write, file write), trace which stored values are later deserialized, and report the chain rather than dismissing either half as unexploitable alone.
+- Takeaway: Two findings that are each 'not exploitable in isolation' can compose into RCE — the severity question is what an attacker who already holds one primitive can reach, not what an anonymous user can reach.
+
+### 2026-09-18 — Remote code execution through deserialization in the ownBackup marketplace app (ownCloud) — n/a
+- Source: [HackerOne #562335](https://hackerone.com/reports/562335)
+- Type: Insecure deserialization (third-party app / plugin)
+- Summary: The ownBackup application distributed through the ownCloud marketplace contained a deserialization flaw that allowed code execution on the server hosting it, affecting instances where an administrator had installed the app.
+- Technique / pattern: Extend the review past the core product to its plugin/marketplace ecosystem: download the published apps, grep for `unserialize`/`pickle`/`readObject` on request-derived data, and check what the platform does to sandbox third-party code (usually nothing).
+- Takeaway: An app store attached to a self-hosted platform inherits the platform's trust but rarely its review: a single vulnerable plugin gives the same server-side execution as a flaw in the core, so plugin code belongs in scope.
+
+### 2026-09-18 — Remote code execution in Slack desktop apps via in-app redirect and HTML injection (Slack) — n/a
+- Source: [HackerOne #783877](https://hackerone.com/reports/783877)
+- Type: RCE (HTML/JavaScript injection inside a web-rendering desktop client, chained with an in-app redirect)
+- Summary: Any in-app redirect, open redirect or HTML/JavaScript injection within the Slack desktop client could be chained with a control bypass and a crafted payload to execute arbitrary code on the user's machine, confirmed on desktop versions 4.2 and 4.3.2.
+- Technique / pattern: In a desktop application that renders web content, hunt for any injection or redirect primitive reachable inside the trusted app origin, then chain it toward the renderer's privileged bridge — the web bug is the entry point, the client's privileges are the impact.
+- Takeaway: Severity depends on where the web content runs: open redirects and HTML injection that would rate 'low' on a website become code execution inside a desktop client, so always test the desktop build separately from the web app.
+
+### 2026-09-17 — Apache Flink RCE via GET jar/plan API Endpoint (Aiven Ltd) — $6,000
+- Source: [HackerOne #1418891](https://hackerone.com/reports/1418891)
+- Type: RCE via exposed data-platform management API
+- Summary: An internet-reachable Apache Flink REST API allowed jar/plan operations without authentication, so its intended job-submission functionality could be used to execute attacker-supplied code on the cluster.
+- Technique / pattern: Fingerprint exposed big-data / job-scheduler management interfaces, read the vendor's own REST documentation, and use the documented jar upload / plan / submit endpoints as the execution primitive rather than hunting a memory-safety bug.
+- Takeaway: Data-platform components (Flink, Spark, Airflow, Jupyter, Hadoop) ship powerful APIs that are unauthenticated by default — finding one exposed is usually equivalent to finding RCE.
+
+### 2026-09-17 — OS command injection via OpenSSH ProxyCommand/ProxyJump hostname handling (Internet Bug Bounty / OpenSSH) — n/a
+- Source: [hackerone #2293731](https://hackerone.com/reports/2293731)
+- Type: OS command injection (RCE) — CVE-2023-51385
+- Summary: OpenSSH's ssh client expanded a hostname containing shell metacharacters via the `%h` token into the `ProxyCommand`, so a malicious hostname (e.g. supplied by an untrusted config, git submodule URL, or automation) executed arbitrary commands on the client.
+- Technique / pattern: Provide a crafted "hostname" carrying shell metacharacters that flows into `%h`/token expansion of a command template, achieving command execution when the connection is initiated — a template/token-expansion sink rather than an obvious `system()` call.
+- Takeaway: Data substituted into a command template (`%`-token / string interpolation into a shell) is a command-injection sink; validate/escape seemingly-benign identifiers like hostnames before they reach a shell.
+
+### 2026-09-15 — Java deserialization RCE via JBoss on card.starbucks.in (Starbucks) — n/a
+- Source: [HackerOne #221294](https://hackerone.com/reports/221294)
+- Type: RCE (insecure Java deserialization)
+- Summary: An exposed JBoss service (JBossMQ / invoker) on card.starbucks.in deserialized attacker-controlled Java objects without validation, yielding remote code execution on the server.
+- Technique / pattern: Fingerprint exposed enterprise middleware (JBoss JMX/HTTP invoker endpoints), then send a malicious serialized object (ysoserial-style gadget chain) to a `readObject` sink to execute commands.
+- Takeaway: Don't expose app-server management/messaging endpoints to the internet; deserialization of untrusted data on legacy middleware is a reliable RCE surface — patch, restrict, and remove default invokers.
+
+### 2026-09-13 — OS command injection in 'rdoc' via crafted filename (Ruby) — n/a
+- Source: [HackerOne #1161691](https://hackerone.com/reports/1161691)
+- Type: OS command injection
+- Summary: RDoc processed a list of files and passed names to Ruby's Kernel#open; a filename beginning with a pipe (|) caused the supposed "file" to be executed as a shell command (CVE-2021-31799).
+- Technique / pattern: Ruby open(name) treats a leading "|" as "run this command", so when attacker-controlled filenames reach Kernel#open / IO.read a crafted name like "|touch pwned" yields code execution — a classic path-vs-command sink mismatch.
+- Takeaway: Never pass untrusted paths to Kernel#open; use File.open / File.read (which do not honor the pipe) and validate/normalize filenames.
+
+### 2026-09-11 — Unauthenticated RCE via SharePoint CVE-2019-0604 (U.S. Dept of Defense) — n/a
+- Source: [HackerOne #534630](https://hackerone.com/reports/534630)
+- Type: Insecure deserialization -> RCE (known CVE, unauthenticated)
+- Summary: A DoD-owned Microsoft SharePoint server was vulnerable to CVE-2019-0604, an unsafe deserialization of a crafted/encoded parameter that yields unauthenticated remote code / command execution on the server.
+- Technique / pattern: Fingerprint the tech stack, match exposed products/versions to known deserialization CVEs, then send the specially crafted parameter to the vulnerable SharePoint endpoint to execute code — patch-gap hunting on internet-facing enterprise software.
+- Takeaway: Unpatched enterprise apps (SharePoint, etc.) are high-value RCE targets; enumerate versions and check for known deserialization CVEs before assuming a custom bug.
+
+### 2026-09-11 — Remote code execution on rubygems.org via unsafe deserialization (RubyGems) — n/a
+- Source: [HackerOne #274990](https://hackerone.com/reports/274990)
+- Type: Insecure deserialization → RCE
+- Summary: An unsafe object-deserialization flaw in RubyGems could be escalated to remote code execution on rubygems.org.
+- Technique / pattern: Feed crafted serialized (marshalled) data into a sink that deserializes untrusted input; gadget chains present in the deserialized object graph are leveraged to reach code execution.
+- Takeaway: Never deserialize untrusted input with native/unsafe deserializers — insecure deserialization is a direct path to RCE, especially on package/registry infrastructure.
+
+_No entries yet — the daily task files OS command injection / deserialization / upload→RCE reports here._
