@@ -12,6 +12,41 @@ Disclosed **Remote Code Execution** reports reached via injection chains — **O
 
 ## Reports
 
+### 2026-09-21 — RCE via insecure deserialization in Telerik UI (U.S. Dept of Defense) — n/a
+- Source: [HackerOne #838196](https://hackerone.com/reports/838196)
+- Type: RCE via injection chain (arbitrary file upload + insecure deserialization)
+- Summary: Telerik Web UI v2016.2.607.40 was exploited by chaining CVE-2017-11317 (weak-key arbitrary file upload) with CVE-2019-18935 (insecure deserialization) for full RCE, demonstrated with a benign 10-second sleep. Disclosed 2020-05-07.
+- Technique / pattern: Fingerprint the third-party component and version, then chain a known file-upload primitive to place a malicious mixed-mode assembly with a deserialization gadget that loads and executes it - a known-CVE chain against an outdated dependency.
+- Takeaway: Attackers weaponize outdated components - inventory and patch dependencies, and treat any deserialization of attacker-influenced data plus a writable upload path as a critical chain even when each flaw alone looks limited.
+
+### 2026-09-21 — Blind User-Agent SQL injection escalated to blind OS command execution (Sony) — n/a
+- Source: [HackerOne #1339430](https://hackerone.com/reports/1339430)
+- Type: RCE via SQLi chain (MSSQL xp_cmdshell, OOB DNS)
+- Summary: A blind time-based SQLi in the User-Agent header of a Sony login form (MSSQL backend) was escalated to OS command execution by enabling and invoking xp_cmdshell, with output exfiltrated over DNS. Rated CVSS 9.1; disclosed 2022-07-06.
+- Technique / pattern: Time-based blind SQLi through a non-obvious point (an HTTP header, not a visible field), then sp_configure to turn on xp_cmdshell and blind command execution with out-of-band DNS exfiltration.
+- Takeaway: Injection points hide in headers (User-Agent, Referer, X-Forwarded-For); parameterize everything, run the DB least-privilege, and disable dangerous procedures like xp_cmdshell so a SQLi cannot pivot to full OS RCE.
+
+### 2026-09-21 — Mozilla VPN Clients: RCE via file write and path traversal (Mozilla) — $6,000
+- Source: [HackerOne #2995025](https://hackerone.com/reports/2995025)
+- Type: RCE - arbitrary file write via path traversal (Windows client)
+- Summary: In the inspector live_reload command (developer mode + staging servers), InspectorHotreloader::fetchAndAnnounce() downloaded remote files and built the local path from the unsanitized filename, so ..\ sequences wrote files outside the temp folder on Windows, leading to RCE after visiting a malicious site.
+- Technique / pattern: Reviewed the client source for download-and-save paths, found filename concatenation via QString arg() without normalization, and used Windows backslash traversal (not stripped by the URL fileName logic) to plant an executable-reachable file.
+- Takeaway: Any 'download then write' feature must canonicalize and confine the destination path; platform-specific separators (\ on Windows) routinely slip past filename sanitization written for '/'.
+
+### 2026-09-21 — Pickle deserialization vulnerability in XComs (Internet Bug Bounty (Apache Airflow)) — n/a
+- Source: [HackerOne #2334460](https://hackerone.com/reports/2334460)
+- Type: RCE - insecure deserialization (pickle) bypassing a safety flag (CVE-2023-50943)
+- Summary: Before Airflow 2.8.1, XCom data could be poisoned so that pickled data was deserialized even with enable_xcom_pickling=False, letting a malicious DAG author run code in other tasks/workers or when UI/API users viewed XCom entries.
+- Technique / pattern: Identified an alternate code path that still called pickle deserialization despite the config flag, and used the shared XCom store as the bridge from a low-privilege writer to higher-privilege readers.
+- Takeaway: A 'pickling disabled' setting is only as strong as every deserialization path - hunt for legacy/fallback loaders, and treat shared data buses (queues, caches, XCom) as cross-tenant RCE routes.
+
+### 2026-09-20 — RCE in GitLab Workhorse when stripping image metadata with ExifTool (GitLab) — $20,000
+- Source: [HackerOne #1154542](https://hackerone.com/reports/1154542)
+- Type: RCE (file upload → external binary; type confusion between extension and content)
+- Summary: GitLab Workhorse routed uploads whose extension matched `jpg|jpeg|tiff` to ExifTool in order to remove non-whitelisted metadata tags. ExifTool ignores the file extension and determines the format from the file's own content, so a file presented as an image but recognised as a different format was handed to a different parser module and reached a code-execution path on the server (CVE-2021-22205).
+- Technique / pattern: The bug class is a *disagreement about file type between the router and the handler*. Map the pipeline an upload traverses — which component decides the type, by what evidence (extension, declared MIME, magic bytes, a library's own sniffing), and which binary eventually parses it — then craft a file that satisfies the gate's evidence and the parser's evidence differently: an image extension over another format's magic bytes, a polyglot, or a format the downstream tool supports but the gate never contemplated. Confirm reachability with an out-of-band DNS or HTTP callback before attempting anything further.
+- Takeaway: Whitelisting by extension controls nothing about what the downstream tool decides to parse. Pin the format explicitly when invoking the tool, sandbox media processing, and treat every media-handling dependency as an RCE surface to patch promptly.
+
 ### 2026-09-19 — Remote code execution via Java object deserialization in an exposed Oracle PeopleSoft service (U.S. Dept Of Defense) — n/a
 - Source: [HackerOne #329376](https://hackerone.com/reports/329376)
 - Type: RCE (insecure deserialization, CWE-502, in COTS enterprise software)

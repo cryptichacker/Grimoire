@@ -12,6 +12,13 @@ Disclosed **Server-Side Template Injection** reports (often escalating to RCE). 
 
 ## Reports
 
+### 2026-09-21 — Unrestricted File System Access via Twig Template Injection on dev-ucrm-billing-demo.ubnt.com (Ubiquiti Inc.) — n/a
+- Source: [HackerOne #301406](https://hackerone.com/reports/301406)
+- Type: SSTI - Twig template injection -> file system read (CVE-2017-0913)
+- Summary: Twig template injection in Ubiquiti's UCRM billing demo instance allowed local file inclusion / unrestricted file system access; Ubiquiti noted exploitation required admin credentials and the demo ran in an isolated container.
+- Technique / pattern: Admin-editable templates (invoice/email/notification templates) were abused to reach Twig include/source-style functionality and read server files. The public report does not disclose the exact payload.
+- Takeaway: User-editable templates are an SSTI surface even when RCE is not reached - sandbox the template engine and restrict loader paths so include/source cannot read arbitrary files.
+
 ### 2026-09-18 — Server-side template injection in lodash _.template allows code execution on the server (lodash / Node.js) — n/a
 - Source: [HackerOne #904672](https://hackerone.com/reports/904672)
 - Type: SSTI (library-level template sink, JavaScript)

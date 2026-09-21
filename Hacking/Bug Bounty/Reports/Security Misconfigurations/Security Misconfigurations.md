@@ -12,6 +12,119 @@ Disclosed **security misconfiguration** reports — permissive CORS, default/exp
 
 ## Reports
 
+### 2026-09-21 — S3 bucket writeable by any authenticated AWS user (HackerOne) — bounty
+- Source: [HackerOne #128088](https://hackerone.com/reports/128088)
+- Type: Misconfiguration (S3 ACL — AuthenticatedUsers)
+- Summary: A HackerOne S3 bucket granted write to the AWS 'AuthenticatedUsers' group, meaning any AWS account (not just HackerOne's) could upload objects into it.
+- Technique / pattern: Enumerate buckets named similarly to a known one (hackerone-attachments) and attempt a write via AWS CLI; the AuthenticatedUsers ACL accepts uploads from any AWS principal, enabling malicious file placement.
+- Takeaway: 'AuthenticatedUsers' in S3 means every AWS user on earth, not your users — an anonymous probe looks closed while authenticated writes succeed, so always test with valid AWS creds.
+
+### 2026-09-21 — Subdomain takeover at info.hacker.one via dangling Unbounce CNAME (HackerOne) — n/a
+- Source: [HackerOne #202767](https://hackerone.com/reports/202767)
+- Type: Misconfiguration (subdomain takeover)
+- Summary: info.hacker.one had a DNS CNAME to app.unbounce.com; a flaw in Unbounce's domain-claim flow let the researcher claim the subdomain and host arbitrary content.
+- Technique / pattern: Identify the dangling CNAME to a third-party SaaS, then exercise that provider's (weak) domain-claim process to serve attacker content on the trusted subdomain, enabling phishing/credential theft.
+- Takeaway: Fingerprint the SaaS behind every dangling CNAME and test its specific claim flow — takeover often hinges on the provider's verification weakness, not just an unclaimed record.
+
+### 2026-09-21 — AWS subdomain takeover via dangling CNAME to an unclaimed S3 bucket (U.S. Dept of Defense) — n/a
+- Source: [HackerOne #1329792](https://hackerone.com/reports/1329792)
+- Type: Misconfiguration (subdomain takeover, S3)
+- Summary: A www subdomain's CNAME pointed at an unclaimed S3 bucket; registering that bucket allowed takeover and PoC content on the DoD subdomain.
+- Technique / pattern: Detect the dangling DNS record, create the S3 bucket matching the CNAME target, and host a PoC; the browser trusts the original subdomain, enabling cookie theft, CORS/CSP bypass, SSRF pivots and phishing.
+- Takeaway: The takeover window opens when the resource is deleted but the DNS record survives — decommissioning order matters; remove the DNS record before (or with) the backing resource.
+
+### 2026-09-21 — Open S3 bucket accessible/listable by any user (omise-cdn-2) (Omise) — $100
+- Source: [HackerOne #1474017](https://hackerone.com/reports/1474017)
+- Type: Misconfiguration (open S3 bucket)
+- Summary: The omise-cdn-2 bucket (served at cdn2.omise.co) allowed unauthenticated listing, reading and downloading of all contents through a browser.
+- Technique / pattern: Browse the bucket URL directly to list and pull every object; permissive bucket policy exposes all files and, with write, risks full bucket takeover.
+- Takeaway: Enumerate a bucket's full verb set (list, read, then a harmless write marker) rather than assuming read-only — public read plus write can escalate to takeover.
+
+
+### 2026-09-21 — Exploiting misconfigured CORS to steal user information (Rockstar Games) — $500
+- Source: [HackerOne #317391](https://hackerone.com/reports/317391)
+- Type: CORS misconfiguration
+- Summary: A misconfigured CORS policy on a gateway behind Rockstar's Support site let a third-party origin read users' details (email addresses, account IDs) via credentialed cross-origin requests; it was fixed by removing the leaking gateway.
+- Technique / pattern: Find an authenticated endpoint returning user data with permissive CORS headers, then host a PoC page on an attacker origin that makes credentialed cross-origin requests and reads the response.
+- Takeaway: Endpoints returning user data must never allow arbitrary or reflected origins together with credentials; keep a strict origin allowlist and remove legacy gateways that carry old loose CORS rules.
+
+### 2026-09-21 — Web cache poisoning at www.acronis.com (Acronis) — n/a
+- Source: [HackerOne #1010858](https://hackerone.com/reports/1010858)
+- Type: Web cache poisoning (unkeyed headers and parameters)
+- Summary: The cache on www.acronis.com ignored certain query parameters and the x-forwarded-port and x-forwarded-url headers when building its key even though they changed the response, allowing poisoned responses to be cached and served to normal users (DoS and delivery of reflected XSS). Bountied, amount not public.
+- Technique / pattern: Send requests with non-standard headers/parameters to find inputs that change the response without changing the cache key, then get a tampered response cached so later requests for the same URL receive it.
+- Takeaway: Test X-Forwarded-Port, X-Forwarded-URL, X-Original-URL and ignored query parameters as poisoning inputs; normalize or drop them at the CDN, or don't cache pages that reflect them.
+
+### 2026-09-21 — Subdomain takeover of brand.zen.ly (Zenly) — $750
+- Source: [HackerOne #1474784](https://hackerone.com/reports/1474784)
+- Type: Subdomain takeover (dangling CNAME to third-party SaaS)
+- Summary: brand.zen.ly had a CNAME to a Brandpad service no longer in use that returned a "Not Found" page, so anyone could register with Brandpad and claim the subdomain for phishing, malware, XSS or cookie theft.
+- Technique / pattern: Enumerate subdomains, resolve their CNAMEs, match a third-party provider's "unclaimed"/"Not Found" fingerprint, then register the name on that provider to claim it.
+- Takeaway: When a SaaS integration is retired, remove its DNS record in the same change; regularly audit CNAMEs pointing to external services and flag any returning a provider's "no such site" page.
+
+### 2026-09-21 — Defacement of catalog.data.gov via web cache poisoning to stored DOM XSS (GSA Bounty) — $750
+- Source: [HackerOne #303730](https://hackerone.com/reports/303730)
+- Type: Web cache poisoning (unkeyed X-Forwarded-Host)
+- Summary: catalog.data.gov trusted the unkeyed X-Forwarded-Host header to fill data-site-root/data-locale-root attributes; client JS then fetched JSON from that host and inserted it unescaped, and CloudFront cached the poisoned page and served it to others, giving stored DOM XSS and defacement.
+- Technique / pattern: Find a request header that changes the response but is not in the cache key, point X-Forwarded-Host at an attacker-controlled JSON endpoint, and repeat until the CDN caches the poisoned page.
+- Takeaway: Any header that changes the response must be in the cache key or stripped at the edge; do not build resource URLs from X-Forwarded-* headers unless the fronting proxy sets and overwrites them.
+
+### 2026-09-21 — Possible Subdomain Takeover For Inbound Emails (Smule) — n/a
+- Source: [HackerOne #2567048](https://hackerone.com/reports/2567048)
+- Type: Subdomain takeover - dangling CNAME to email provider (SendGrid)
+- Summary: email.smule.com had a CNAME pointing at SendGrid, but the subdomain was not claimed on SendGrid, so an attacker could register it and potentially receive inbound email for that host.
+- Technique / pattern: Enumerated DNS CNAMEs pointing at third-party SaaS, then checked whether the provider showed the host as unclaimed (404) and registrable.
+- Takeaway: Subdomain takeover is not just web hosting - dangling records to email/inbound-parse providers can let attackers intercept mail. Remove DNS records when deprovisioning SaaS.
+
+### 2026-09-21 — Cache poisoning Denial of Service affecting assets.gitlab-static.net (GitLab) — n/a
+- Source: [HackerOne #1160407](https://hackerone.com/reports/1160407)
+- Type: Web cache poisoning - unkeyed X-HTTP-Method-Override header (DoS)
+- Summary: GitLab's static-asset CDN honored x-http-method-override, but the cache did not key on it; a GET with x-http-method-override: HEAD produced an empty body that was cached and served to every user of that asset.
+- Technique / pattern: Probed unkeyed headers with cache-busters, found that the method-override header changed the backend response without changing the cache key, and confirmed the empty poisoned response was served for normal GETs.
+- Takeaway: Every header that changes the response must be in the cache key or stripped at the edge; method-override headers are a quiet way to cache empty responses on critical assets.
+
+### 2026-09-21 — Memory Dump and Env Disclosure via Spring Boot Actuator (Stripo) — n/a
+- Source: [HackerOne #1019367](https://hackerone.com/reports/1019367)
+- Type: Exposed management endpoints - Spring Boot Actuator (/heapdump, /env)
+- Summary: Spring Boot Actuator endpoints were reachable under a non-root path prefix, exposing /env and a ~110 MB heap dump containing source code, private cryptographic keys and internal application data.
+- Technique / pattern: Fuzzed for /actuator/* not only at the web root but beneath application sub-paths, then downloaded /heapdump and mined it for secrets.
+- Takeaway: Actuator endpoints must be disabled or authenticated in production; when hunting, fuzz /actuator under every discovered base path, and treat heapdumps as credential goldmines.
+
+### 2026-09-21 — Information disclosure via enabled Django Debug Mode (MTN Group) — n/a
+- Source: [HackerOne #2201370](https://hackerone.com/reports/2201370)
+- Type: Debug mode enabled in production (Django DEBUG=True)
+- Summary: An MTN application ran with DEBUG=True, leaking stack traces, configuration and the URL/endpoint map; from that the researcher found open user registration, user/email enumeration and a DNS-records endpoint that could expose origin IPs.
+- Technique / pattern: Triggered errors (e.g. nonexistent routes) to render the Django debug page, harvested the listed URL patterns, then probed the disclosed endpoints for further issues.
+- Takeaway: Debug pages hand attackers a complete route map - one misconfiguration seeds a chain of follow-on bugs. Always check 404 debug pages for URLconf listings.
+
+### 2026-09-20 — Subdomain takeover in GitLab Pages through the unverified-custom-domain grace period (GitLab) — n/a
+- Source: [HackerOne #2523654](https://hackerone.com/reports/2523654)
+- Type: Security misconfiguration (service serves a custom domain before verifying ownership)
+- Summary: GitLab Pages kept serving a custom domain for roughly seven days before disabling it when domain verification was never completed, so an attacker could attach a dangling domain to their own Pages project and serve content from it during that window. Testing indicated GitLab-owned hostnames such as `docs-dev.gitlab.com` were affected.
+- Technique / pattern: A verification requirement that is enforced *eventually* rather than *before first byte* is a takeover window, not a control. For each PaaS that supports custom domains, read its documented verification flow and ask three questions: does it serve before verification, how long is the grace period, and is the DNS record required to exist at claim time. A provider with a grace period turns "dangling CNAME" into "dangling CNAME for seven days at a time", which survives ordinary reconciliation scans that run weekly.
+- Takeaway: Verify ownership before serving, not after. When auditing, record the provider's grace-period behaviour alongside its claim flow — it decides whether a stale record is exploitable.
+
+### 2026-09-20 — Potential subdomain takeover on an ibm.com hostname (IBM) — n/a
+- Source: [HackerOne #3592387](https://hackerone.com/reports/3592387)
+- Type: Security misconfiguration (dangling DNS record on a high-trust apex domain)
+- Summary: A researcher identified an IBM hostname whose DNS pointed at a third-party resource that was no longer claimed, leaving the subdomain takeover-able. IBM analysed the report and remediated it.
+- Technique / pattern: On an organisation with decades of DNS history, the yield comes from breadth rather than cleverness — pull hostnames from certificate transparency logs, passive DNS and the program's own published asset list, resolve all of them, and triage by the *shape* of the failure (NXDOMAIN on the CNAME target, a provider's unclaimed-host error page, a SERVFAIL on delegated NS records). Report the condition with the resolution chain as evidence rather than claiming the resource, which keeps the finding in scope.
+- Takeaway: Brand trust is the impact: content served from a hostname under a major apex domain inherits that domain's credibility for phishing and cookie scoping. Reconcile DNS against live inventory continuously, not at decommission time only.
+
+### 2026-09-20 — Subdomain takeover on a .mil hostname pointing at a lapsed registrable domain (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #2499178](https://hackerone.com/reports/2499178)
+- Type: Security misconfiguration (dangling CNAME into a domain that had expired and was purchasable)
+- Summary: A `.mil` subdomain resolved to a domain that had lapsed and was available for registration, so anyone able to buy that domain could serve content from the government hostname. The reporter deliberately did not register it and reported the condition instead, noting the TLD's residency requirement.
+- Technique / pattern: Dangling records do not only point at cloud resources — plenty point at ordinary third-party domains (an old agency, vendor or campaign site) that have since expired. Add a registrability check to the takeover triage: for every CNAME target that fails to resolve, query the registrar's availability and WHOIS expiry rather than stopping at "NXDOMAIN, probably a cloud resource". Report the finding from the DNS evidence; buying the domain is neither required to prove it nor always permitted by the program.
+- Takeaway: Proof of exploitability does not require exploitation. A resolution chain ending at an available domain is a complete report, and it keeps the researcher clear of registration, cost and legal complications.
+
+### 2026-09-20 — RCE via npm misconfiguration: internal package names resolved from the public registry (PayPal) — $30,000
+- Source: [HackerOne #925585](https://hackerone.com/reports/925585)
+- Type: Security misconfiguration (dependency confusion / namespace resolution in the package manager)
+- Summary: Certain PayPal development projects defaulted to the public npm registry instead of the intended internal one. The researcher published packages on the public registry bearing the names of the missing internal packages and confirmed they were fetched and installed by PayPal's environment — which would have executed attacker-supplied install scripts inside the build.
+- Technique / pattern: The bug lives in *name resolution*, not in any single package. Harvest internal package names from published sources — JS bundles, source maps, `package.json` left in artifacts, CI logs, Docker layers, public repos — then check whether each name is unregistered on the public registry. Claiming an unregistered internal name and observing an installation callback proves the misconfiguration; keep the package inert (a DNS or HTTP beacon with no payload), document it in the report and hand it over or unpublish on request. The same shape applies to PyPI, RubyGems, NuGet and Maven.
+- Takeaway: A package manager that falls back to the public registry when an internal name is missing is a code-execution path fed by anyone. Scope internal names to a private scope or registry, pin resolution explicitly, and defensively register the internal names publicly.
+
 ### 2026-09-19 — Subdomain takeover of d02-1-ag.productioncontroller.starbucks.com via an unclaimed Azure Cloud Service (Starbucks) — n/a
 - Source: [HackerOne #661751](https://hackerone.com/reports/661751)
 - Type: Security misconfiguration (dangling CNAME → Azure Cloud Service takeover)

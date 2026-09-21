@@ -12,6 +12,119 @@ Disclosed **broken authentication & session management** reports — account tak
 
 ## Reports
 
+### 2026-09-21 — 2FA bypass via account deactivation + password-reset reactivation (HackerOne) — n/a
+- Source: [HackerOne #2463279](https://hackerone.com/reports/2463279)
+- Type: Broken Auth (2FA bypass via state transition)
+- Summary: An attacker with access to the victim's email could deactivate the account, trigger a password reset, and on reactivation the two-factor requirement was dropped — full takeover without the 2FA secret.
+- Technique / pattern: Walk the account through deactivate → reset password → reactivate; the 2FA enrollment is not re-enforced across that state transition, so the reactivated session skips the second factor.
+- Takeaway: Map every account state (active/deactivated/recovering/reactivated) and re-test 2FA enforcement from each — factor checks are frequently lost across lifecycle transitions.
+
+### 2026-09-21 — Authentication bypass via PreSignedURL with expired OC-Date/OC-Expires (ownCloud) — $2,000
+- Source: [HackerOne #2337427](https://hackerone.com/reports/2337427)
+- Type: Broken Auth (signature validator fails open)
+- Summary: ownCloud Infinite Scale's PreSignedURL validation on /remote.php/dav/files/ returned success without verifying the signature when the OC-Date/OC-Expires values were expired, allowing unauthenticated file downloads.
+- Technique / pattern: Craft a request with expired OC-Date and OC-Expires; the validator short-circuits to 'valid' on the expiry branch and skips the cryptographic signature check, so only username+filename are needed to download.
+- Takeaway: Test pre-signed/signature validators on their edge branches (expired, malformed, missing) — a check that returns success on a precondition instead of failing closed is an auth bypass.
+
+### 2026-09-21 — Account takeover via password reset after account deletion (Weblate) — n/a
+- Source: [HackerOne #230076](https://hackerone.com/reports/230076)
+- Type: Broken Auth (reset ignores account existence)
+- Summary: The /accounts/reset/ password-reset flow did not validate that the account still existed, so a deleted account could be reclaimed by requesting a reset and setting a new password.
+- Technique / pattern: Delete your account, then request a reset for its email, follow the emailed link and set a new password; recovery re-materializes the deleted account for whoever completes the flow.
+- Takeaway: Reset/recovery must confirm the target account is in a valid, existing state — flows that don't check for deleted/removed accounts let them be silently recovered.
+
+### 2026-09-21 — Reset any password by brute-forcing an unrate-limited 6-digit code (pixiv) — bounty
+- Source: [HackerOne #703972](https://hackerone.com/reports/703972)
+- Type: Broken Auth (OTP brute force in reset)
+- Summary: pixiv.net/reminder.php used a 6-digit verification code with no rate limiting on the final reset step, so any user's password could be reset by brute-forcing the code.
+- Technique / pattern: Start a reset for the victim's email, then brute-force the 6-digit confirmation code at the final step since submission attempts are unthrottled, and set a new password.
+- Takeaway: Any short numeric secret in a reset/OTP flow needs strict rate limiting and lockout on the *verify* step — a 6-digit space is trivially brute-forced without it.
+
+
+### 2026-09-21 — SAML signup domain-enforcement bypass gives unauthorized org access (HackerOne / PullRequest) — n/a
+- Source: [HackerOne #2101076](https://hackerone.com/reports/2101076)
+- Type: SSO/SAML enforcement bypass via input-validation flaw
+- Summary: HackerOne's signup failed to fully sanitize the email, letting an attacker register a local-password account on a SAML-enforced domain by appending CRLF (%0d%0a) characters, bypassing the redirect-to-SSO enforcement and reaching SSO-linked resources.
+- Technique / pattern: Submit a protected-domain email that normally forces SSO, intercept the POST and append %0d%0a to the email so validation treats it as non-enforced while the account is still created for the protected domain, then log in with a chosen password.
+- Takeaway: Normalize and strictly validate email input (reject control/CRLF chars and trailing whitespace) before SSO-domain enforcement, and apply the same canonicalization wherever identity is compared.
+
+### 2026-09-21 — Password reset token leak via Host header on third-party website (Shopify) — n/a
+- Source: [HackerOne #1092831](https://hackerone.com/reports/1092831)
+- Type: Password reset flaw (Host-header token leakage)
+- Summary: Password reset tokens were exposed to third-party domains through Host-header-influenced links, so an attacker controlling that domain could capture the token and reset a victim's password. Disclosed 2022-02-10.
+- Technique / pattern: Request a reset, observe the reset token carried to an attacker-influenceable host via Host header manipulation or an open redirect in the reset flow, then capture and replay the token.
+- Takeaway: Build reset URLs from a server-side allowlisted canonical hostname, never from the request's Host header, and never let reset tokens transit or leak to third-party domains (guard Referer leakage too).
+
+### 2026-09-21 — OAuth misconfiguration leads to account takeover (Reddit) — n/a
+- Source: [HackerOne #1815463](https://hackerone.com/reports/1815463)
+- Type: OAuth/SSO misbinding (email-based account linking)
+- Summary: A misconfiguration in Reddit's Google OAuth flow on accounts.reddit.com let an attacker register a new account with an email already tied to a victim's Google OAuth login, taking over the victim's email identity. Disclosed 2023-05-18.
+- Technique / pattern: Sign in via Google OAuth, log out, then use the registration flow to create an account with the same email; the system failed to reconcile the existing OAuth identity with the new signup.
+- Takeaway: Bind federated identity canonically to a single verified account; never let a fresh registration or new login method claim an email already tied to an existing SSO identity without re-verification.
+
+### 2026-09-21 — Authentication bypass when using JWT with public keys (8x8 / Jitsi Meet) — n/a
+- Source: [HackerOne #1210502](https://hackerone.com/reports/1210502)
+- Type: JWT flaw - algorithm confusion (RS256 -> HS256)
+- Summary: Jitsi Meet before 2.0.5963 accepted JWTs whose header specified a symmetric algorithm, letting an attacker forge tokens by using the publicly known RSA public key as the HMAC secret to reach protected conference rooms.
+- Technique / pattern: On a server configured for RS256, flip the token's alg to HS256 and sign with HMAC using the server's public key as the secret; a verifier that trusts the header's alg validates it.
+- Takeaway: Pin the expected signing algorithm server-side and never derive it from the attacker-controlled JWT header; public keys are public and must never be usable as a shared secret.
+
+### 2026-09-21 — Authentication & Registration Bypass in Newspack Extended Access (Automattic) — n/a
+- Source: [HackerOne #2472798](https://hackerone.com/reports/2472798)
+- Type: JWT - signature not verified -> auth bypass
+- Summary: The Newspack Extended Access plugin's Google register/login endpoints accepted JWTs without validating their signature, so an attacker could register or log in as any non-admin user whose email they knew.
+- Technique / pattern: Crafted an unsigned JWT containing a target email and POSTed it to /wp-json/newspack-extended-access/v1/google/register; the server trusted the claims and authenticated the request.
+- Takeaway: Third-party identity tokens must be signature-verified server-side against the provider's keys; reject unsigned/alg:none tokens and check audience/issuer.
+
+### 2026-09-21 — 2FA Bypass leads to impersonation of legitimate users (Drugs.com) — n/a
+- Source: [HackerOne #2885636](https://hackerone.com/reports/2885636)
+- Type: 2FA bypass - session/trusted device survives email change
+- Summary: An attacker could change their account email to a victim's address without re-triggering 2FA, keeping a trusted, authenticated session tied to the victim's identity.
+- Technique / pattern: Registered with an attacker email, completed OTP and ticked 'trust this device', then changed the email to the victim's; no re-verification occurred, and access could be extended by cycling the email back and forth.
+- Takeaway: Changing identity fields (email/phone) must require verification of the new value and invalidate trusted-device state and existing sessions.
+
+### 2026-09-21 — 2FA bypass possible on authsvc.singlestore.com (SingleStore) — n/a
+- Source: [HackerOne #3329361](https://hackerone.com/reports/3329361)
+- Type: 2FA bypass - OTP brute force with ineffective lockout
+- Summary: After three wrong MFA codes the service redirected (302) as if locked out, but a subsequent request with the correct code still authenticated, so the lockout gave no real protection against brute-forcing the numeric mfaToken.
+- Technique / pattern: With valid credentials, intercepted the MFA submission and brute-forced the code in Burp Intruder, noticing that the 'locked' response was identical for correct and incorrect codes while the correct one still issued a session.
+- Takeaway: A lockout must reject verification server-side, not just change the response. When testing, compare session/cookie issuance, not status codes alone.
+
+### 2026-09-21 — No Rate Limiting on Password Attempts After Insecure Registration Flow cause ATO (Mars) — n/a
+- Source: [HackerOne #3174778](https://hackerone.com/reports/3174778)
+- Type: Missing rate limit on login -> brute-force ATO
+- Summary: The login endpoint had no rate limiting, lockout or CAPTCHA, allowing unlimited password guessing against accounts identified through the registration flow (CWE-307).
+- Technique / pattern: Identified valid accounts via registration behavior, then automated 100+ consecutive login attempts, using the appearance of a session cookie as the success signal.
+- Takeaway: Rate limiting, progressive lockout and CAPTCHA on authentication endpoints are baseline controls; user enumeration plus no rate limit equals ATO.
+
+### 2026-09-20 — Account takeover via an authentication bypass in the account-recovery flow (TikTok) — $12,000
+- Source: [HackerOne #2443228](https://hackerone.com/reports/2443228)
+- Type: Broken authentication (improper authentication mechanism in account recovery, Android)
+- Summary: An improper authentication mechanism in TikTok's account-recovery process on Android could allow an attacker to take over another user's account. TikTok reported no evidence of exploitation in the wild and has fixed the issue.
+- Technique / pattern: Recovery is the branch of the auth tree written to work when the user has lost their credentials, which is exactly the branch that must not trust anything the client supplies. Enumerate recovery per client — the mobile app, the web flow and any legacy endpoint frequently implement different step orders — then drive each step directly rather than through the UI, checking whether the server verifies the possession proof before issuing a session or only records that the client claims to have passed it.
+- Takeaway: Map recovery separately for every client. A factor enforced in the web flow says nothing about the mobile flow that shares the same account store.
+
+### 2026-09-20 — Web cache deception on abritel.fr turns a reflected session token into account takeover (Expedia Group) — n/a
+- Source: [HackerOne #1698316](https://hackerone.com/reports/1698316)
+- Type: Broken session management (session token reflected into a cacheable URL path)
+- Summary: The session token was reflected in the URL path of a search route (`/search/keywords:.../minNightlyPrice/{anything}`) and the server answered with HTTP 200, which caused the caching layer to retain the response far longer than usual. A victim who loaded such a URL had a page containing their own session token stored in the shared cache, from where an attacker could retrieve it.
+- Technique / pattern: Cache deception is the mirror of cache poisoning: rather than getting a payload into the cache, you get the *victim's authenticated response* into it. Append a path segment or a static-looking suffix that the application ignores but the cache treats as a cacheable asset, load it as an authenticated user, then request the same URL anonymously and diff. The status code matters — a 200 on a nonsense path is the signal that the app is routing loosely while the cache is keying strictly.
+- Takeaway: Never reflect session material into a URL, and make the cache key and the authorization decision agree. Responses to authenticated requests should be explicitly marked private regardless of the path's shape.
+
+### 2026-09-20 — Flickr account takeover by changing the Cognito email attribute (Flickr) — n/a
+- Source: [HackerOne #1342088](https://hackerone.com/reports/1342088)
+- Type: Broken authentication (identity keyed on the `email` claim instead of `sub`; `email_verified` ignored)
+- Summary: Flickr's AWS Cognito-backed login identified accounts by the OIDC `email` claim rather than the immutable `sub`, ignored the `email_verified` claim, and normalised email case only on the client. An attacker could call Cognito's `update-user-attributes` API with their own access token to set their email to a case-variant of a victim's address, then sign in with that address and their own password to land in the victim's account.
+- Technique / pattern: Where an app federates to an IdP, ask which claim it keys the local account on, whether that claim is mutable by the end user through the IdP's own API, and whether verification status is checked. Then bypass the web UI entirely and drive the IdP directly — the AWS CLI against Cognito, or the provider's user-attribute API — because the front end's validation (lowercasing, format checks, re-verification prompts) usually lives only in the browser. Case variants, Unicode look-alikes and plus-addressing are the standard probes for a normalisation gap.
+- Takeaway: Key federated identities on the immutable subject identifier, require `email_verified`, and normalise server-side. Any claim the user can edit at the IdP is untrusted input to the relying party.
+
+### 2026-09-20 — Account takeover via a session token issued before SMS verification (Zenly) — n/a
+- Source: [HackerOne #1245762](https://hackerone.com/reports/1245762)
+- Type: Broken authentication (deterministic pre-verification session token)
+- Summary: The session-creation endpoint consistently returned the same not-yet-valid session token for a given user. An attacker could obtain that token in advance for a target phone number; once the legitimate owner later completed SMS verification, the previously issued token became valid and gave the attacker access to the account.
+- Technique / pattern: Split every login into "token minted" and "token activated" and test them as separate states. Call the session-creation step twice for the same identity and compare the tokens — identical values mean the token is derived from the identity rather than from the attempt, so it can be fetched before the victim ever signs up. Then hold the token, complete verification from the victim side in a controlled test, and replay. Pre-registration variants of this (claiming an identity before its owner arrives) are the same bug seen from the other end.
+- Takeaway: A session token must be unique per attempt and unusable until the factor completes — verification should mint a new token, never activate a previously handed-out one.
+
 ### 2026-09-19 — 0-click account takeover via a timed single-packet attack on the forgot-password flow (Mars) — n/a
 - Source: [HackerOne #2142109](https://hackerone.com/reports/2142109)
 - Type: Broken authentication (race condition in password-reset token issuance)

@@ -12,6 +12,105 @@ Disclosed **exposed API / sensitive information disclosure** reports — leaked 
 
 ## Reports
 
+### 2026-09-21 — Discoverability restriction bypass enables user ID enumeration by phone/email (X (Twitter)) — $5,040
+- Source: [HackerOne #1439026](https://hackerone.com/reports/1439026)
+- Type: Info Disclosure (enumeration / privacy bypass)
+- Summary: Submitting a phone number or email through the Android login flow returned the associated user id even when the target had disabled discoverability, allowing mass phone/email-to-account enumeration.
+- Technique / pattern: Feed phone numbers or emails into the Android login/discovery endpoint; it resolves them to user ids regardless of the victim's privacy setting, enabling bulk identity-to-account databases.
+- Takeaway: Privacy toggles must be enforced on every code path — an alternate client (mobile login) endpoint frequently ignores a restriction the main flow honors.
+
+### 2026-09-21 — Unauthenticated bulk download of candidate resumes/CVs via Salesforce Aura (U.S. Dept of Defense) — n/a
+- Source: [HackerOne #2623715](https://hackerone.com/reports/2623715)
+- Type: Info Disclosure (Salesforce Aura / BAC)
+- Summary: A Salesforce Experience Cloud registration page let an Aura API payload query ContentDocument records, yielding file ids that fed direct-download URLs for thousands of confidential resumes and transcripts.
+- Technique / pattern: Send crafted Aura getItems/ContentDocument queries to enumerate file ids, then request each via the file-download URL; access control on the documents was missing.
+- Takeaway: Salesforce Experience/Community sites expose Aura endpoints (ContentDocument, record queries) that routinely leak data — always probe /aura for object and file enumeration on Salesforce-backed portals.
+
+### 2026-09-21 — PII of tour visitors leaked via misconfigured Salesforce record permissions (U.S. Dept of Defense) — n/a
+- Source: [HackerOne #2294930](https://hackerone.com/reports/2294930)
+- Type: Info Disclosure (Salesforce Aura / object permissions)
+- Summary: Salesforce Aura endpoints served Contact/Account/AccountContactRelation records to any registered portal user, exposing hundreds of thousands of names, emails and phone numbers via sequential-id enumeration.
+- Technique / pattern: Register as a standard user, capture an authenticated Aura POST, then modify parameters to enumerate sequential Salesforce record ids; object-level permissions failed to restrict the records returned.
+- Takeaway: Object-/record-level (FLS + sharing) permissions are the real control on Salesforce — a valid portal login should not read arbitrary Contact/Account records via Aura, so test record enumeration explicitly.
+
+
+### 2026-09-21 — Exposed .git directory on a test/canary API host (Kubernetes) — n/a
+- Source: [HackerOne #970520](https://hackerone.com/reports/970520)
+- Type: Exposed .git directory (source disclosure)
+- Summary: A Kubernetes test/canary API host returned 403 for /.git itself but served subpaths such as .git/logs/HEAD and .git/config, letting an attacker recover source code and git history. Disclosed 2021-01-07; closed as duplicate, no bounty.
+- Technique / pattern: When the directory root is forbidden, request known files inside .git directly - the step git-dumper-style tools automate to rebuild the repo.
+- Takeaway: A 403 on a directory does not mean its files are blocked - deny the whole /.git/* pattern, keep VCS metadata out of web roots, and include test/canary hosts in scans.
+
+### 2026-09-21 — GraphQL introspection enabled, leaks schema and user-enumeration operation (On) — n/a
+- Source: [HackerOne #1132803](https://hackerone.com/reports/1132803)
+- Type: GraphQL introspection enabled (schema disclosure)
+- Summary: A production GraphQL endpoint answered introspection queries from anyone, exposing types, fields, queries and mutations including a userExists operation usable to check whether an email is registered. Disclosed 2021-05-09; resolved, no bounty.
+- Technique / pattern: Send a standard __schema introspection query, map the returned operations, and look for sensitive or weakly protected ones such as user enumeration.
+- Takeaway: Disable introspection in production or restrict it to authorized users, and - more importantly - enforce authorization on every resolver, since a leaked schema only speeds up finding unprotected operations.
+
+### 2026-09-21 — GitHub API key for BrewTestBot publicly exposed in CI logs (Homebrew) — n/a
+- Source: [HackerOne #388740](https://hackerone.com/reports/388740)
+- Type: Leaked API token in exposed CI/build logs
+- Summary: jenkins.brew.sh was publicly reachable and its build logs printed a HOMEBREW_GITHUB_API_TOKEN for the BrewTestBot user, which could authenticate to the homebrew-core repo. Disclosed 2018-08-11; no bounty.
+- Technique / pattern: Browse the public CI server's build output, pull the secret from the printed environment variables, and prove it works with a harmless GitHub API call while making no destructive changes.
+- Takeaway: CI dashboards and logs are high-value recon - mask secrets in build output, keep CI private, and scope bot tokens minimally (a repo deploy key over a broad personal token).
+
+### 2026-09-21 — Public GitHub repos of managed triage team leak private report details (HackerOne) — n/a
+- Source: [HackerOne #2937622](https://hackerone.com/reports/2937622)
+- Type: Sensitive data in public source repositories
+- Summary: Shared GitHub accounts run by HackerOne's managed triage team had 44 public repos whose exploit scripts, PoCs, commit history and Actions workflows revealed details of at least 9 private reports on H1-managed programs, some still active. Disclosed 2025-05-31, rated medium; bountied, amount not shown.
+- Technique / pattern: OSINT on org-linked GitHub accounts, then a manual read of each repo's contents, commit history and CI workflow files to find leftover PoC code and its targets.
+- Takeaway: Treat staff and shared service-account repos as attack surface - scratch PoCs, CI configs and git history leak confidential data, so audit repo visibility and default new repos to private.
+
+### 2026-09-21 — Possible PII Disclosure via Advanced Vetting Process (HackerOne) — n/a
+- Source: [HackerOne #2421796](https://hackerone.com/reports/2421796)
+- Type: Excessive data exposure - unauthorized CSV export of PII
+- Summary: A terms-acceptance export endpoint returned a CSV of researcher PII (names, usernames, addresses, countries, signature dates) to users not authorized for the relevant programs.
+- Technique / pattern: Requested the terms_acceptance_data.csv export endpoint directly with a plain GET, bypassing the UI that normally gated it.
+- Takeaway: Export/download endpoints (.csv/.json/.xlsx) often skip the authorization the UI enforces - request them directly from an unprivileged account.
+
+### 2026-09-21 — API key (api.semrush.com) leak in JS-file (Semrush) — n/a
+- Source: [HackerOne #1218754](https://hackerone.com/reports/1218754)
+- Type: Leaked API token in JavaScript bundle
+- Summary: A not-found page referenced JS files belonging to Semrush's internal interface; one publicly accessible file contained an internal API token that granted access to internal system statistics.
+- Technique / pattern: Requested a nonexistent route, read the returned HTML for referenced script files, then downloaded those bundles and grepped them for tokens.
+- Takeaway: Error and 404 pages can reference different (internal) bundles than the main app - collect JS from every page variant, not just the landing page.
+
+### 2026-09-21 — PHP Info Exposing Secrets at https://radio.mtn.bj/info (MTN Group) — n/a
+- Source: [HackerOne #1049402](https://hackerone.com/reports/1049402)
+- Type: Verbose info page (phpinfo) leaking secrets
+- Summary: A public /info phpinfo page exposed the Laravel APP_KEY, database credentials and SMTP authentication details; the researcher confirmed impact by sending a test email with the leaked SMTP credentials.
+- Technique / pattern: Probed common diagnostic paths (/info, /phpinfo.php), parsed the environment variables shown, and validated the SMTP credential safely.
+- Takeaway: Remove phpinfo/diagnostic pages from production and rotate any secrets they showed; a leaked Laravel APP_KEY can also enable cookie forgery/deserialization attacks.
+
+### 2026-09-20 — Information disclosure via Logback configuration injection in the GoCD agent (GoCD) — n/a
+- Source: [HackerOne #3509632](https://hackerone.com/reports/3509632)
+- Type: Information disclosure (external logging config loaded in preference to built-in defaults)
+- Summary: The GoCD agent's Logback setup supports property substitution and loads a custom configuration from a config directory that does not exist by default in the installation path. An attacker able to create that missing directory could place an `agent-launcher-logback.xml` there, and the agent would load it over its defaults, causing sensitive data to be written out through the logging framework.
+- Technique / pattern: Treat "a config path the application searches but that ships empty" as an injection point. For any agent or daemon, read the documented configuration search order, list which of those paths exist on a default install, and check the permissions on their parent directories — a world-writable parent makes a *missing* directory attacker-creatable, which beats needing write access to an existing config. Logging frameworks are the highest-value target of this shape because their config languages support substitution, file appenders and remote appenders.
+- Takeaway: Create and lock down every directory in a configuration search path at install time, and ignore configuration from locations the installer does not own.
+
+### 2026-09-20 — Customer PII exposed in plaintext SQL statements written to ORDER_ERROR_LOG (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #3242830](https://hackerone.com/reports/3242830)
+- Type: Information disclosure (error handler logs full database statements including PII)
+- Summary: When a database write failed, the application logged the complete INSERT statement, so the `ORDER_ERROR_LOG` file held customers' personally identifiable information in plaintext, readable by anyone who could reach the log.
+- Technique / pattern: Error logs are a second copy of the database with none of its access controls. Fuzz for log files by convention rather than by link — `*_ERROR_LOG`, `debug.log`, `error_log`, `app.log`, dated variants — at the web root and one directory up, and check the archive and directory-listing variants too. The higher-value question during triage is *what the handler writes*: a handler that logs the failing statement rather than the failing operation converts every validation error into a PII disclosure, so a single reachable log file can hold years of records.
+- Takeaway: Log the operation and an identifier, never the statement or its bound values, and keep logs outside the document root with the data classification the underlying table carries.
+
+### 2026-09-20 — Email address embedded in a confirmation-link token and preserved publicly by the Wayback Machine (Omise) — n/a
+- Source: [HackerOne #3210022](https://hackerone.com/reports/3210022)
+- Type: Information disclosure (PII encoded in a URL token, archived by a public crawler)
+- Summary: An email-confirmation link on the Omise dashboard carried the user's email address directly inside the token visible in the URL. Because those URLs were crawled and archived by the Internet Archive, the addresses became permanently retrievable from public historical snapshots.
+- Technique / pattern: Public archives are a persistence layer for anything that ever reached a URL. Query the Wayback CDX API and similar indexes for a target's hosts, filter for paths that look like confirmation, invite, reset, unsubscribe or share links, and decode the token — base64, hex and JWT payloads frequently carry an email or user id in the clear. This also converts short-lived leaks into permanent ones, so a rotated secret or an expired link is still worth decoding for the PII it embeds.
+- Takeaway: Tokens must be opaque random identifiers looked up server-side, never encodings of the data they identify — and treat any URL the browser can reach as permanently public, because archives keep it after the link dies.
+
+### 2026-09-20 — Server memory contents leaked into uploaded files via the file-upload endpoint (Bykea) — n/a
+- Source: [HackerOne #3228011](https://hackerone.com/reports/3228011)
+- Type: Information disclosure (uninitialised buffer contents written into stored objects)
+- Summary: Bykea's `/talos/api/v1/files/upload` endpoint buffered uploads on the server before transferring them to Amazon S3, and a misconfiguration caused chunks of server memory to be included in some of the stored files, exposing server-side data to anyone who could retrieve them. The report was triaged as critical.
+- Technique / pattern: This is the "heartbleed-shaped" upload bug: a buffer sized from a declared length but only partially filled leaves the remainder holding whatever was previously in memory. Probe it by uploading small files while varying the declared size — a `Content-Length` larger than the body, a truncated multipart part, a chunked request cut short — then download the stored object and compare its byte length to what was sent. Inspect the trailing bytes with `xxd` and grep for header fragments, tokens and other requests' content; repeat the upload to see whether the tail changes between attempts, which distinguishes leaked memory from static padding.
+- Takeaway: Always zero or explicitly size upload buffers, and verify the stored object byte-for-byte against what was received. Compare sent and stored lengths as a standard check on any upload pipeline.
+
 ### 2026-09-19 — GraphQL query discloses email addresses hidden on public profiles (GitLab) — n/a
 - Source: [HackerOne #985124](https://hackerone.com/reports/985124)
 - Type: Information disclosure (GraphQL field not covered by the profile's privacy setting)
@@ -212,7 +311,7 @@ Disclosed **exposed API / sensitive information disclosure** reports — leaked 
 - Source: [HackerOne #885539](https://hackerone.com/reports/885539)
 - Type: Exposed API / Information Disclosure (timing + broken rate-limit)
 - Summary: A GraphQL endpoint let an attacker reconstruct the members of private lists by chaining a timing attack with broken rate limiting.
-- Technique / pattern: Located GraphQL endpoints (api.twitter.com/graphql/<hash>/<name>) and used response-timing differences plus missing rate limits to enumerate private list membership.
+- Technique / pattern: Located GraphQL endpoints (`api.twitter.com/graphql/<hash>/<name>`) and used response-timing differences plus missing rate limits to enumerate private list membership.
 - Takeaway: Authorization must not leak through side channels — timing differences and absent rate limits can reconstruct data the API refuses to return directly; use constant-time checks and throttling.
 
 ### 2026-09-17 — Unauthenticated API endpoint (/users) discloses PII (U.S. Dept of Defense) — n/a

@@ -62,6 +62,20 @@
               "icon": "lucide-file",
               "title": "IDOR"
             }
+          },
+          {
+            "id": "1c401847fc9176b5",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "Hacking/Bug Bounty/Reports/Pattern/Pattern.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "Pattern"
+            }
           }
         ],
         "currentTab": 3
@@ -74,14 +88,10 @@
             "id": "14702f54f2daa2d4",
             "type": "leaf",
             "state": {
-              "type": "markdown",
-              "state": {
-                "file": "Hacking/Bug Bounty/Reports/Pattern/Pattern.md",
-                "mode": "source",
-                "source": false
-              },
-              "icon": "lucide-file",
-              "title": "Pattern"
+              "type": "graph",
+              "state": {},
+              "icon": "lucide-git-fork",
+              "title": "Graph view"
             }
           },
           {
@@ -127,20 +137,6 @@
             }
           },
           {
-            "id": "a8a1a7c353f120cf",
-            "type": "leaf",
-            "state": {
-              "type": "markdown",
-              "state": {
-                "file": "Roadmap.md",
-                "mode": "source",
-                "source": false
-              },
-              "icon": "lucide-file",
-              "title": "Roadmap"
-            }
-          },
-          {
             "id": "b142f466ac8a42f0",
             "type": "leaf",
             "state": {
@@ -155,7 +151,7 @@
             }
           }
         ],
-        "currentTab": 4
+        "currentTab": 2
       }
     ],
     "direction": "vertical"
@@ -217,7 +213,8 @@
       }
     ],
     "direction": "horizontal",
-    "width": 230.37890625
+    "width": 230.37890625,
+    "collapsed": true
   },
   "right": {
     "id": "cc440467eae14781",
@@ -233,7 +230,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "Roadmap.md",
+                "file": "Hacking/Bug Bounty/Reports/IDOR/IDOR.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -252,7 +249,7 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "Roadmap.md",
+                "file": "Hacking/Bug Bounty/Reports/IDOR/IDOR.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
@@ -295,7 +292,7 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "Roadmap.md",
+                "file": "Hacking/Bug Bounty/Reports/IDOR/IDOR.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
@@ -310,7 +307,7 @@
             "state": {
               "type": "file-properties",
               "state": {
-                "file": "Roadmap.md"
+                "file": "Hacking/Bug Bounty/Reports/IDOR/IDOR.md"
               },
               "icon": "lucide-info",
               "title": "File properties"
@@ -331,8 +328,7 @@
       }
     ],
     "direction": "horizontal",
-    "width": 300,
-    "collapsed": true
+    "width": 300
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -346,17 +342,17 @@
       "obsidian-git:Open Git source control": false
     }
   },
-  "active": "a8a1a7c353f120cf",
+  "active": "3d4c6e7f0de18175",
   "lastOpenFiles": [
-    "Hacking/Bug Bounty/Reports/IDOR/IDOR.md",
     "Hacking/Bug Bounty/Reports/Pattern/Pattern.md",
-    "CI/CD.md",
-    "Hacking/Active Directory/Active Directory.md",
+    "Hacking/Bug Bounty/Reports/IDOR/IDOR.md",
     "Hacking/Active Directory/AD Fundamentals/AD Fundamentals.md",
+    "Hacking/Active Directory/Active Directory.md",
+    "AI/AI.md",
+    "Roadmap.md",
+    "CI/CD.md",
     "Hacking/Active Directory/ACL & GPO Abuse/ACL & GPO Abuse.md",
     "Cloud/Containerisation/Docker/Docker.md",
-    "Roadmap.md",
-    "AI/AI.md",
     "AI/Theory/Theory.md",
     "AI/Theory/Ethics & Safety/Ethics & Safety.md",
     "AI/Theory/Ethics & Safety",

@@ -12,6 +12,126 @@ Disclosed **Insecure Direct Object Reference** reports. Core idea: an object ide
 
 ## Reports
 
+### 2026-09-21 — Cross-tenant IDOR in GraphQL AddRulesToPixelEvents — add/update/delete any advertiser's pixel rules (TikTok) — bounty
+- Source: [HackerOne #984965](https://hackerone.com/reports/984965)
+- Type: IDOR (cross-tenant, GraphQL)
+- Summary: The ads-portal GraphQL mutation AddRulesToPixelEvents honored a pixel/event id from the request without checking the caller's tenant owned it, so any advertiser could add, modify or delete the pixel-event rules of any other advertiser.
+- Technique / pattern: Authenticated as one advertiser, capture the AddRulesToPixelEvents GraphQL call and swap in another tenant's pixel/event object id; the mutation applies cross-tenant with no object-level authorization.
+- Takeaway: Cross-tenant authZ is a distinct check from cross-user — every GraphQL mutation that names an object id must verify the caller's tenant owns it, especially in ads/analytics portals.
+
+### 2026-09-21 — IDOR leaks analytics of any restaurant via GraphQL (Uber) — n/a
+- Source: [HackerOne #1116387](https://hackerone.com/reports/1116387)
+- Type: IDOR (GraphQL, disclosure)
+- Summary: restaurant.uber.com's GraphQL analytics service returned sales/performance data for any restaurant id supplied, without verifying the authenticated user managed that restaurant.
+- Technique / pattern: Change the restaurant identifier in the analytics GraphQL query while logged in as an unrelated user and read another restaurant's business metrics; the resolver skipped ownership checks.
+- Takeaway: Read-only GraphQL resolvers leak just as badly as write ones — every resolver that accepts an entity id needs its own authorization, not just the mutations.
+
+### 2026-09-21 — Any program user can suspend/resume HackerOne Gateway (VPN) via UpdateGatewayProgramStateMutation (HackerOne) — n/a
+- Source: [HackerOne #717716](https://hackerone.com/reports/717716)
+- Type: IDOR (GraphQL, broken function-level authZ)
+- Summary: The UpdateGatewayProgramStateMutation resolved teams through an over-broad 'teams_i_can_see' scope and its interactors skipped authorization, letting any user of a Gateway program toggle vpn_suspended on any team.
+- Technique / pattern: Craft a GraphQL POST with a target team's base64-encoded id and the desired vpn_suspended value; the mutation flips VPN state because the scope used for lookup is far wider than the set the user may manage.
+- Takeaway: An over-broad lookup scope ('everything I can see') is a common source of IDOR — the query that finds the object must be scoped to what the actor can *manage*, not merely view.
+
+### 2026-09-21 — IDOR on program visibility — reveal/conceal any team member via updateTeamMemberVisibility (HackerOne) — n/a
+- Source: [HackerOne #291721](https://hackerone.com/reports/291721)
+- Type: IDOR (GraphQL)
+- Summary: The /graphql updateTeamMemberVisibility mutation took a base64-encoded team_member_id and changed that member's public security-team affiliation without checking it belonged to the caller.
+- Technique / pattern: Decode the base64 team_member_id, substitute a colleague's id, re-encode and replay; the mutation updates any member's visibility with no ownership verification.
+- Takeaway: Base64 is encoding, not authorization — decode every opaque id in a mutation and swap it to test object-level access.
+
+### 2026-09-21 — Authentication Bypass / IDOR in subscription-management endpoint exposes billing data (lemlist) — n/a
+- Source: [HackerOne #3417162](https://hackerone.com/reports/3417162)
+- Type: IDOR (billing/PII disclosure)
+- Summary: A subscription-management API endpoint lacked proper access control, so manipulating the customer identifier returned other users' subscription and payment/billing information.
+- Technique / pattern: Iterate/swap the customer id parameter on the subscription endpoint; the response returns another account's billing details without valid ownership of that customer record.
+- Takeaway: Billing and subscription endpoints are prime IDOR targets — the customer id in the request must be bound to the authenticated session, not trusted as-is.
+
+
+### 2026-09-21 — IDOR lets a removed member delete messages in a group using the message ID (Rocket.Chat) — n/a
+- Source: [HackerOne #2028450](https://hackerone.com/reports/2028450)
+- Type: IDOR - stale-membership authorization bypass (delete)
+- Summary: A user who had left, been removed, or been banned from a Rocket.Chat channel could still delete their old messages there by sending the message ID to /api/v1/method.call/deleteMessage, which the UI would otherwise block. Rated low; no bounty.
+- Technique / pattern: Note a message ID, leave the channel, capture a legitimate delete request from a different channel, swap in the old message ID and replay it - the server deleted it without rechecking current membership.
+- Takeaway: Authorization must be judged on the user's current relationship to the parent resource (membership, ban, mute), not only on who created the object; UI-only blocks fall to replayed generic RPC/method-call endpoints.
+
+### 2026-09-21 — IDOR in external status check API leaks data about any status check on the instance (GitLab) — n/a
+- Source: [HackerOne #1372216](https://hackerone.com/reports/1372216)
+- Type: IDOR - unscoped child ID (cross-project information disclosure)
+- Summary: `POST /projects/<id>/merge_requests/<iid>/status_check_responses` did not verify that external_status_check_id belonged to the project in the URL, so changing that ID returned status-check details from any project, including private ones (names, IDs, service URLs, protected branches). Rated medium (CVSS 4.3); bountied, amount not public.
+- Technique / pattern: Call the endpoint on a merge request in a controlled project so the project-level check passes, then enumerate sequential external_status_check_id values in the body to pull other projects' objects.
+- Takeaway: Authorizing the parent resource in the URL is not enough - every child or foreign-key ID in the body must be confirmed to belong to that parent. Hunt for "authorized container, unscoped child ID".
+
+### 2026-09-21 — IDOR allows an attacker to modify the links of any user (Reddit) — n/a
+- Source: [HackerOne #1661113](https://hackerone.com/reports/1661113)
+- Type: IDOR - GraphQL mutation writes to another user's objects
+- Summary: Reddit's GraphQL API let an attacker edit the social links on any user's profile because the update accepted a link ID without checking the requester owned it. Rated high; bountied but amount not public.
+- Technique / pattern: Query the API with a victim's username to obtain that user's social-link IDs, then send the link-update mutation with those IDs plus an attacker-chosen URL/title.
+- Takeaway: GraphQL queries often leak other users' internal object IDs that then feed into mutations - enforce ownership on every mutation argument, not just the top-level query.
+
+### 2026-09-21 — Unauthenticated IDOR allows modification of payment customer billing information (Weblate) — n/a
+- Source: [HackerOne #3869124](https://hackerone.com/reports/3869124)
+- Type: IDOR - unauthenticated write to a UUID-keyed resource
+- Summary: Weblate's payment edit endpoint /en/payment/{UUID}/edit/ performed no authentication or ownership check, so anyone holding a payment UUID could change and save the billing details (name, address) tied to that payment. Disclosed 2026-08-30, rated high; program pays no bounties.
+- Technique / pattern: Create a payment object, note its UUID, open the edit URL while logged out, submit changed fields, confirm the save persisted.
+- Takeaway: A UUID is only an identifier. Every read and write handler, including legacy edit views, needs both an auth check and an ownership check; always retest state-changing endpoints with no session at all.
+
+### 2026-09-21 — [IDOR] Improper Access Control on Embedded Submission Form (HackerOne) — $2,500
+- Source: [HackerOne #2483666](https://hackerone.com/reports/2483666)
+- Type: IDOR - UUID-as-secret in GraphQL (private/inactive resources)
+- Summary: GraphQL queries for embedded submission forms returned sensitive program data (intro text, structured scopes, response-efficiency stats) for private or inactive forms to anyone who supplied the form's UUID.
+- Technique / pattern: The researcher harvested historical form UUIDs from archived URLs (waybackurls) for forms that had once been public and were later made private, then queried GraphQL directly with those IDs - the server never re-checked authorization after the resource's visibility changed.
+- Takeaway: A UUID is an identifier, not access control. When a resource flips from public to private, old IDs leaked in archives, JS or links still work unless the server re-authorizes every request.
+
+### 2026-09-21 — IDOR vulnerability in unreleased HackerOne Copilot feature (HackerOne) — n/a
+- Source: [HackerOne #2218334](https://hackerone.com/reports/2218334)
+- Type: IDOR - write/delete via GraphQL mutation (unreleased feature)
+- Summary: The DestroyLlmConversation GraphQL mutation lacked an ownership check, so any logged-in user could delete another user's Copilot conversation by passing its llm_conversation_id.
+- Technique / pattern: Found by monitoring the platform's JavaScript bundles for operations belonging to not-yet-released features, then replaying the mutation from a second account against the first account's conversation ID.
+- Takeaway: Unreleased features shipped in client JS are often reachable before their authorization is finished - enumerate every mutation in the bundle and test each with two accounts.
+
+### 2026-09-21 — IDOR in API applications (able to see any API token, leads to account takeover) (Automattic (Pressable)) — n/a
+- Source: [HackerOne #1695454](https://hackerone.com/reports/1695454)
+- Type: IDOR - sequential ID, secret leaked in error response -> ATO
+- Summary: POSTing to /api/applications with only a changed application[id] (plus the CSRF token) caused the response to render the target application's Client ID and Client Secret, giving full API access including collaborator management and thus account takeover.
+- Technique / pattern: While updating their own app the researcher noticed application[id] in the request body, stripped the other parameters so validation failed, and swapped the ID; the error page echoed the full object. Sequential IDs made every application enumerable.
+- Takeaway: Look at error and validation responses, not just success paths - minimal-body requests can make the server render a whole object it never authorized you to see.
+
+### 2026-09-21 — Insecure Direct Object Reference (IDOR) Vulnerability in Autodesk User Profile (Autodesk) — n/a
+- Source: [HackerOne #2965357](https://hackerone.com/reports/2965357)
+- Type: IDOR - write (profile modification by id parameter)
+- Summary: Changing the id parameter in a profile-update request allowed an attacker to modify another Autodesk user's profile; the report was resolved and disclosed in February 2025.
+- Technique / pattern: Classic parameter tampering: capture your own profile-update request, replace the user identifier with a victim's, and confirm the change lands on the victim account.
+- Takeaway: Write endpoints deserve the same object-level checks as reads - bind the target object to the authenticated session server-side instead of trusting a client-supplied id.
+
+### 2026-09-20 — IDOR in the autotranslate.translateMessage endpoint leaks message content from any room (Rocket.Chat) — n/a
+- Source: [HackerOne #3713682](https://hackerone.com/reports/3713682)
+- Type: IDOR (auxiliary endpoint missing the room-access check)
+- Summary: `/api/v1/autotranslate.translateMessage` fetched the target message with `Messages.findOneById(messageId)` and never called the room-access helper `canAccessRoomIdAsync`, so any authenticated user who supplied a message id could read content from private groups, DMs and channels they had no membership in.
+- Technique / pattern: Utility endpoints built *around* a resource — translate, preview, summarise, export, render, share-card — are written after the primary read path and routinely skip its authorization helper. On an open-source target, learn the canonical access check by name and grep for every handler that loads the same model without calling it; on a closed target, enumerate the secondary actions the UI offers on an object and replay each one with another room's message id.
+- Takeaway: Authorization belongs to the object load, not to one route. Where a helper like `canAccessRoomIdAsync` exists, every handler touching that model must go through it.
+
+### 2026-09-20 — IDOR in the GraphQL deleteProfileImages mutation deletes other users' photos (Autodesk) — n/a
+- Source: [HackerOne #2968039](https://hackerone.com/reports/2968039)
+- Type: IDOR (destructive GraphQL mutation keyed on a supplied id)
+- Summary: The `deleteProfileImages` mutation took an `id` parameter naming whose profile image to remove and did not verify the id belonged to the caller, letting an attacker delete other users' profile photos.
+- Technique / pattern: Profile and avatar surfaces are treated as cosmetic and reviewed lightly, yet they expose full CRUD. Introspect the schema for mutations whose name contains delete/remove/reset and whose argument is a bare `id`, then run the two-account test: perform the mutation as A with A's id to learn the shape, then send B's id from A's session. A 200 with no error and the image gone from B's profile is the whole proof.
+- Takeaway: A destructive mutation must re-derive the subject from the session, or authorize the supplied id against it. Do not treat low-value objects as low-risk routes.
+
+### 2026-09-20 — Unauthorized reservation cancellation by supplying a reservation id (Yelp) — n/a
+- Source: [HackerOne #2944357](https://hackerone.com/reports/2944357)
+- Type: IDOR (guest flow authorized purely by knowledge of a reference id)
+- Summary: Yelp's reservation feature did not require the user to be logged in, and a reservation could be cancelled by anyone who knew its reservation id — so harvesting or guessing ids allowed cancelling other people's bookings. Yelp stated it was already aware of the issue.
+- Technique / pattern: Deliberately unauthenticated flows (guest checkout, reservation management, parcel tracking, "view your quote") replace a session with a reference number, which makes the reference number the credential. Check its entropy and whether it is exposed in confirmation emails, QR codes, printable pages or Referer headers, and check whether a *destructive* verb is reachable with it and nothing else. Read access to a guest booking may be an accepted design trade-off; cancellation almost never is.
+- Takeaway: When a flow intentionally has no login, the reference id must be high-entropy and paired with a second factor (email or phone) before any state-changing action.
+
+### 2026-09-20 — IDOR in the FetchMemberships GraphQL operation leaks current team data to former members (Tools for Humanity) — $500
+- Source: [HackerOne #2381816](https://hackerone.com/reports/2381816)
+- Type: IDOR (authorization evaluated at grant time, not request time)
+- Summary: The `FetchMemberships` operation on `POST /api/v1/graphql` did not re-check whether the caller still belonged to the organization, so a person who had been removed from a team could keep reading the names, email addresses, roles and ids of the current members.
+- Technique / pattern: Test the *former*-privilege state as a first-class case: join or be granted access, record the exact request the UI makes, have the access revoked, then replay the unchanged request. Membership-listing operations are the highest-value target for this because they return the whole roster in one call, and because offboarding is usually implemented as a UI change plus a row deletion rather than as session invalidation.
+- Takeaway: Offboarding must revoke sessions and tokens as well as the membership row, and each request must re-evaluate membership rather than trusting a claim baked in at login.
+
 ### 2026-09-19 — IDOR — scheduled-job data of other users' projects via GetNotebookScheduledPaginatedJobs (SingleStore) — n/a
 - Source: [HackerOne #3219944](https://hackerone.com/reports/3219944)
 - Type: IDOR (broken object-level authorization on a list endpoint)
@@ -99,7 +219,7 @@ Disclosed **Insecure Direct Object Reference** reports. Core idea: an object ide
 ### 2026-09-18 — IDOR on a Nextcloud instance via direct photo URL exposes other users' and deleted photos (Nextcloud) — n/a
 - Source: [HackerOne #3518758](https://hackerone.com/reports/3518758)
 - Type: IDOR (broken object-level authorization, WebDAV/Photos)
-- Summary: A photo uploaded to a Nextcloud album kept a directly addressable DAV URL under /remote.php/dav/photos/<user>/albums/<album>/<photo>. A second, unrelated account could fetch that URL and retrieve the image - including after the owner had deleted it - because the endpoint never checked that the requesting session owned the object.
+- Summary: A photo uploaded to a Nextcloud album kept a directly addressable DAV URL under `/remote.php/dav/photos/<user>/albums/<album>/<photo>`. A second, unrelated account could fetch that URL and retrieve the image - including after the owner had deleted it - because the endpoint never checked that the requesting session owned the object.
 - Technique / pattern: Two-account differential testing on a file-serving path: record the canonical asset URL as account A, delete or unshare the object, then replay the exact URL from account B. A 200 with the image body - rather than a 403/404 - shows the DAV layer is resolving the path without consulting the sharing/ownership model, and that deletion only unlinked the object from the album view.
 - Takeaway: Static asset and WebDAV paths are objects too: authorization must be enforced at the file-serving layer, and 'deleted' must mean unreachable, not merely unlisted.
 

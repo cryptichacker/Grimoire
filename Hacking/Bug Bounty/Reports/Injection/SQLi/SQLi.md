@@ -12,6 +12,42 @@ Disclosed **SQL injection** reports — error/boolean/time-based, UNION, blind, 
 
 ## Reports
 
+### 2026-09-21 — SQL injection extracts Starbucks enterprise accounting/payroll DB (Starbucks) — bounty
+- Source: [HackerOne #531051](https://hackerone.com/reports/531051)
+- Type: SQLi (time-based, XML-encoded bypass)
+- Summary: A Microsoft Dynamics AX web service accepted XML HTTP requests to an accounting endpoint; XML entity encoding of the apostrophe (&apos;) slipped past the app's quote-escaping, enabling time-based SQLi against MSSQL 2012.
+- Technique / pattern: Encode the injection's single quote as the XML entity &apos; so it survives the app's escaping and reaches the query, then confirm/extract with time-based payloads across ~1M accounting records.
+- Takeaway: When input arrives as XML/JSON, escape filters that assume raw characters can be defeated by an equivalent entity/encoding — test encoded forms of quotes against every serialization the endpoint accepts.
+
+### 2026-09-21 — SQL injection in GraphQL endpoint via embedded_submission_form_uuid (HackerOne) — n/a
+- Source: [HackerOne #435066](https://hackerone.com/reports/435066)
+- Type: SQLi (GraphQL, PostgreSQL SET SESSION)
+- Summary: The /graphql endpoint interpolated the unsanitized embedded_submission_form_uuid parameter into a PostgreSQL 'SET SESSION' statement, allowing injection confirmed with pg_sleep().
+- Technique / pattern: Inject into embedded_submission_form_uuid in the GraphQL request and confirm with a time-based pg_sleep() payload; the value reached SQL through a session-config statement rather than a normal query.
+- Takeaway: SET SESSION / configuration statements are overlooked SQL sinks — any user value placed into session setup interpolation is injectable even outside conventional SELECT/WHERE clauses.
+
+
+### 2026-09-21 — Time-based SQL injection in search parameter (U.S. Department of State) — n/a
+- Source: [HackerOne #1878584](https://hackerone.com/reports/1878584)
+- Type: SQL injection - time-based blind
+- Summary: A GET parameter in the site's search functionality was vulnerable to time-based blind SQL injection, confirmed with SQLMap, allowing table enumeration and potential extraction of sensitive data. Disclosed 2023-04-20.
+- Technique / pattern: Probe a search parameter with time-delay payloads, confirm conditional response timing, then automate enumeration with SQLMap to prove impact without dumping live data.
+- Takeaway: Search/filter parameters remain a top source of SQLi - use parameterized queries and ensure no user input concatenates into SQL, since blind time-based injection is exploitable even with no visible output.
+
+### 2026-09-21 — Potential SQL Injection when annotating FilteredRelation on PostgreSQL (Django) — n/a
+- Source: [HackerOne #3417967](https://hackerone.com/reports/3417967)
+- Type: SQLi - ORM alias injection via PostgreSQL dollar-quoting (CVE-2025-57833 / CVE-2025-59681)
+- Summary: Django's FORBIDDEN_ALIAS_PATTERN, which rejects unsafe annotation aliases, did not block '$'; on PostgreSQL a user-controlled FilteredRelation annotation key could use $tag$...$tag$ dollar-quoting to inject SQL (e.g. pg_read_file).
+- Technique / pattern: The alias is emitted several times in the generated query; dollar-quotes in the payload swallow the SQL between those copies so the injected subquery executes. Fixed by adding '$' to the forbidden pattern.
+- Takeaway: Deny-list regexes on identifiers must cover every quoting form of every supported dialect (PG $$, MySQL backticks...). Passing user input as ORM kwargs/alias names (e.g. **request.GET into annotate) defeats ORM protection.
+
+### 2026-09-20 — Blind SQL injection via the clientid parameter in zone-include.php (Revive Adserver) — n/a
+- Source: [HackerOne #3653196](https://hackerone.com/reports/3653196)
+- Type: SQLi (blind, post-authentication, low-privilege admin-panel script)
+- Summary: In Revive Adserver 6.0.6 and earlier, the `zone-include.php` script did not sanitise user input, letting an authenticated low-privileged user inject SQL through the `clientid` parameter and query the database blindly. The fix added validation for every parameter the script processes.
+- Technique / pattern: In a self-hosted product, the interesting surface is the *authenticated, low-privilege* admin panel rather than the public site: dozens of small maintenance scripts take an id, and each one was written by a different hand. Get a basic account, crawl every panel page as that role, collect each `id`-shaped parameter, and run the boolean pair before any time-based payload. Reproduce against the vendor's own release so the report cites a version range rather than a single host.
+- Takeaway: "Requires a login" is not a mitigation when the lowest role in the product can reach the parameter. Parameterize in the small scripts too — they are where the audit stops looking.
+
 ### 2026-09-19 — SQL injection in a DoD web application parameter (U.S. Dept Of Defense) — n/a
 - Source: [HackerOne #1015406](https://hackerone.com/reports/1015406)
 - Type: SQLi (classic parameter injection)

@@ -12,6 +12,56 @@ Disclosed **Cross-Site Scripting** reports — reflected, stored, and DOM-based.
 
 ## Reports
 
+### 2026-09-21 — Stored XSS via post title on Autodesk Forums enables low-priv to admin exploitation (Autodesk) — n/a
+- Source: [HackerOne #2974307](https://hackerone.com/reports/2974307)
+- Type: XSS (stored)
+- Summary: The forum post-title field on forums.autodesk.com stored unescaped JavaScript that executed when the post was viewed, including by privileged users, allowing actions in their context.
+- Technique / pattern: Inject a script payload into the post title; it is stored and executes in every viewer's browser, so a non-privileged author's payload runs with a viewing admin/moderator's session.
+- Takeaway: Title/name fields are frequently trusted more than body fields — stored XSS in a widely-rendered field becomes privilege escalation when higher-privileged users view the content.
+
+### 2026-09-21 — Double stored XSS in Federalist admin panel via Custom Domain field (GSA Bounty) — n/a
+- Source: [HackerOne #245172](https://hackerone.com/reports/245172)
+- Type: XSS (stored, pseudo-protocol)
+- Summary: The Custom Domain field on the Federalist admin settings page stored javascript: pseudo-protocol payloads that fired on both the settings view and the published-sites page when an admin interacted with interface controls.
+- Technique / pattern: Enter javascript:alert(document.domain) as a domain value; it is stored and later executed via clickable elements, hitting other admins on two separate pages.
+- Takeaway: Fields that expect URLs must reject javascript:/data: schemes — validating 'is it a domain?' is not the same as blocking pseudo-protocol payloads that later become href/click sinks.
+
+
+### 2026-09-21 — Stored XSS in file upload leads to privilege escalation and full workspace takeover (Dust) — n/a
+- Source: [HackerOne #3115705](https://hackerone.com/reports/3115705)
+- Type: Stored XSS via file upload (content-type confusion)
+- Summary: An attacker uploaded a malicious HTML file disguised with an image extension into a Dust conversation; when an authenticated member (especially an admin) opened it, the embedded JavaScript ran in their session, enabling self-promotion to admin and full workspace compromise. Disclosed 2025-05-02.
+- Technique / pattern: Upload a polyglot/mislabeled file, then confirm the server serves attacker-controlled HTML inline from a trusted origin so the browser renders and executes it rather than treating it as an inert image.
+- Takeaway: Never serve user-uploaded files inline from a trusted origin without enforcing Content-Type, Content-Disposition: attachment, and a restrictive CSP; extension checks alone do not stop HTML/JS execution.
+
+### 2026-09-21 — Second-Order XSS via javascript protocol in MCP Server Portal Apps leads to ATO (Cloudflare) — n/a
+- Source: [HackerOne #3316910](https://hackerone.com/reports/3316910)
+- Type: XSS - second-order / stored via OAuth redirect_uri (javascript: scheme)
+- Summary: Cloudflare's MCP server portals did not sanitize OAuth redirect_uri; an attacker could register a client with a javascript: redirect_uri and then send an authenticated victim to /authorize, where the script executed in the victim's session, potentially leading to account takeover.
+- Technique / pattern: Two stages: store the payload through OAuth dynamic client registration (returns a client_id), then trigger it through the authorize flow in the victim's logged-in context. Fixed by upgrading workers-oauth-provider.
+- Takeaway: Any OAuth/OIDC server with dynamic client registration (common with MCP) must restrict redirect_uri to http(s) allow-listed values at registration AND at redirect time.
+
+### 2026-09-21 — Stored XSS on TikTok's backend leads to the leakage of highly sensitive administrator data (TikTok) — n/a
+- Source: [HackerOne #3037447](https://hackerone.com/reports/3037447)
+- Type: XSS - blind stored XSS in internal back-office tooling
+- Summary: A payload submitted through a public partner application/contact form executed when TikTok employees viewed the submissions in an internal analytics tool, exposing session tokens, admin JWTs, PII and internal paths.
+- Technique / pattern: Blind XSS: plant callback payloads in public-facing forms whose data is later rendered in staff-only dashboards, and wait for the out-of-band callback to reveal where and in whose context it fired.
+- Takeaway: Data from public forms often lands in internal tools that assume trusted input - output-encode everywhere, including admin/analytics UIs, and treat blind XSS as high impact.
+
+### 2026-09-20 — Stored XSS via Kroki diagram blocks in GitLab markdown (GitLab) — $13,950
+- Source: [HackerOne #1731349](https://hackerone.com/reports/1731349)
+- Type: XSS (stored; selector/attribute-read mismatch in a markdown renderer)
+- Summary: With Kroki enabled, GitLab selected diagram nodes with `pre[lang="<type>"] > code` **or** `pre > code[lang="<type>"]`, but then resolved the diagram type from `node.parent['lang']` with a fallback. Because the node that matched and the node whose attribute was read could differ, a crafted `pre` block injected arbitrary attributes into the generated `img` tag, giving stored XSS to everyone who viewed the page.
+- Technique / pattern: Look for *disagreement between two passes over the same tree*. Renderers commonly select nodes with one predicate and then read attributes with another (parent vs child, first-match vs last-match, with vs without a fallback); wherever the two can point at different nodes, the validated value and the used value are not the same value. Build inputs that satisfy one arm of an `or` while carrying the payload on the other arm, and treat any attribute that flows into generated HTML — not just text content — as a sink.
+- Takeaway: Select and read from the same node, and encode attributes at construction. An `or` in a selector paired with a fallback in the lookup is a bypass waiting to be found.
+
+### 2026-09-20 — Client-side template injection leading to XSS (Mars) — n/a
+- Source: [HackerOne #2234564](https://hackerone.com/reports/2234564)
+- Type: XSS (client-side template injection in a JS template framework)
+- Summary: User-supplied input was embedded into a page rendered by a client-side template framework, so a template expression provided by the attacker was evaluated by the framework during rendering and executed as script in the victim's browser.
+- Technique / pattern: CSTI fires where classic XSS filters do not look, because the payload carries no angle brackets. Probe every reflected parameter with the framework's own arithmetic markers (`{{7*7}}`, `${7*7}`, `<%= 7*7 %>`) and watch for `49` in the rendered DOM; the interpolation delimiter identifies the framework, and from there the known sandbox-escape chain for that version gives script execution. Fingerprint the framework from the bundle first so the marker matches its syntax.
+- Takeaway: A client-side template is an interpreter in the browser. Bind user data to the template rather than concatenating it into the template source, and keep frameworks past their sandbox-escape-prone versions.
+
 ### 2026-09-19 — Blind stored XSS triggered in the iOS app due to improper input handling (Nextcloud) — n/a
 - Source: [HackerOne #575562](https://hackerone.com/reports/575562)
 - Type: XSS (blind stored; native mobile client as the output context)
@@ -43,8 +93,8 @@ Disclosed **Cross-Site Scripting** reports — reflected, stored, and DOM-based.
 ### 2026-09-18 — Stored XSS in Notes with a CSP bypass for gitlab.com (GitLab) — n/a
 - Source: [HackerOne #1481207](https://hackerone.com/reports/1481207)
 - Type: Stored XSS (markdown HTML injection chained to a CSP bypass)
-- Summary: HTML injection surviving in GitLab's syntax_highlight_filter markdown pipeline let an attacker inject a <base> tag into notes, wiki pages and issue descriptions; that repointed relative script URLs at an attacker-controlled host, defeating the nonce-based CSP and executing script for every viewer.
-- Technique / pattern: When a previous fix removed a particular XSS sink but left the underlying HTML injection, look for tags that change document semantics rather than tags that execute directly - <base> rewrites the resolution of every relative URL on the page. Then enumerate which script files the page expects to load and host matching paths on the attacker origin: those requests inherit the page's nonce, so the CSP is satisfied by construction.
+- Summary: HTML injection surviving in GitLab's syntax_highlight_filter markdown pipeline let an attacker inject a `<base>` tag into notes, wiki pages and issue descriptions; that repointed relative script URLs at an attacker-controlled host, defeating the nonce-based CSP and executing script for every viewer.
+- Technique / pattern: When a previous fix removed a particular XSS sink but left the underlying HTML injection, look for tags that change document semantics rather than tags that execute directly - `<base>` rewrites the resolution of every relative URL on the page. Then enumerate which script files the page expects to load and host matching paths on the attacker origin: those requests inherit the page's nonce, so the CSP is satisfied by construction.
 - Takeaway: Patching the payload instead of the injection point leaves the bug alive, and a nonce-based CSP protects nothing once an attacker controls the base URL that relative script paths resolve against.
 
 ### 2026-09-18 — Reflected XSS chained with a CSRF-able password change for one-click account takeover (TikTok) — n/a
