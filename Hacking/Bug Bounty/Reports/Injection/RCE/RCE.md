@@ -12,6 +12,34 @@ Disclosed **Remote Code Execution** reports reached via injection chains — **O
 
 ## Reports
 
+### 2026-09-22 — Command injection in Harmony trajectory-subsetter gives RCE as root (NASA VDP) — n/a (P1, CVSS 8.8)
+- Source: [Bugcrowd #31ad3b26](https://bugcrowd.com/disclosures/31ad3b26-beae-4a91-879d-c6640cfe41dc/command-injection-in-harmony-trajectory-subsetter-subset-shape-geojson-gives-any-earthdata-user-remote-code-execution-rce-as-root-on-harmony-earthdata-nasa-gov)
+- Type: OS command injection via user-supplied GeoJSON (injection chain → RCE)
+- Summary: The subsetter service serialised the user's `subset.shape` GeoJSON with `json.dumps` and interpolated it into a shell string passed to `subprocess.Popen(command, shell=True)`; because `json.dumps` does not escape single quotes, a quote inside any GeoJSON property closed the argument and the rest ran as shell. Any holder of a free Earthdata Login account reached code execution as `uid=0` in the production container.
+- Technique / pattern: Trace user-controlled structured data (JSON, GeoJSON, filenames, metadata) into command construction; serialisation is not shell escaping, so look for `shell=True` with formatted strings and test with a bare `'` before any full payload. Fixed upstream in v1.0.11 by passing an argument array with `shell=False`.
+- Takeaway: Only an argument vector (`shell=False`, `execve`-style) is safe — quoting a serialised blob into a shell command re-opens injection even when the blob is "valid JSON"; and a free self-service account is the same as unauthenticated for exposure purposes.
+### 2026-09-22 — RCE via unsafe raw template rendering in fastify view with EJS (Fastify) — n/a
+- Source: [HackerOne #3122019](https://hackerone.com/reports/3122019)
+- Type: Template injection to RCE (CWE-94) in `@fastify/view`
+- Summary: Passing user-controlled content to `reply.view({ raw: ... })` with the EJS engine sent it straight into EJS `compile()`, so attacker-controlled template syntax executed as server-side Node code.
+- Technique / pattern: Identified that the `raw` option compiles its argument as a template rather than treating it as data, then supplied EJS expression syntax that reaches Node's standard library during rendering.
+- Takeaway: Any API that accepts a template string (not just variables) is a code-execution sink; audit framework options like `raw` / `renderString` for user-reachable input.
+
+### 2026-09-21 — Unauthenticated RCE via an AI agent's `execute_custom_code` tool (NASA VDP)
+- Source: [Bugcrowd #85b61013](https://bugcrowd.com/disclosures/85b61013-5265-4295-ab9f-33ed27754132/unauthenticated-rce-on-hydrology-czdt-smce-nasa-gov-via-the-czdt-flood-agent-s-execute_custom_code-tool)
+- Type: RCE (exposed code-execution tool / LLM agent)
+- Summary: A public hydrology 'Copilot' agent exposed an `execute_custom_code` tool that ran attacker-supplied Python on the backend with no authentication.
+- Technique / pattern: Send unauthenticated requests to the agent endpoint that route into its `execute_custom_code` tool; confirm execution non-destructively with nonce digests and hostname/working-directory checks rather than damaging payloads.
+- Takeaway: AI/agent frameworks that wire a code-execution or shell tool into a user-facing endpoint create direct RCE — treat every agent tool as an authenticated, sandboxed, least-privilege capability.
+
+
+### 2026-09-21 — RCE on beta-partners.tesla.com via SSRS ViewState deserialization (CVE-2020-0618) (Tesla) — 40 pts
+- Source: [Bugcrowd disclosure d23e05b1](https://bugcrowd.com/disclosures/d23e05b1-c4cc-440a-a678-d8045468c902/rce-on-https-beta-partners-tesla-com-due-to-cve-2020-0618)
+- Type: RCE (insecure deserialization, P1)
+- Summary: A SQL Server Reporting Services instance at `https://beta-partners.tesla.com/ReportServer/Pages/ReportViewer.aspx` was vulnerable to CVE-2020-0618, an insecure .NET deserialization flaw allowing arbitrary code execution.
+- Technique / pattern: Generate a malicious serialized .NET gadget with `ysoserial.net` and POST it in the `NavigationCorrector$ViewState` parameter to the ReportViewer endpoint; SSRS deserializes it and runs the payload (e.g. PowerShell).
+- Takeaway: Fingerprint COTS report/BI servers (SSRS, Cognos) and match the version to known deserialization CVEs — a hidden ViewState/state field is an unauthenticated RCE sink when the patch is missing.
+
 ### 2026-09-21 — RCE via insecure deserialization in Telerik UI (U.S. Dept of Defense) — n/a
 - Source: [HackerOne #838196](https://hackerone.com/reports/838196)
 - Type: RCE via injection chain (arbitrary file upload + insecure deserialization)

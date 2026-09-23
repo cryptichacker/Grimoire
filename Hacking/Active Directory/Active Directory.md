@@ -24,6 +24,9 @@ Comprehensive Active Directory attack & defense reference — built from my Noti
 - [[Trusts & Persistence]] — cross-domain/forest trust abuse; Golden/Silver/DCShadow/AdminSDHolder/DSRM/Skeleton Key *(added)*
 - [[AD Defense & Detection]] — key Event IDs, hardening, LAPS, gMSA, tiering
 
+## Boards
+- [[Attacking Kerberos.canvas|🎫 Attacking Kerberos]] — visual attack-flow canvas linking these notes end to end
+
 ## Related
 - [[AD Quick Reference]] — the compact CTF-flow version (in [[CTF]] → [[Privilege Escalation]])
 - [[Password Cracking]] ([[Hashcat]] `-m 18200`/`13100`, [[John the Ripper]]) — crack roasted hashes

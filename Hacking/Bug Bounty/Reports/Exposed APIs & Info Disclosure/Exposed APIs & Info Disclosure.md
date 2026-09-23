@@ -12,6 +12,139 @@ Disclosed **exposed API / sensitive information disclosure** reports — leaked 
 
 ## Reports
 
+### 2026-09-22 — Unauthenticated disclosure of organizer email addresses via The Events Calendar REST API, CVE-2025-9808 (NASA VDP) — n/a (P5)
+- Source: [Bugcrowd #08b14f25](https://bugcrowd.com/disclosures/08b14f25-72b5-4d36-83a3-5aeb1e3f11cc/unauthenticated-disclosure-of-nasa-organizer-email-addresses-via-the-events-calendar-rest-api-cve-2025-9808)
+- Type: Over-exposed plugin REST endpoint (information disclosure)
+- Summary: The Events Calendar WordPress plugin (through 6.15.2) served organizer records — including email addresses and contact details — from its REST routes without authentication on a NASA subdomain, giving a ready-made list for targeted phishing.
+- Technique / pattern: Fingerprint the CMS and its plugins, then query the framework's own API namespace (`/wp-json/...`) for each plugin's collections; plugin authors frequently expose "public" post types whose meta fields carry contact data the site owner never intended to publish. Check the plugin version against known CVEs before writing it up.
+- Takeaway: A CMS plugin extends your public API surface — inventory the REST routes each one registers and confirm which fields they serialise to anonymous callers.
+
+### 2026-09-22 — Unauthenticated access to MMGIS webhooks (NASA VDP) — n/a (P2)
+- Source: [Bugcrowd #c20138e9](https://bugcrowd.com/disclosures/c20138e9-28af-423f-a92b-0a2a1f85b3b2/unauthenticated-access-to-mmgis-webhooks)
+- Type: Admin API missing authentication
+- Summary: The webhook create/list/update endpoints of MMGIS, intended for administrators, answered requests carrying no token, cookie or auth header, so anyone could read webhook configuration and point or alter webhooks — enabling data exfiltration or tampering with downstream automation.
+- Technique / pattern: Strip all credentials and replay every administrative route you can enumerate (from the project's public source, docs or JS bundle) — integration-management routes such as webhooks, API keys and OAuth apps are frequently added after the auth middleware was written and miss it. Open-source products make this a source-reading exercise rather than guesswork.
+- Takeaway: Webhook configuration is credential-grade: it names where your data goes. Authentication and authorization belong on every route by default, enforced centrally rather than per-handler.
+
+### 2026-09-22 — CVE-2026-3783: bearer token leaked on cross-host redirect when netrc is used (curl) — n/a
+- Source: [HackerOne #3583983](https://hackerone.com/reports/3583983)
+- Type: Credential leakage across a trust boundary (information exposure through sent data)
+- Summary: With `--oauth2-bearer` combined with `--netrc` (a `default` entry), curl's netrc path skipped the host check that normally strips credentials on redirect, so following a redirect (`-L`) to another host sent the OAuth2 bearer token to that host in `lib/http.c`.
+- Technique / pattern: For client-side credential handling, map every source of authentication (flag, config file, environment, keychain) and test each one against the redirect path — the guard is usually implemented once, on the most obvious source, and a second source bypasses it. A wildcard `default` entry in a credentials file is the classic amplifier.
+- Takeaway: Credential scoping must be enforced at the point the header is written, not where the credential was configured; when reviewing HTTP clients, redirects are where secrets escape their intended host.
+
+### 2026-09-22 — Email address of any user disclosed by the Report Invitation GraphQL type (HackerOne) — $1,000 bonus
+- Source: [HackerOne #792927](https://hackerone.com/reports/792927)
+- Type: GraphQL authorization gap returning PII in a mutation payload
+- Summary: Calling the `addReportParticipant` mutation with a known username returned an invitation object whose `email` field held that user's real address, so any user's email could be resolved from their username. The cause was that REST-era ACLs were not carried over when the invitation object was migrated to GraphQL.
+- Technique / pattern: Do not only introspect queries — enumerate *mutations* and inspect what their return payloads serialise; the object echoed back after a write is a read surface that often escapes the authorization annotations applied to query resolvers. Migrated objects are the highest-yield place to look.
+- Takeaway: Every resolver, including the payload types of mutations, needs its own field-level authorization; architecture migrations silently drop the checks the old layer enforced.
+### 2026-09-22 — GraphQL query "namespace" leaks data (GitLab) — bounty paid (amount not shown)
+- Source: [HackerOne #614355](https://hackerone.com/reports/614355)
+- Type: Over-exposed GraphQL resolver / privacy-setting bypass (unauthenticated)
+- Summary: GitLab's GraphQL `namespace(fullPath:)` query returned details of private user profiles (including their project lists) and secret groups/subgroups — descriptions, visibility and project metadata — to unauthenticated callers, while the REST API correctly returned 404 for the same namespaces.
+- Technique / pattern: Sent an unauthenticated POST to `/api/graphql` with a `namespace(fullPath: ...)` query naming a user with "private profile" enabled or a secret group, and compared the response with the equivalent REST call; the GraphQL resolver did not apply the visibility check the REST layer did.
+- Takeaway: Treat GraphQL and REST as two separate implementations of the same access rules — for every privacy toggle or 404-protected object, ask the GraphQL API the same question unauthenticated and diff the answers.
+
+### 2026-09-22 — Publicly accessible endpoint exposing internal user identifiers and emails (Mars) — n/a
+- Source: [HackerOne #3360293](https://hackerone.com/reports/3360293)
+- Type: Unauthenticated JSON API exposing PII (CWE-200)
+- Summary: An unauthenticated JSON endpoint on a Mars subdomain returned internal user UUIDs, names, corporate emails and admin role details; fixed by adding auth and trimming fields.
+- Technique / pattern: Found during wildcard-scope recon and requested with no session, returning bulk user records usable for enumeration and targeting admins.
+- Takeaway: Request every discovered API endpoint without credentials; user directories and role data should never be public.
+
+### 2026-09-22 — Exposed Zotero API key allows unauthorized write access to group library (NASA VDP) — n/a
+- Source: [Bugcrowd #36c73c74](https://bugcrowd.com/disclosures/36c73c74-7822-4407-8172-73229b00242b/exposed-zotero-api-key-allows-unauthorized-write-access-to-group-library)
+- Type: Exposed third-party credential (P3)
+- Summary: A Zotero API key committed to a public file in the GES-DISC Reference Management System had read/write scope on a Zotero group library.
+- Technique / pattern: Located the key in public source and confirmed (non-destructively) it was live and write-capable against the Zotero API.
+- Takeaway: Assess leaked keys by scope: a write-capable third-party key enables tampering with data the org relies on; use least-privilege keys and secret scanning.
+
+### 2026-09-22 — Hardcoded Scopus API key in public NASA GitHub repository (NASA VDP) — n/a
+- Source: [Bugcrowd #9355808f](https://bugcrowd.com/disclosures/9355808f-9f75-4631-95fb-b590c0219004/hardcoded-api-key-found-in-public-nasa-github-repository)
+- Type: Hardcoded third-party API key (P3)
+- Summary: A hardcoded Elsevier Scopus API key in the public repo `podaac_tools_and_services` allowed anyone to access licensed research data under NASA's license.
+- Technique / pattern: Reviewed the organisation's public repositories for embedded secrets and assessed the key by the service and scope it granted.
+- Takeaway: Leaked keys to paid/licensed third-party data services are impactful (licence abuse); scan org repos and git history, revoke and rotate committed keys.
+
+### 2026-09-21 — Public admin config file exposes DES password hashes and internal config (NASA VDP)
+- Source: [Bugcrowd #e2794469](https://bugcrowd.com/disclosures/e2794469-0dec-4c81-a5ca-916a663f35c5/publicly-accessible-administrative-configuration-file-exposes-authentication-hashes-and-internal-configuration)
+- Type: Sensitive information disclosure (exposed config file)
+- Summary: An administrative configuration file was reachable without authentication, exposing server paths, CGI endpoints, and Unix DES-style password hashes suitable for offline cracking.
+- Technique / pattern: Request the unprotected admin config file directly; parse it for internal endpoints and credential hashes, which were then recovered offline during testing.
+- Takeaway: Config/admin files must never be web-servable — enforce authZ and block known config paths; DES-crypt hashes are trivially crackable, so exposure is effectively credential disclosure.
+
+### 2026-09-21 — Unauthenticated WordPress REST endpoint leaks unpublished/embargoed content (NASA VDP)
+- Source: [Bugcrowd #c25fa845](https://bugcrowd.com/disclosures/c25fa845-a833-4df7-b706-ece0eab5bda0/unauthenticated-disclosure-of-unpublished-embargoed)
+- Type: Exposed API / sensitive information disclosure
+- Summary: A custom WordPress REST route, `/wp-json/nasa-external-content/v1/unpublished-posts`, served without authentication, returned 3,939 unpublished/non-public IDs across 27 content types.
+- Technique / pattern: Send one unauthenticated GET to the custom `wp-json` route; it dumps draft IDs, content types, and modification timestamps — revealing the editorial pipeline and timing of upcoming announcements.
+- Takeaway: Custom REST routes need explicit `permission_callback` gating — the default is public, and 'unpublished' content is exactly what must not be enumerable unauthenticated.
+
+### 2026-09-21 — MQTT wildcard subscription leaks all pinboard UUIDs (Opera) — $800
+- Source: [Bugcrowd #585d9b4e](https://bugcrowd.com/disclosures/585d9b4e-c301-4b68-8e55-1e21139d97bc/unauthenticated-mqtt-wildcard-board-leaks-all-pinboard-uuids-to-unauthorized-users)
+- Type: Exposed API / broken access control (AWS IoT / Cognito)
+- Summary: A public Cognito Identity Pool handed out temporary AWS credentials that allowed subscribing to a wildcard MQTT topic on AWS IoT Core, passively harvesting every pinboard UUID as users interacted — and the UUID was the sole access token.
+- Technique / pattern: Pull temp creds from the exposed Cognito Identity Pool, subscribe to the wildcard topic `board/#`, and collect board UUIDs as they flow by; then open each board directly since the UUID is the only gate.
+- Takeaway: Wildcard topic subscriptions plus unauthenticated identity pools break tenant isolation — scope IoT policies to exact per-user topics and never treat a leaked UUID as authorization.
+
+### 2026-09-21 — Single-request GraphQL DoS via circular introspection query (Sorare)
+- Source: [HackerOne #2048725](https://hackerone.com/reports/2048725)
+- Type: Exposed API / GraphQL (no query depth limit)
+- Summary: `api.sorare.com/graphql` enforced no query depth limit, so one recursive `__schema` introspection query generated >3.7MB of duplicated data and 5-7s backend delays — an unauthenticated single-request DoS.
+- Technique / pattern: Send a POST to `/graphql` nesting `__schema.types.fields.type.fields` recursively; each layer multiplies response size and time, so a single request degrades the backend without DDoS-scale traffic.
+- Takeaway: Disable introspection in production and enforce query depth/complexity and cost limits — an unbounded schema graph turns one request into a denial of service.
+
+### 2026-09-21 — Hardcoded API keys / tokens in Android APK (Zenly) — $750
+- Source: [HackerOne #753868](https://hackerone.com/reports/753868)
+- Type: Sensitive information disclosure (secrets in mobile app)
+- Summary: The Android app shipped hardcoded, overly permissive API keys and auth tokens in cleartext, extractable by decompiling the APK and usable to call backend APIs as the app.
+- Technique / pattern: Decompile the APK with standard tooling, grep the smali/resources for key/token formats, and extract credentials that grant unauthorized backend access.
+- Takeaway: Never embed backend secrets in a mobile client — anything shipped in an APK is public; use short-lived server-issued tokens and scope keys tightly.
+
+### 2026-09-21 — PII disclosure — removed team members' personal emails viewable by unprivileged staff (Shopify) — $500
+- Source: [HackerOne #415622](https://hackerone.com/reports/415622)
+- Type: Sensitive information disclosure (broken function-level authZ)
+- Summary: On the Partner Dashboard, a staff member with no permissions could open `/{PartnerTeam_ID}/memberships/removed` and see past members' names, personal emails, and removal dates.
+- Technique / pattern: As an unprivileged invited staff user, browse directly to the removed-members endpoint; it renders PII with no permission check, and even reflects former members' later profile edits.
+- Takeaway: Function-level authorization must cover every sub-page, including 'removed/archived' views — permissionless roles should see nothing sensitive, and retained ex-member PII widens the blast radius.
+
+
+### 2026-09-21 — Restricted consent forms with PII exposed via search-engine indexing on globe.gov (NASA VDP) — n/a
+- Source: [Bugcrowd disclosure 2ac5bb50](https://bugcrowd.com/disclosures/2ac5bb50-77f9-4249-9c2d-32c69d32c54d/unauthorized-access-to-piis-and-signatures-through-search-engine-indexing-of-restricted-documents)
+- Type: Exposed APIs / Info Disclosure (indexed PII, P3)
+- Summary: Restricted directories on globe.gov holding media-consent forms were indexed by search engines, so PII — names, addresses, emails and guardian/minor signatures — was publicly reachable without authentication despite direct access requiring a login.
+- Technique / pattern: Use search-engine dorks to pull the indexed document URLs and open them directly; the auth control on the directory did not stop the crawler-cached links.
+- Takeaway: Authentication on the directory is not enough if crawlers already indexed the files — add `robots.txt`/`X-Robots-Tag noindex`, remove cached results, and gate documents behind auth at the file level.
+
+### 2026-09-21 — Legacy directory listing exposes a CV with full PII (NASA VDP) — n/a
+- Source: [Bugcrowd disclosure 2560ef0c](https://bugcrowd.com/disclosures/2560ef0c-bc4d-47ae-882d-fd28d665d2aa/publicly-accessible-legacy-directory-exposes-curriculum-vitae-containing-personal-information-pii)
+- Type: Exposed APIs / Info Disclosure (PII, P3)
+- Summary: A legacy documentation subdomain had directory listing enabled, exposing a PDF curriculum vitae containing an individual's name, photo, home address, email and phone numbers.
+- Technique / pattern: Enumerate the indexed legacy directory (not linked from normal navigation) and download the exposed PDF containing the PII.
+- Takeaway: Old, forgotten subdomains with indexing on are a recurring PII leak — inventory legacy assets and disable directory listing everywhere, not just on the primary site.
+
+### 2026-09-21 — Public `swagger.yaml` reveals internal MEDITOR API endpoints and auth flows (NASA VDP) — n/a
+- Source: [Bugcrowd disclosure 316abfc6](https://bugcrowd.com/disclosures/316abfc6-33cc-41c6-b4f5-e1eabe3e2b5d/public-exposure-of-nasa-meditor-api-specification-revealing-internal-endpoints-and-authentication-mechanisms)
+- Type: Exposed APIs / Info Disclosure (API spec, P3)
+- Summary: A publicly reachable `swagger.yaml` for the MEDITOR API exposed internal endpoints, OAuth2 flows, CSRF-token retrieval and file-upload endpoints, aiding reconnaissance even though calls still needed credentials.
+- Technique / pattern: Fetch the unauthenticated `swagger.yaml`/OpenAPI file and map the full internal API surface — hidden endpoints, parameters and auth mechanics — to plan targeted follow-on testing.
+- Takeaway: OpenAPI/Swagger specs are a roadmap for attackers — keep them behind auth and block indexing; a leaked spec turns blind API testing into a guided one.
+
+### 2026-09-21 — OAuth `client_id`/`client_secret` exposed in front-end JavaScript (NASA VDP) — n/a
+- Source: [Bugcrowd disclosure 60690beb](https://bugcrowd.com/disclosures/60690beb-4006-43df-b3e8-296492718793/source-map-disclosure-in-public-api-endpoint-on-globe-gov)
+- Type: Exposed APIs / Info Disclosure (secrets in client, P5)
+- Summary: On globe.gov the OAuth token URL, `client_id` and `client_secret` were stored in JavaScript variables and readable via browser DevTools, with scopes fetched from the API and shown in the UI.
+- Technique / pattern: Open DevTools / the JS bundle and read the OAuth `client_id` and `client_secret` directly; the confidential client is effectively public.
+- Takeaway: A `client_secret` in browser JS is not a secret — public OAuth clients must use PKCE with no secret, and any credential shipped to the client should be treated as disclosed.
+
+### 2026-09-21 — Exposed API endpoint leaks usernames and user keys without auth (NASA VDP) — n/a
+- Source: [Bugcrowd disclosure a655d2f1](https://bugcrowd.com/disclosures/a655d2f1-67d3-4e26-a477-46ef86b5fb8b/exposed-api-endpoints-leading-to-disclosure-of-user-information)
+- Type: Exposed API / Info Disclosure (P3)
+- Summary: A public Confluence-style API at `https://rmakp.nasa.gov/rest/api/content/16121857` returned usernames, user keys and display names with no access control and no rate limiting.
+- Technique / pattern: Request the `rest/api/content/<id>` endpoint unauthenticated and iterate content ids; the responses expose user identifiers usable for enumeration and credential-stuffing target lists.
+- Takeaway: Product REST APIs (`/rest/api/...`) often ship open by default — require auth and rate-limit them, since exposed user keys enable social-engineering and brute-force at scale.
+
 ### 2026-09-21 — Discoverability restriction bypass enables user ID enumeration by phone/email (X (Twitter)) — $5,040
 - Source: [HackerOne #1439026](https://hackerone.com/reports/1439026)
 - Type: Info Disclosure (enumeration / privacy bypass)

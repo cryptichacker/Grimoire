@@ -12,6 +12,118 @@ Disclosed **broken authentication & session management** reports — account tak
 
 ## Reports
 
+### 2026-09-22 — Session not invalidated after logout allows session reuse (Genius) — n/a (P5, accepted risk)
+- Source: [Bugcrowd #460e8d40](https://bugcrowd.com/disclosures/460e8d40-5bc0-4128-8567-1195a45f550a/session-not-invalidated-after-logout-allowing-session-reuse-server-side-also)
+- Type: Session management — no server-side invalidation on logout
+- Summary: Session cookies captured before logout stayed valid afterwards; the token was only dropped client-side, and users had to change their password to force invalidation.
+- Technique / pattern: Capture an authenticated request, log out in the browser, then replay the captured cookie/token against an authenticated endpoint. Repeat the same test after password change, email change and "log out of all devices" — each is a separate invalidation path.
+- Takeaway: Logout must destroy server-side session state, not just clear the cookie; otherwise any token ever leaked (logs, proxies, shared machines) remains usable indefinitely.
+
+### 2026-09-22 — Arbitrary external redirect through SAML RelayState after successful authentication (NASA VDP) — n/a (P4)
+- Source: [Bugcrowd #a1363cea](https://bugcrowd.com/disclosures/a1363cea-d7c2-4e36-901d-cc25f0123c26/arbitrary-external-redirect-through-saml-relaystate-after-successful-authentication)
+- Type: Broken authentication flow — unvalidated post-login redirect parameter
+- Summary: The SAML `RelayState` parameter, which carries the destination a user returns to after the identity provider signs them in, was not validated against an allowlist, so an attacker-crafted login link sent the freshly authenticated user to an external site.
+- Technique / pattern: Treat every "where to go after login" carrier — `RelayState`, `redirect_uri`, `next`, `returnTo`, `state` — as an open-redirect candidate and test absolute URLs, protocol-relative `//evil.tld`, and allowlist-normalisation tricks. Post-authentication redirects are the more dangerous half because the victim has just proven they trust the domain.
+- Takeaway: Validate redirect targets server-side against a strict allowlist of relative paths or known hosts; an authenticated redirect is a phishing and (when tokens ride in the URL or fragment) a token-theft primitive.
+
+### 2026-09-22 — Account takeover by brute-forcing the password reset token (HackerOne) — n/a
+- Source: [HackerOne #17512](https://hackerone.com/reports/17512)
+- Type: Broken authentication — no rate limiting on reset-token validation
+- Summary: `/users/password/edit?reset_password_token=...` could be attacked directly: with no throttling or lockout, thousands of candidate tokens could be submitted and valid ones identified from the differing response (HTTP 200 versus a 302, and response-length differences), after which the attacker set a new password.
+- Technique / pattern: A classic still worth re-testing everywhere — trigger a reset, then measure whether the token endpoint has rate limiting, whether invalid and valid tokens produce distinguishable responses, and how much entropy and lifetime the token really has.
+- Takeaway: Reset tokens need high entropy, short expiry, single use *and* rate limiting; and response differences (status, length, timing) are what turns a guessing attack into a practical one.
+
+### 2026-09-22 — Authorization bypass allows changing another user's email address (Revive Adserver) — n/a (CVSS 8.8)
+- Source: [HackerOne #3398283](https://hackerone.com/reports/3398283)
+- Type: Missing step-up re-authentication on a sensitive account change
+- Summary: The UI's "Change Email" feature demanded the current password, but the admin route `POST /admin/agency-user.php` accepted `userid` and `email_address` with no password confirmation, so an authenticated user holding User Access permissions could rewrite an administrator's email and pivot to takeover through password recovery.
+- Technique / pattern: Find the second path to a sensitive change — admin panels, bulk edit, API and mobile routes often reimplement the operation without the step-up check the main form enforces. Compare the parameter sets of the two requests: the weaker one usually lacks the credential field entirely.
+- Takeaway: Step-up authentication must be enforced in the service layer that performs the change, not on one form; email is an authentication factor, so any unguarded write to it is an account-takeover primitive.
+### 2026-09-22 — Group restriction bypass via bearer token in user_oidc (Nextcloud) — $150
+- Source: [HackerOne #3572848](https://hackerone.com/reports/3572848)
+- Type: Inconsistent auth policy enforcement across login flows (OIDC)
+- Summary: The `user_oidc` app enforced the group login restriction (`SETTING_RESTRICT_LOGIN_TO_GROUPS`) in the browser OIDC flow but not during bearer-token validation in `Backend::getCurrentUserId`, so users outside allowed groups could still use the API.
+- Technique / pattern: Compared the interactive login path against the API bearer-token path and found the group check only in the first; exploitation needed the OIDC `client_secret` to exchange a code for a bearer token.
+- Takeaway: When an app has several ways to authenticate (SSO, bearer tokens, app passwords), verify every login policy is enforced on each path; centralise the check.
+
+### 2026-09-22 — Mass account takeover via unvalidated reset token on email-change endpoint (Stripe (TaxJar)) — n/a
+- Source: [HackerOne #1685970](https://hackerone.com/reports/1685970)
+- Type: Broken account-recovery flow / auth bypass via alternate path
+- Summary: The email-change flow at `POST /accounts/<ACCOUNT_NUMBER>` trusted the account number in the URL instead of binding the action to the reset token's owner, so any account's email could be changed to the attacker's.
+- Technique / pattern: Observed the target account was chosen by a URL parameter rather than the token, so one attacker token worked against every account; iterating account numbers enabled bulk takeover with no victim interaction.
+- Takeaway: Bind recovery and account-modification actions to the token's own subject, never to a separate client-supplied ID.
+
+### 2026-09-22 — No rate limit in two-factor authentication leads to brute-force bypass (US EPA VDP) — n/a
+- Source: [Bugcrowd #6cf5fccf](https://bugcrowd.com/disclosures/6cf5fccf-1018-459a-b9f8-02d18b7a4ce1/no-rate-limit-in-two-factor-authentication-leads-to-bypass-using-bruteforce-attack)
+- Type: Missing rate limit on 2FA (P4)
+- Summary: The 2FA verification step had no rate limiting, lockout or backoff, so the short numeric code could be brute-forced.
+- Technique / pattern: Repeatedly submitted candidate codes to the verification endpoint and observed no throttling, showing the code space could be exhausted.
+- Takeaway: A low-entropy code with unlimited guesses is not a second factor; require attempt limits, lockout, and short code lifetimes.
+
+### 2026-09-22 — Account takeover at git.smce.nasa.gov via CVE-2023-7028 (NASA VDP) — n/a
+- Source: [Bugcrowd #8414f6bd](https://bugcrowd.com/disclosures/8414f6bd-5eda-463a-86b3-7b855f749a42/account-take-over-at-https-git-smce-nasa-gov)
+- Type: Account takeover via known auth CVE (P1)
+- Summary: A self-hosted GitLab instance was vulnerable to account takeover via the known CVE-2023-7028 (the disclosure calls it an OAuth misconfiguration); NASA fixed it.
+- Technique / pattern: Patch-gap hunting: fingerprint self-hosted products and their versions, then test them against publicly known critical authentication CVEs (CVE-2023-7028 is GitLab's password-reset-to-unverified-email flaw).
+- Takeaway: Self-hosted dev platforms often lag on patches; version-fingerprint and check critical auth CVEs early in recon.
+
+### 2026-09-21 — Unauthenticated create/read/delete of any user's data + email relay (NASA JPL Hurricane Watch)
+- Source: [Bugcrowd #eb823c31](https://bugcrowd.com/disclosures/eb823c31-5e78-4bf9-9b2a-4c339918e879/unauthenticated-create-read-and-delete-of-any-user-s-data-email-relay-on-jpl-hurricane-watch)
+- Type: Broken authentication (missing auth on state-changing API)
+- Summary: The Hurricane Watch API required no session, cookie, or token: any actor could create, read, and delete any user's records using only a name identifier, and abuse an unprotected email-relay endpoint.
+- Technique / pattern: Call the API's CRUD and email endpoints directly with no credentials, supplying a target's name as the only identifier; every operation succeeds because authentication is simply absent.
+- Takeaway: Authentication must gate every state-changing endpoint by default — a public read is one thing, but unauthenticated write/delete and mail relay is total compromise.
+
+### 2026-09-21 — Auth bypass via path-normalization (double slash) on NASA MODAPS OKAPI (NASA VDP)
+- Source: [Bugcrowd #c6b4ca39](https://bugcrowd.com/disclosures/c6b4ca39-0432-4180-995d-93ddec8ff614/critical-authentication-bypass-via-path-normalization-double-slash-on-live-nasa-modaps-okapi-production-instance)
+- Type: Broken authentication (WAF/backend path-parsing differential)
+- Summary: The edge protection layer (AWS ALB) and the backend ASGI server parsed request paths differently, so requests to admin routes using duplicate slashes bypassed the WAF and reached protected logic unauthenticated.
+- Technique / pattern: Prefix restricted routes with a duplicate or encoded slash — `//-/admin/*` or `/%2f-/admin/*`; the WAF rule doesn't match the mangled path but the backend normalizes it and serves the admin endpoint.
+- Takeaway: Access control enforced only at the edge is defeated by parser disagreements — normalize paths identically front-to-back and enforce authorization at the application, not the proxy.
+
+### 2026-09-21 — Session not invalidated → cookie reuse / 2FA bypass (HackerOne)
+- Source: [HackerOne #2469706](https://hackerone.com/reports/2469706)
+- Type: Broken authentication (insufficient session expiration)
+- Summary: Previously authenticated sessions stayed valid after logout / password change, so a captured session cookie kept granting access — and could sidestep 2FA by relying on the still-valid older token.
+- Technique / pattern: Capture a victim's session cookie, then keep using it after the victim logs out or re-authenticates; the old token is never revoked, so it continues to authenticate the attacker.
+- Takeaway: Logout, password change, and 2FA enrollment must invalidate all existing sessions server-side — client-side expiry or new-session issuance alone leaves stolen tokens live.
+
+### 2026-09-21 — Password change endpoint bypass via missing rate limit on old-password field (X / xAI)
+- Source: [HackerOne #982293](https://hackerone.com/reports/982293)
+- Type: Broken authentication (no rate limiting on re-auth)
+- Summary: On the FlightSchool platform, the password-change endpoint's current-password check had no rate limiting, so an attacker with a hijacked session could brute-force the old password and complete a takeover.
+- Technique / pattern: With an active session, submit a new password and brute-force the intercepted `old_password` field; absent rate limiting, unlimited attempts eventually match and the change succeeds.
+- Takeaway: Re-authentication controls (current-password, step-up) are security theater without rate limiting and lockout — throttle the verification field, not just the login form.
+
+
+### 2026-09-21 — Password-reset token not invalidated after email change (NASA VDP) — n/a
+- Source: [Bugcrowd disclosure 762dfdd3](https://bugcrowd.com/disclosures/762dfdd3-80b8-4145-9ea5-d133982ad154/password-reset-link-not-expiring-after-changing-the-email-leads-to-account-takeover)
+- Type: Broken Authentication (token lifecycle, P5)
+- Summary: A previously issued password-reset link stayed valid (up to one day) even after the account's email was changed, leaving a window for takeover if the old link was captured.
+- Technique / pattern: Request a reset link, then change the account email; the earlier token is not revoked, so whoever holds it can still complete a password reset on the account.
+- Takeaway: Any change to security-relevant state (email, password) must invalidate outstanding reset tokens and active sessions — time-boxing alone is not invalidation.
+
+### 2026-09-21 — Full account takeover via missing CSRF-token validation on accounts.yoyogames.com (Opera) — $400
+- Source: [Bugcrowd disclosure c206f5d2](https://bugcrowd.com/disclosures/c206f5d2-e2f5-493b-9cb3-c94a00d8106b/full-account-takeover-due-to-failure-to-validate-csrf-token-on-accounts-yoyogames-com-urgent)
+- Type: Broken Authentication (CSRF, P3)
+- Summary: CSRF tokens on `accounts.yoyogames.com` were not validated on the `/profile/details` endpoint (and possibly site-wide), allowing forged cross-site requests to change profile details.
+- Technique / pattern: Host a page that auto-submits a cross-origin request to `/profile/details` without a valid token; because the token is unchecked and cookies default to `SameSite=Lax`, the change applies to a logged-in victim.
+- Takeaway: A CSRF token present in the form but never verified server-side is no defense — validate it on every state-changing endpoint and set `SameSite` explicitly.
+
+### 2026-09-21 — OTP bypass via response modification for new users (Indeed) — $250
+- Source: [Bugcrowd disclosure 761966c0](https://bugcrowd.com/disclosures/761966c0-600f-4265-8f11-1ba044a0ba75/otp-bypass-through-response-modification-for-new-users)
+- Type: Broken Authentication (client-side OTP validation, P3)
+- Summary: At `indeedchat.indeed.com` the OTP check for new users could be bypassed by editing the server response to the `verifyOtp` request in an intercepting proxy.
+- Technique / pattern: Enter any OTP, intercept the `verifyOtp` response in Burp, and flip the failure/status field to a success value; the client accepts it and grants access.
+- Takeaway: OTP verification must be enforced server-side — if the client trusts a response field to decide success, tampering the response defeats 2FA entirely.
+
+### 2026-09-21 — Removed user regains access via Forgot-Password (Rewards Genius / Tango Card) — 40 pts
+- Source: [Bugcrowd disclosure ffe37a89](https://bugcrowd.com/disclosures/ffe37a89-7f51-412a-8071-2ce6b08cba84/authentication-bypass-leads-to-unauthenticated-use-of-money-and-group-all-actions-including-admin-removal)
+- Type: Broken Authentication (deprovisioning bypass, P1)
+- Summary: A user removed from a Rewards Genius organization could regain access by using the Forgot-Password flow, which bypassed the organization authentication/removal state.
+- Technique / pattern: After being removed, trigger the password-reset flow; the reset path re-established a session without re-checking that the account was deprovisioned from the org.
+- Takeaway: Deprovisioning must invalidate every re-entry path — password reset, OAuth link, existing sessions — or a removed member walks back in through the reset flow.
+
 ### 2026-09-21 — 2FA bypass via account deactivation + password-reset reactivation (HackerOne) — n/a
 - Source: [HackerOne #2463279](https://hackerone.com/reports/2463279)
 - Type: Broken Auth (2FA bypass via state transition)

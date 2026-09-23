@@ -12,6 +12,55 @@ Disclosed **Cross-Site Scripting** reports — reflected, stored, and DOM-based.
 
 ## Reports
 
+### 2026-09-22 — Stored XSS in /admin/products and /admin/collections rich-text HTML editor (Shopify) — $5,300
+- Source: [HackerOne #1147433](https://hackerone.com/reports/1147433)
+- Type: Stored XSS (rich-text editor HTML mode)
+- Summary: The product and collection description editors offered an HTML view whose contents were saved with insufficient sanitisation, so a payload such as an `img` tag with an `onerror` handler persisted and executed for anyone later opening that product or collection in the admin panel.
+- Technique / pattern: Editors that expose a "view HTML / source" mode bypass the WYSIWYG's own escaping — paste raw markup there rather than typing it in the visual editor, and then check every surface that re-renders the stored field (list views, previews, storefront, exports).
+- Takeaway: Sanitisation must happen server-side on save and again on render; an admin-facing stored XSS is high value because the viewers are privileged sessions.
+
+### 2026-09-22 — Stored XSS via client-side template injection in the account address form (WordPress / WooCommerce) — n/a (bounty awarded, amount not shown)
+- Source: [HackerOne #250837](https://hackerone.com/reports/250837)
+- Type: Stored XSS through template-expression injection in a client-side binding
+- Summary: The name field on `/my-account/edit-address/` stored an AngularJS-style template expression — `{{constructor.constructor('alert(1)')()}}` — which the account page later evaluated, running script in the victim's session. Alone it looked like self-XSS, but combined with registering an account under someone else's (unverified) email, the victim inherited the stored payload after reclaiming the account by password reset.
+- Technique / pattern: Probe persisted profile fields with `{{7*7}}` as well as with tags: where a client-side framework binds user data into the DOM, expression evaluation is the sink and the classic filter-defeating trick is reaching `constructor.constructor` to build a function. Escalate "self-XSS" by finding a flow that hands the poisoned account to a real user (pre-registration + account recovery).
+- Takeaway: Template expressions are an output context of their own — escape them, and never bind untrusted data into a live templating scope. Self-XSS becomes real XSS whenever account ownership can transfer.
+### 2026-09-22 — Stored XSS on inventory-retrieve.php (Revive Adserver) — n/a
+- Source: [HackerOne #3399809](https://hackerone.com/reports/3399809)
+- Type: Stored XSS (CVE-2025-52667)
+- Summary: The campaign `Name` field was stored without output encoding and rendered raw by `inventory-retrieve.php` and `campaign-edit.php`, executing JavaScript for any admin viewing those pages.
+- Technique / pattern: Created a campaign whose name breaks out of an HTML attribute (e.g. `"><img src=x onerror=alert(document.domain)>`), saved it, then opened `inventory-retrieve.php?clientid=1` to trigger it.
+- Takeaway: Low-privilege name/label fields viewed later by admins are classic stored-XSS sinks; test every render location, not just the input form.
+
+### 2026-09-22 — Reflected XSS via URL path in archive endpoint (NASA VDP) — n/a
+- Source: [Bugcrowd #655092e1](https://bugcrowd.com/disclosures/655092e1-8200-4089-a42f-3803edfdeadd/reflected-xss-via-url-path-in-archive-endpoint)
+- Type: Reflected XSS (path-based), CSP-mitigated
+- Summary: On `seabass.gsfc.nasa.gov`, anything appended after the `/archive/` path segment was reflected into the page unescaped; a strict CSP blocked actual script execution.
+- Technique / pattern: Appended HTML/attribute markup to the URL path after `/archive/` and confirmed it was echoed unencoded into the DOM, demonstrating the injection even though CSP prevented execution.
+- Takeaway: Path segments are user input too (check directory-listing and 404-style pages that echo the path); CSP is defense-in-depth, not a substitute for output encoding.
+
+### 2026-09-21 — DOM-based XSS via Cesium Sandcastle `#c=` URL fragment (NASA VDP)
+- Source: [Bugcrowd #6765826c](https://bugcrowd.com/disclosures/6765826c-df24-47cd-afa4-c158bde0e4b6/dom-based-cross-site-scripting-through-the-publicly-exposed-cesium-sandcastle-shared-code-feature)
+- Type: DOM-based XSS (reflected via URL fragment)
+- Summary: The Cesium Sandcastle shared-code feature took attacker JavaScript from the `#c=` URL fragment, decoded/decompressed it, and executed it same-origin on `gpm.nasa.gov` with no sandboxing.
+- Technique / pattern: Craft a link whose fragment carries encoded/compressed JS in `#c=`; opening it makes the page decode and `eval` the payload in the trusted origin — no server round-trip, so the fragment never hits server logs or WAF.
+- Takeaway: 'Share this code' features that execute fragment content are a client-side sink — run shared code in a sandboxed iframe/worker on a throwaway origin, never eval it same-origin.
+
+### 2026-09-21 — Stored XSS via SVG upload in chat.line.biz (LINE / LY Corporation) — $100
+- Source: [HackerOne #3008878](https://hackerone.com/reports/3008878)
+- Type: Stored XSS (SVG file upload)
+- Summary: The chat management interface accepted SVG uploads containing embedded JavaScript and served them inline, so scripts ran in another user's browser when the file was viewed.
+- Technique / pattern: Upload an SVG with an inline `<script>`/event handler through the chat file feature; when a staff user opens it in the management UI it renders inline from a trusted origin and the script executes.
+- Takeaway: SVGs are active content — strip scripts server-side, or serve uploads from a sandboxed origin with `Content-Disposition: attachment` / restrictive CSP so they never render inline.
+
+
+### 2026-09-21 — Stored XSS via `javascript:` URI in hyperlink embedding feature (NASA VDP) — n/a
+- Source: [Bugcrowd disclosure 4e648494](https://bugcrowd.com/disclosures/4e648494-aad1-4a50-a959-a4484776e502/stored-cross-site-scripting-xss-in-hyperlink-embedding-feature)
+- Type: XSS (stored, javascript: URI)
+- Summary: The link-embedding feature built an anchor as `<a href="{{link_here}}">` but did not block the `javascript:` scheme, so a payload of `javascript:prompt(document.domain);` executed when the stored link was clicked.
+- Technique / pattern: Enter `javascript:prompt(document.domain);` in the link field; the value is stored and reflected into the `href` unsanitized, running script on click.
+- Takeaway: Sanitizing HTML tags is not enough — URL attributes must be scheme-allowlisted (http/https/mailto only), or `javascript:`/`data:` URIs turn a link field into stored XSS.
+
 ### 2026-09-21 — Stored XSS via post title on Autodesk Forums enables low-priv to admin exploitation (Autodesk) — n/a
 - Source: [HackerOne #2974307](https://hackerone.com/reports/2974307)
 - Type: XSS (stored)

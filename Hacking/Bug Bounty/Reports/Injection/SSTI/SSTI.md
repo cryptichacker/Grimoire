@@ -12,6 +12,13 @@ Disclosed **Server-Side Template Injection** reports (often escalating to RCE). 
 
 ## Reports
 
+### 2026-09-22 — Server Side Template Injection (The Plugin People) — $100
+- Source: [Bugcrowd #c5699c3d](https://bugcrowd.com/disclosures/c5699c3d-69b6-49f5-b036-f53a5d3e3c6e/server-side-template-injection-ssti)
+- Type: Server-Side Template Injection (P4)
+- Summary: A server-side template injection was reported and fixed in The Plugin People's systems; the public disclosure does not name the endpoint or template engine.
+- Technique / pattern: General method: submit a harmless arithmetic expression in engine syntax and check whether it comes back evaluated rather than literal, then fingerprint the engine to judge whether impact is info disclosure or code execution.
+- Takeaway: Never build templates from user input; pass input as context variables to fixed templates and use sandboxed/logic-less modes.
+
 ### 2026-09-21 — Unrestricted File System Access via Twig Template Injection on dev-ucrm-billing-demo.ubnt.com (Ubiquiti Inc.) — n/a
 - Source: [HackerOne #301406](https://hackerone.com/reports/301406)
 - Type: SSTI - Twig template injection -> file system read (CVE-2017-0913)

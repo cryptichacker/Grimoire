@@ -1,0 +1,594 @@
+{
+	"nodes": [
+		{
+			"id": "title",
+			"type": "text",
+			"x": -1980,
+			"y": -1120,
+			"width": 1500,
+			"height": 70,
+			"text": "# 🎫 Attacking Kerberos — attack flow across the AD notes  ·  authorized labs / OSCP practice only"
+		},
+		{
+			"id": "ad",
+			"type": "file",
+			"x": -1980,
+			"y": -1000,
+			"width": 300,
+			"height": 80,
+			"file": "Hacking/Active Directory/Active Directory.md"
+		},
+		{
+			"id": "kerb0",
+			"type": "file",
+			"x": -1660,
+			"y": -1000,
+			"width": 300,
+			"height": 80,
+			"file": "Hacking/Active Directory/Kerberos Attacks/Kerberos Attacks.md"
+		},
+		{
+			"id": "t_basics",
+			"type": "text",
+			"x": -1980,
+			"y": -880,
+			"width": 300,
+			"height": 180,
+			"text": "## ① How Kerberos works\nAS-REQ/AS-REP → **TGT**\nTGS-REQ/TGS-REP → **service ticket**\nAP-REQ → access.\nEvery attack abuses one of these steps.",
+			"color": "4"
+		},
+		{
+			"id": "f_fund",
+			"type": "file",
+			"x": -1980,
+			"y": -680,
+			"width": 300,
+			"height": 80,
+			"file": "Hacking/Active Directory/AD Fundamentals/AD Fundamentals.md"
+		},
+		{
+			"id": "t_enum",
+			"type": "text",
+			"x": -1620,
+			"y": -880,
+			"width": 300,
+			"height": 200,
+			"text": "## ② Enumerate\nUsers list · **SPNs** (kerberoastable) · **DONT_REQ_PREAUTH** (AS-REP roastable) · DCs · delegation flags.\nBloodHound · ldapsearch · GetUserSPNs · Get-DomainUser",
+			"color": "4"
+		},
+		{
+			"id": "f_enum",
+			"type": "file",
+			"x": -1620,
+			"y": -660,
+			"width": 300,
+			"height": 80,
+			"file": "Hacking/Active Directory/AD Enumeration/AD Enumeration.md"
+		},
+		{
+			"id": "t_noauth",
+			"type": "text",
+			"x": -1260,
+			"y": -980,
+			"width": 300,
+			"height": 70,
+			"text": "## ③a No credentials\nhit the pre-auth step",
+			"color": "2"
+		},
+		{
+			"id": "t_asrep",
+			"type": "text",
+			"x": -1260,
+			"y": -890,
+			"width": 300,
+			"height": 180,
+			"text": "### AS-REP Roasting\nUsers w/ *no Kerberos pre-auth* → AS-REP encrypted with user key → crack offline.\n`GetNPUsers.py` · Rubeus `asreproast`\nhashcat **18200**",
+			"color": "1"
+		},
+		{
+			"id": "t_spray",
+			"type": "text",
+			"x": -1260,
+			"y": -690,
+			"width": 300,
+			"height": 150,
+			"text": "### Password Spraying\nOne password → many users (mind lockout) → a valid domain credential.\n`kerbrute passwordspray`",
+			"color": "2"
+		},
+		{
+			"id": "t_auth",
+			"type": "text",
+			"x": -1260,
+			"y": -500,
+			"width": 300,
+			"height": 70,
+			"text": "## ③b Any valid domain user\nrequest service tickets",
+			"color": "3"
+		},
+		{
+			"id": "t_kerb",
+			"type": "text",
+			"x": -1260,
+			"y": -410,
+			"width": 300,
+			"height": 200,
+			"text": "### Kerberoasting\nRequest TGS for accounts with an **SPN** → TGS encrypted with that service account's key → crack offline.\n`GetUserSPNs.py -request` · Rubeus `kerberoast`\nhashcat **13100** RC4 / **19700** AES",
+			"color": "1"
+		},
+		{
+			"id": "t_crack",
+			"type": "text",
+			"x": -880,
+			"y": -560,
+			"width": 300,
+			"height": 210,
+			"text": "## ④ Crack offline\nhashcat / john.\n**18200** AS-REP · **13100** TGS-RC4 · **19700** TGS-AES\n→ plaintext password (or keep the hash/key)",
+			"color": "3"
+		},
+		{
+			"id": "t_use",
+			"type": "text",
+			"x": -500,
+			"y": -980,
+			"width": 300,
+			"height": 60,
+			"text": "## ⑤ Turn a secret into access",
+			"color": "2"
+		},
+		{
+			"id": "t_opth",
+			"type": "text",
+			"x": -500,
+			"y": -900,
+			"width": 300,
+			"height": 170,
+			"text": "### Overpass-the-Hash / Pass-the-Key\nNT hash or AES key → request a real **TGT**.\nRubeus `asktgt` · impacket `getTGT`",
+			"color": "1"
+		},
+		{
+			"id": "t_ptt",
+			"type": "text",
+			"x": -500,
+			"y": -710,
+			"width": 300,
+			"height": 150,
+			"text": "### Pass-the-Ticket\nInject / reuse a TGT or TGS (`.kirbi` / `.ccache`).\nRubeus `ptt` · `export KRB5CCNAME`",
+			"color": "1"
+		},
+		{
+			"id": "t_deleg",
+			"type": "text",
+			"x": -120,
+			"y": -1000,
+			"width": 340,
+			"height": 150,
+			"text": "### Delegation abuse\nUnconstrained (capture TGTs) · Constrained (S4U2self/proxy) · **RBCD** → impersonate any user incl. DA.",
+			"color": "1"
+		},
+		{
+			"id": "f_deleg",
+			"type": "file",
+			"x": -120,
+			"y": -840,
+			"width": 340,
+			"height": 70,
+			"file": "Hacking/Active Directory/Delegation Attacks/Delegation Attacks.md"
+		},
+		{
+			"id": "t_adcs",
+			"type": "text",
+			"x": -120,
+			"y": -740,
+			"width": 340,
+			"height": 150,
+			"text": "### AD CS abuse\n**ESC1/ESC8** → request a cert as a target → **PKINIT** → TGT / NT hash (UnPAC-the-hash).",
+			"color": "1"
+		},
+		{
+			"id": "f_adcs",
+			"type": "file",
+			"x": -120,
+			"y": -580,
+			"width": 340,
+			"height": 70,
+			"file": "Hacking/Active Directory/AD CS Attacks/AD CS Attacks.md"
+		},
+		{
+			"id": "t_acl",
+			"type": "text",
+			"x": -120,
+			"y": -480,
+			"width": 340,
+			"height": 150,
+			"text": "### ACL / GPO abuse\nGenericWrite/GenericAll → **Targeted Kerberoast** or **Shadow Credentials** (msDS-KeyCredentialLink → PKINIT).",
+			"color": "1"
+		},
+		{
+			"id": "f_acl",
+			"type": "file",
+			"x": -120,
+			"y": -320,
+			"width": 340,
+			"height": 70,
+			"file": "Hacking/Active Directory/ACL & GPO Abuse/ACL & GPO Abuse.md"
+		},
+		{
+			"id": "t_ntlm",
+			"type": "text",
+			"x": -120,
+			"y": -220,
+			"width": 340,
+			"height": 150,
+			"text": "### Coercion → Relay\nPetitPotam / PrinterBug coerce auth → relay to AD CS / LDAP → cert or RBCD → Kerberos foothold.",
+			"color": "1"
+		},
+		{
+			"id": "f_ntlm",
+			"type": "file",
+			"x": -120,
+			"y": -60,
+			"width": 340,
+			"height": 70,
+			"file": "Hacking/Active Directory/NTLM Relay & Coercion/NTLM Relay & Coercion.md"
+		},
+		{
+			"id": "t_dcsync",
+			"type": "text",
+			"x": 320,
+			"y": -760,
+			"width": 320,
+			"height": 190,
+			"text": "## ⑥ Domain compromise\n**DCSync** the `krbtgt` + account hashes (needs replication rights).\n`secretsdump` · mimikatz `lsadump::dcsync`",
+			"color": "1"
+		},
+		{
+			"id": "f_lat",
+			"type": "file",
+			"x": 320,
+			"y": -550,
+			"width": 320,
+			"height": 80,
+			"file": "Hacking/Active Directory/Lateral Movement & Credential Access/Lateral Movement & Credential Access.md"
+		},
+		{
+			"id": "g_forge",
+			"type": "group",
+			"x": 760,
+			"y": -820,
+			"width": 820,
+			"height": 900,
+			"label": "Forged Tickets & Persistence — SEPARATE stage: once you hold key material (krbtgt / service / CA key)",
+			"color": "6"
+		},
+		{
+			"id": "t_golden",
+			"type": "text",
+			"x": 800,
+			"y": -720,
+			"width": 340,
+			"height": 160,
+			"text": "### Golden Ticket\n`krbtgt` hash → forge **any TGT** as any user/SID.\nmimikatz `kerberos::golden` · Rubeus `golden`",
+			"color": "6"
+		},
+		{
+			"id": "t_silver",
+			"type": "text",
+			"x": 800,
+			"y": -540,
+			"width": 340,
+			"height": 150,
+			"text": "### Silver Ticket\nService account hash → forge a **TGS** for one service (no DC contact). Stealthy.",
+			"color": "6"
+		},
+		{
+			"id": "t_diamond",
+			"type": "text",
+			"x": 800,
+			"y": -370,
+			"width": 340,
+			"height": 150,
+			"text": "### Diamond / Sapphire Ticket\nModify a *real* TGT (stealthier than golden). Sapphire abuses S4U.",
+			"color": "6"
+		},
+		{
+			"id": "t_trustx",
+			"type": "text",
+			"x": 1180,
+			"y": -720,
+			"width": 360,
+			"height": 170,
+			"text": "### Across trusts\nForge an **inter-realm TGT** with the trust key · **SID history** → child → parent / forest.",
+			"color": "6"
+		},
+		{
+			"id": "f_trust",
+			"type": "file",
+			"x": 1180,
+			"y": -520,
+			"width": 360,
+			"height": 80,
+			"file": "Hacking/Active Directory/Trusts & Persistence/Trusts & Persistence.md"
+		},
+		{
+			"id": "t_def",
+			"type": "text",
+			"x": -880,
+			"y": -260,
+			"width": 320,
+			"height": 180,
+			"text": "## 🛡 Detection & Defense\n4768/4769 (TGT/TGS) · RC4 downgrade · honeypot SPNs · PKINIT anomalies.\nHarden: AES-only, gMSA, tiering, protected users.",
+			"color": "4"
+		},
+		{
+			"id": "f_def",
+			"type": "file",
+			"x": -880,
+			"y": -60,
+			"width": 320,
+			"height": 80,
+			"file": "Hacking/Active Directory/AD Defense & Detection/AD Defense & Detection.md"
+		}
+	],
+	"edges": [
+		{
+			"id": "e_ad",
+			"fromNode": "ad",
+			"fromSide": "bottom",
+			"toNode": "t_basics",
+			"toSide": "top"
+		},
+		{
+			"id": "e_k0",
+			"fromNode": "kerb0",
+			"fromSide": "bottom",
+			"toNode": "t_enum",
+			"toSide": "top"
+		},
+		{
+			"id": "e_bf",
+			"fromNode": "t_basics",
+			"fromSide": "bottom",
+			"toNode": "f_fund",
+			"toSide": "top"
+		},
+		{
+			"id": "e_be",
+			"fromNode": "t_basics",
+			"fromSide": "right",
+			"toNode": "t_enum",
+			"toSide": "left",
+			"label": "then enumerate"
+		},
+		{
+			"id": "e_ef",
+			"fromNode": "t_enum",
+			"fromSide": "bottom",
+			"toNode": "f_enum",
+			"toSide": "top"
+		},
+		{
+			"id": "e_en1",
+			"fromNode": "t_enum",
+			"fromSide": "right",
+			"toNode": "t_noauth",
+			"toSide": "left",
+			"label": "no creds"
+		},
+		{
+			"id": "e_en2",
+			"fromNode": "t_enum",
+			"fromSide": "right",
+			"toNode": "t_auth",
+			"toSide": "left",
+			"label": "have creds"
+		},
+		{
+			"id": "e_na1",
+			"fromNode": "t_noauth",
+			"fromSide": "bottom",
+			"toNode": "t_asrep",
+			"toSide": "top"
+		},
+		{
+			"id": "e_na2",
+			"fromNode": "t_asrep",
+			"fromSide": "bottom",
+			"toNode": "t_spray",
+			"toSide": "top",
+			"label": "or"
+		},
+		{
+			"id": "e_au1",
+			"fromNode": "t_auth",
+			"fromSide": "bottom",
+			"toNode": "t_kerb",
+			"toSide": "top"
+		},
+		{
+			"id": "e_sp_au",
+			"fromNode": "t_spray",
+			"fromSide": "bottom",
+			"toNode": "t_auth",
+			"toSide": "top",
+			"label": "valid cred"
+		},
+		{
+			"id": "e_asrep_c",
+			"fromNode": "t_asrep",
+			"fromSide": "right",
+			"toNode": "t_crack",
+			"toSide": "left",
+			"label": "AS-REP hash"
+		},
+		{
+			"id": "e_kerb_c",
+			"fromNode": "t_kerb",
+			"fromSide": "right",
+			"toNode": "t_crack",
+			"toSide": "left",
+			"label": "TGS hash"
+		},
+		{
+			"id": "e_cr_u",
+			"fromNode": "t_crack",
+			"fromSide": "right",
+			"toNode": "t_use",
+			"toSide": "top",
+			"label": "cracked / hash"
+		},
+		{
+			"id": "e_uo",
+			"fromNode": "t_use",
+			"fromSide": "bottom",
+			"toNode": "t_opth",
+			"toSide": "top"
+		},
+		{
+			"id": "e_op",
+			"fromNode": "t_opth",
+			"fromSide": "bottom",
+			"toNode": "t_ptt",
+			"toSide": "top"
+		},
+		{
+			"id": "e_u_del",
+			"fromNode": "t_opth",
+			"fromSide": "right",
+			"toNode": "t_deleg",
+			"toSide": "left",
+			"label": "TGT"
+		},
+		{
+			"id": "e_u_ptt_del",
+			"fromNode": "t_ptt",
+			"fromSide": "right",
+			"toNode": "t_acl",
+			"toSide": "left",
+			"label": "reuse ticket"
+		},
+		{
+			"id": "e_del_f",
+			"fromNode": "t_deleg",
+			"fromSide": "bottom",
+			"toNode": "f_deleg",
+			"toSide": "top"
+		},
+		{
+			"id": "e_adcs_f",
+			"fromNode": "t_adcs",
+			"fromSide": "bottom",
+			"toNode": "f_adcs",
+			"toSide": "top"
+		},
+		{
+			"id": "e_acl_f",
+			"fromNode": "t_acl",
+			"fromSide": "bottom",
+			"toNode": "f_acl",
+			"toSide": "top"
+		},
+		{
+			"id": "e_ntlm_f",
+			"fromNode": "t_ntlm",
+			"fromSide": "bottom",
+			"toNode": "f_ntlm",
+			"toSide": "top"
+		},
+		{
+			"id": "e_del_adcs",
+			"fromNode": "t_deleg",
+			"fromSide": "bottom",
+			"toNode": "t_adcs",
+			"toSide": "top"
+		},
+		{
+			"id": "e_acl_ntlm",
+			"fromNode": "t_acl",
+			"fromSide": "bottom",
+			"toNode": "t_ntlm",
+			"toSide": "top"
+		},
+		{
+			"id": "e_del_dc",
+			"fromNode": "t_deleg",
+			"fromSide": "right",
+			"toNode": "t_dcsync",
+			"toSide": "top",
+			"label": "impersonate DA"
+		},
+		{
+			"id": "e_adcs_dc",
+			"fromNode": "t_adcs",
+			"fromSide": "right",
+			"toNode": "t_dcsync",
+			"toSide": "left",
+			"label": "DA / DC hash"
+		},
+		{
+			"id": "e_acl_dc",
+			"fromNode": "t_acl",
+			"fromSide": "right",
+			"toNode": "t_dcsync",
+			"toSide": "left"
+		},
+		{
+			"id": "e_dc_lat",
+			"fromNode": "t_dcsync",
+			"fromSide": "bottom",
+			"toNode": "f_lat",
+			"toSide": "top"
+		},
+		{
+			"id": "e_dc_golden",
+			"fromNode": "t_dcsync",
+			"fromSide": "right",
+			"toNode": "t_golden",
+			"toSide": "left",
+			"label": "krbtgt hash"
+		},
+		{
+			"id": "e_kerb_silver",
+			"fromNode": "t_kerb",
+			"fromSide": "bottom",
+			"toNode": "t_silver",
+			"toSide": "left",
+			"label": "service hash"
+		},
+		{
+			"id": "e_golden_diamond",
+			"fromNode": "t_golden",
+			"fromSide": "bottom",
+			"toNode": "t_diamond",
+			"toSide": "top"
+		},
+		{
+			"id": "e_golden_trust",
+			"fromNode": "t_golden",
+			"fromSide": "right",
+			"toNode": "t_trustx",
+			"toSide": "left"
+		},
+		{
+			"id": "e_trust_f",
+			"fromNode": "t_trustx",
+			"fromSide": "bottom",
+			"toNode": "f_trust",
+			"toSide": "top"
+		},
+		{
+			"id": "e_crack_def",
+			"fromNode": "t_crack",
+			"fromSide": "bottom",
+			"toNode": "t_def",
+			"toSide": "top",
+			"label": "blue-team view"
+		},
+		{
+			"id": "e_def_f",
+			"fromNode": "t_def",
+			"fromSide": "bottom",
+			"toNode": "f_def",
+			"toSide": "top"
+		}
+	]
+}

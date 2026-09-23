@@ -50,20 +50,6 @@
             }
           },
           {
-            "id": "3d4c6e7f0de18175",
-            "type": "leaf",
-            "state": {
-              "type": "markdown",
-              "state": {
-                "file": "Hacking/Bug Bounty/Reports/IDOR/IDOR.md",
-                "mode": "source",
-                "source": false
-              },
-              "icon": "lucide-file",
-              "title": "IDOR"
-            }
-          },
-          {
             "id": "1c401847fc9176b5",
             "type": "leaf",
             "state": {
@@ -76,6 +62,34 @@
               "icon": "lucide-file",
               "title": "Pattern"
             }
+          },
+          {
+            "id": "95fbb7a52342949b",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "Roadmap.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "Roadmap"
+            }
+          },
+          {
+            "id": "b142f466ac8a42f0",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "AI/AI.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "AI"
+            }
           }
         ],
         "currentTab": 3
@@ -84,16 +98,6 @@
         "id": "f77b53d0d02df7ed",
         "type": "tabs",
         "children": [
-          {
-            "id": "14702f54f2daa2d4",
-            "type": "leaf",
-            "state": {
-              "type": "graph",
-              "state": {},
-              "icon": "lucide-git-fork",
-              "title": "Graph view"
-            }
-          },
           {
             "id": "5999480ac9d6d776",
             "type": "leaf",
@@ -123,6 +127,65 @@
             }
           },
           {
+            "id": "41cf766dab090333",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "Hacking/Active Directory/AD Enumeration/AD Enumeration.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "AD Enumeration"
+            }
+          },
+          {
+            "id": "878eed15c8973696",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "Hacking/Active Directory/Kerberos Attacks/Kerberos Attacks.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "Kerberos Attacks"
+            }
+          },
+          {
+            "id": "dd4e602133139f7c",
+            "type": "leaf",
+            "state": {
+              "type": "canvas",
+              "state": {
+                "file": "Hacking/Active Directory/Attacking Kerberos.canvas",
+                "viewState": {
+                  "x": 1419.8164336964528,
+                  "y": 179.27101542098075,
+                  "zoom": -1.8556407887355333
+                }
+              },
+              "icon": "lucide-layout-dashboard",
+              "title": "Attacking Kerberos"
+            }
+          },
+          {
+            "id": "3f49af68ffac4c38",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "Hacking/Active Directory/Delegation Attacks/Delegation Attacks.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "Delegation Attacks"
+            }
+          },
+          {
             "id": "a8516f1140985530",
             "type": "leaf",
             "state": {
@@ -137,21 +200,17 @@
             }
           },
           {
-            "id": "b142f466ac8a42f0",
+            "id": "14702f54f2daa2d4",
             "type": "leaf",
             "state": {
-              "type": "markdown",
-              "state": {
-                "file": "AI/AI.md",
-                "mode": "source",
-                "source": false
-              },
-              "icon": "lucide-file",
-              "title": "AI"
+              "type": "graph",
+              "state": {},
+              "icon": "lucide-git-fork",
+              "title": "Graph view"
             }
           }
         ],
-        "currentTab": 2
+        "currentTab": 4
       }
     ],
     "direction": "vertical"
@@ -230,7 +289,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "Hacking/Bug Bounty/Reports/IDOR/IDOR.md",
+                "file": "Hacking/Bug Bounty/Reports/Pattern/Pattern.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -249,7 +308,7 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "Hacking/Bug Bounty/Reports/IDOR/IDOR.md",
+                "file": "Hacking/Bug Bounty/Reports/Pattern/Pattern.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
@@ -292,7 +351,7 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "Hacking/Bug Bounty/Reports/IDOR/IDOR.md",
+                "file": "Hacking/Bug Bounty/Reports/Pattern/Pattern.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
@@ -307,7 +366,7 @@
             "state": {
               "type": "file-properties",
               "state": {
-                "file": "Hacking/Bug Bounty/Reports/IDOR/IDOR.md"
+                "file": "Hacking/Bug Bounty/Reports/Pattern/Pattern.md"
               },
               "icon": "lucide-info",
               "title": "File properties"
@@ -342,16 +401,22 @@
       "obsidian-git:Open Git source control": false
     }
   },
-  "active": "3d4c6e7f0de18175",
+  "active": "1c401847fc9176b5",
   "lastOpenFiles": [
+    "AI/Skills/caveman/caveman.md",
     "Hacking/Bug Bounty/Reports/Pattern/Pattern.md",
+    "Roadmap.md",
+    "Hacking/Bug Bounty/Reports/Broken Authentication/Broken Authentication.md",
     "Hacking/Bug Bounty/Reports/IDOR/IDOR.md",
+    "Hacking/Active Directory/Attacking Kerberos.canvas",
+    "Hacking/Active Directory/Kerberos Attacks/Kerberos Attacks.md",
+    "Hacking/Active Directory/AD Enumeration/AD Enumeration.md",
     "Hacking/Active Directory/AD Fundamentals/AD Fundamentals.md",
     "Hacking/Active Directory/Active Directory.md",
-    "AI/AI.md",
-    "Roadmap.md",
-    "CI/CD.md",
+    "Hacking/Active Directory/Delegation Attacks/Delegation Attacks.md",
     "Hacking/Active Directory/ACL & GPO Abuse/ACL & GPO Abuse.md",
+    "AI/AI.md",
+    "CI/CD.md",
     "Cloud/Containerisation/Docker/Docker.md",
     "AI/Theory/Theory.md",
     "AI/Theory/Ethics & Safety/Ethics & Safety.md",
@@ -375,11 +440,6 @@
     "AI/Theory/Deep Learning/Deep Learning.md",
     "AI/Theory/Deep Learning",
     "AI/Theory/ML Fundamentals/ML Fundamentals.md",
-    "Hacking/Bug Bounty/Reports/Injection/SSTI/SSTI.md",
-    "Hacking/Bug Bounty/Reports/Injection/SQLi/SQLi.md",
-    "Hacking/Bug Bounty/Reports/Injection/RCE/RCE.md",
-    "Hacking/Bug Bounty/Reports/Exposed APIs & Info Disclosure/Exposed APIs & Info Disclosure.md",
-    "Hacking/Bug Bounty/Reports/Broken Authentication/Broken Authentication.md",
     "Hacking/CTF/CTF Methodology.canvas",
     "Hacking/Untitled.canvas",
     "Kubernetes/Untitled.canvas"

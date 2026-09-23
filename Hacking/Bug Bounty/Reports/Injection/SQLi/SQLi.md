@@ -12,6 +12,27 @@ Disclosed **SQL injection** reports — error/boolean/time-based, UNION, blind, 
 
 ## Reports
 
+### 2026-09-22 — Unauthenticated error-based SQL injection via POST parameter name in NASA Space Place API (NASA VDP) — n/a (P1)
+- Source: [Bugcrowd #2b1df6dc](https://bugcrowd.com/disclosures/2b1df6dc-0ea2-42ee-a16a-9bbfc33e151a/unauthenticated-error-based-sql-injection-via-post-parameter-name-in-api-experiment-answer-new)
+- Type: SQL injection through an identifier sink (parameter *name*, not value)
+- Summary: `POST /api/experiment/answer/new/` built its `INSERT` statement from the submitted form-field *names*, treating them as column identifiers, so an unauthenticated attacker could put SQL syntax in a parameter name and have the database evaluate it — confirmed by error-based output such as an `XPATH syntax error: '~...~'` leak.
+- Technique / pattern: When values are parameterised but the query still varies with the request, suspect identifiers: fuzz the *keys* of a form or JSON body, not just their values, and watch for DB errors that echo evaluated expressions. Error-based extraction (XPath/`EXTRACTVALUE`-style functions) proves execution without dumping data.
+- Takeaway: Prepared statements protect values only — column, table and alias names must come from a server-side allowlist, and unexpected parameter names should be rejected rather than passed through.
+### 2026-09-21 — SQL injection in HEASARC TAP ADQL endpoint via PostgreSQL Unicode escape (NASA VDP)
+- Source: [Bugcrowd #02b11cac](https://bugcrowd.com/disclosures/02b11cac-56ca-4752-b2d8-e98e7d6334c2/sql-injection-in-heasarc-tap-adql-endpoint-via-postgresql-unicode-escape-full-pg_catalog-bypass)
+- Type: SQL injection (deny-list bypass, unauthenticated)
+- Summary: The ADQL-to-SQL translation layer passed PostgreSQL Unicode escape sequences straight through to the database, so quote filters were bypassed and unauthenticated attackers could read full schema metadata from `pg_catalog`.
+- Technique / pattern: Submit ADQL containing Unicode escapes — `U&'\0027'` for a single quote and `U&"\0070..."` for identifiers — which the preprocessor never decodes but PostgreSQL does, reconstructing the forbidden characters after the filter runs.
+- Takeaway: Deny-list quote filtering fails against any DB-native alternate encoding; normalize/parametrize before the sink, and reject Unicode escape syntax the backend will later expand.
+
+
+### 2026-09-21 — Blind SQL injection in `sort` parameter at photojournal.jpl.nasa.gov (NASA VDP) — n/a
+- Source: [Bugcrowd disclosure e1e58b97](https://bugcrowd.com/disclosures/e1e58b97-af59-49ae-acca-52bccab96e33/blind-sql-injection-at-photojournal-jpl-nasa-gov)
+- Type: SQLi (blind, time-based, P1)
+- Summary: The `sort` parameter of the search option at `https://photojournal.jpl.nasa.gov/new` was injectable, allowing time-based blind SQL injection.
+- Technique / pattern: Inject conditional payloads with `BENCHMARK()` into the `sort` parameter and infer data from response-timing differences when the condition is true — a classic time-based blind oracle on a non-obvious sort sink.
+- Takeaway: Sort/order parameters are frequently concatenated into ORDER BY clauses and missed by input filters — always fuzz `sort`/`order`/`filter` params for boolean and time-based SQLi.
+
 ### 2026-09-21 — SQL injection extracts Starbucks enterprise accounting/payroll DB (Starbucks) — bounty
 - Source: [HackerOne #531051](https://hackerone.com/reports/531051)
 - Type: SQLi (time-based, XML-encoded bypass)

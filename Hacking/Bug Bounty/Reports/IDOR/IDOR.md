@@ -12,6 +12,118 @@ Disclosed **Insecure Direct Object Reference** reports. Core idea: an object ide
 
 ## Reports
 
+### 2026-09-22 — Blind enumeration of private card names via sort oracle and ID discovery (Trello) — 5 points (P4)
+- Source: [Bugcrowd #0ecb51a3](https://bugcrowd.com/disclosures/0ecb51a3-2064-4f9d-aa19-aa7b6ae21812/blind-enumeration-of-private-card-names-via-sort-oracle-and-id-discovery)
+- Type: IDOR / broken object-level authorization via side channel
+- Summary: Cards the tester could not read still took part in the board's "Sort by card name alphabetically" ordering, so their hidden titles could be recovered one character at a time; a second flaw let card IDs be discovered because unauthenticated requests answered "unauthorized" for real cards and "not found" for fake ones.
+- Technique / pattern: Insert probe cards with chosen names, trigger the alphabetical sort, and read the probe's resulting position as a comparison oracle (binary search over the hidden title); batch the probes with GraphQL aliasing (~50 renames per request via `updateCardName`) and harvest IDs through the REST `/batch` endpoint, which accepted about 350 sub-requests despite a documented limit of 10 and had no rate limit.
+- Takeaway: Anything that *orders, counts or compares* objects you cannot read is a disclosure channel — the authorization check must cover sorting and search, not just direct reads; and documented batch limits mean nothing until they are enforced server-side.
+
+### 2026-09-22 — IDOR on /user-teams-management exposing internal user and school organization IDs (NASA VDP) — n/a (P5)
+- Source: [Bugcrowd #871d4c4e](https://bugcrowd.com/disclosures/871d4c4e-ec99-437c-9df3-8f9425a82a44/insecure-direct-object-reference-idor-on-user-teams-management-exposing-internal-user-ids-and-school-organization-ids)
+- Type: IDOR / missing ownership check on a management endpoint
+- Summary: An authenticated user could change a user identifier parameter on the `/user-teams-management` endpoint and receive limited data belonging to other accounts — internal user IDs, usernames and school organization IDs. The program accepted it as a business risk because the exposed fields were not sensitive enough to rate higher.
+- Technique / pattern: Standard two-account replay against an administrative/management route, then a judgement call on impact: the identifiers harvested here are mainly useful as *input* to a further IDOR rather than as a finding on their own.
+- Takeaway: A confirmed authorization gap is not automatically a high-severity bug — grade it by what the returned fields let you do next, and say so in the report instead of overclaiming.
+
+### 2026-09-22 — Insecure direct object reference gives access to other users' and groups' DMs (X / Twitter) — n/a (bounty awarded, amount not shown)
+- Source: [HackerOne #53858](https://hackerone.com/reports/53858)
+- Type: IDOR on a state-changing endpoint (former-member access)
+- Summary: On `mobile.twitter.com`, the group-DM deletion route `/a/messages/<dm_id>/delete` did not verify that the requester was still a participant, so someone who had once been in a group conversation could keep reaching its messages after leaving by calling the endpoint with the known DM ID.
+- Technique / pattern: Classic *former-privilege* testing — join a shared object, record its ID, leave, then replay the endpoints that still accept that ID. The mobile web surface was checked separately from the main site, and the destructive route (`delete`) carried weaker checks than the read route.
+- Takeaway: Authorization must be evaluated at request time against current membership, not at the time access was first granted; and mobile/legacy front-ends need the same object-level checks as the flagship app.
+
+### 2026-09-22 — IDOR on tagged people lets any user be tagged on videos they do not own (TikTok) — n/a (bounty awarded, amount not shown)
+- Source: [HackerOne #1555376](https://hackerone.com/reports/1555376)
+- Type: IDOR / write-side missing authorization (CVSS 6.5, medium)
+- Summary: On `*.tiktokv.com` the tagging feature accepted a target user reference without checking the relationship between the caller, the video and the tagged account, so an attacker could tag arbitrary users on videos that were not theirs.
+- Technique / pattern: Look at features that *link two objects* (tag, mention, attach, invite) — the server often authorizes only the caller's right to the action, not their right to each object named in the request. The tagged user's public ID is all the attacker needs.
+- Takeaway: Write-side IDORs on social features are reputational attacks: every object referenced in a linking request needs its own ownership/consent check.
+### 2026-09-22 — Private circle can be added to another circle via API despite visibility restriction (Nextcloud) — $150
+- Source: [HackerOne #3511998](https://hackerone.com/reports/3511998)
+- Type: IDOR / missing authorization check in API (Circles app, CVE-2026-45155)
+- Summary: In Nextcloud's Circles app, a low-privileged user could add a private circle to another circle through the API, bypassing its visibility restriction; the web UI enforced the check but the API endpoint did not.
+- Technique / pattern: Skipped the UI and called the circle-membership API directly, supplying the ID of a private circle the user should not be able to reference; the server accepted the object ID without checking the caller's permissions on it.
+- Takeaway: UI-only access rules are not access rules. Replay every UI action as a raw API call and swap in IDs of private/hidden/other users' objects.
+
+### 2026-09-22 — IDOR to make someone attend or leave an event (LinkedIn) — n/a
+- Source: [HackerOne #1734639](https://hackerone.com/reports/1734639)
+- Type: IDOR on a state-changing API
+- Summary: The `voyagerScheduledcontentDashViewerStates` API changed event attendance for whichever user was named in the `fsd_profile` parameter, letting an attacker add users to events or remove real attendees and block them from rejoining.
+- Technique / pattern: The victim's `fsd_profile` ID is readable from any public profile's page source; substituting it into the attendance `POST` request worked because the server never tied the ID to the session.
+- Takeaway: Client-supplied identifiers on state-changing requests must be validated against the session; publicly visible IDs make such IDORs free to exploit at scale.
+
+### 2026-09-22 — Stored XSS chained with IDOR in LabCAS Saved Searches (NASA VDP) — n/a
+- Source: [Bugcrowd #bf88b0d6](https://bugcrowd.com/disclosures/bf88b0d6-61fd-4cc9-8a04-84e36e71c8a6/high-stored-xss-chained-with-idor-at-https-edrn-labcas-jpl-nasa-gov-labcas-ui-s-index-html-search)
+- Type: IDOR chained with stored XSS
+- Summary: The Saved Searches feature posted to `/ksdb/save_labcas_search_input/` with a client-supplied `userid` that was not checked against the logged-in user, so entries could be written into another account; the `profile_name` field was also rendered unsanitized.
+- Technique / pattern: Noticed the owner reference (`userid`) came from the request body rather than the session, allowing writes under another user's identity, and combined it with an unescaped stored field so the planted entry would carry script to the victim.
+- Takeaway: Derive ownership for writes from the server-side session, never from a body `userid`; an IDOR that plants content in another account turns self-XSS into stored XSS against the victim.
+
+### 2026-09-22 — Broken access control leads to account takeover (Federal Communications Commission VDP) — n/a
+- Source: [Bugcrowd #d66b0aa9](https://bugcrowd.com/disclosures/d66b0aa9-5df4-414a-81bc-21e63bfa8fd7/broken-access-control-leads-to-account-takeover)
+- Type: IDOR / broken access control (P1)
+- Summary: An IDOR combined with authentication weaknesses exposed other users' confidential data and allowed resetting another account's PIN and password, i.e. full account takeover.
+- Technique / pattern: Classic two-account testing: replaying one account's requests with the other account's `<user_id>`/object reference; the account-recovery actions (PIN/password reset) accepted the foreign reference.
+- Takeaway: Prioritise IDOR testing on credential-reset and recovery actions: an IDOR there is immediately an account takeover.
+
+### 2026-09-21 — Unauthenticated UUID-based IDOR exposes internal files (NASA VDP)
+- Source: [Bugcrowd #085b5b66](https://bugcrowd.com/disclosures/085b5b66-83fb-4580-beb2-5b592c260418/unauthenticated-access-to-internal-files-via-direct-object-reference-uuid-based-leading-to-sensitive-data-exposure)
+- Type: IDOR / broken object-level authorization
+- Summary: An endpoint served internal files keyed only on a UUID, with no authentication or ownership check, letting anyone who obtained a `uuid` read sensitive internal files.
+- Technique / pattern: Directly reference `uuid`-based objects on the endpoint without a session; the server returns the file because it never verifies the caller owns it. UUID unguessability was treated as the only control.
+- Takeaway: A UUID is not an authorization boundary — every object-serving route must re-check ownership against the session, not rely on identifier entropy.
+
+### 2026-09-21 — IDOR to view any user's order and profile data via `/api/v1/users/` (WakaTime)
+- Source: [HackerOne #2524562](https://hackerone.com/reports/2524562)
+- Type: IDOR / broken object-level authorization
+- Summary: The `/api/v1/users/current` endpoint accepted any username or user id in place of `current`, returning that user's profile PII (location, socials, timestamps) without an authorization check.
+- Technique / pattern: Call `/api/v1/users/current`, then swap `current` for another username or id (e.g. `@victim`); the API returns the victim's full profile. Classic self-vs-other identifier substitution.
+- Takeaway: Endpoints that accept a self-referential alias like `current`/`me` must reject arbitrary substituted identifiers — resolve identity from the session, never from the path.
+
+### 2026-09-21 — IDOR allows deleting any user's support tickets on ads.tiktok.com (TikTok)
+- Source: [HackerOne #1475520](https://hackerone.com/reports/1475520)
+- Type: IDOR / broken object-level authorization (destructive)
+- Summary: The ticket-deletion flow authorized on a `draft_order_id` parameter without verifying the requester owned the ticket, allowing deletion of other users' tickets (CVSS 7.5, availability impact).
+- Technique / pattern: Manipulate the `draft_order_id` in the delete request to reference another user's ticket; no ownership check runs before the deletion is processed. Destructive verb + attacker-controlled id.
+- Takeaway: Destructive actions (DELETE) are where missing ownership checks hurt most — re-derive the target's owner from the session before mutating, especially on `*_id` parameters.
+
+### 2026-09-21 — Critical IDOR — delete any venue of any organization (Veris)
+- Source: [HackerOne #120123](https://hackerone.com/reports/120123)
+- Type: IDOR / broken object-level authorization (destructive)
+- Summary: A DELETE venue request honored a venue id belonging to any organization, letting an authenticated attacker remotely delete venues across organizational boundaries.
+- Technique / pattern: Intercept the venue-delete request and change the venue id to a target org's venue; the server deletes it without checking the requester belongs to that organization. Same methodology as sibling member/group IDORs on the app.
+- Takeaway: Cross-tenant authZ must prove 'admin of THIS object', not merely 'authenticated somewhere' — a repeated IDOR pattern across sibling endpoints signals a systemic missing check.
+
+
+### 2026-09-21 — IDOR grants access to private resumes via `/pdf/` path (Indeed) — $250
+- Source: [Bugcrowd disclosure ab4df6da](https://bugcrowd.com/disclosures/ab4df6da-de87-46a4-9558-15b59bb40018/idor-access-to-private-resumes)
+- Type: IDOR (P3)
+- Summary: An endpoint meant for public resume downloads could be reached for private resumes by appending `/pdf/` to the URL and enumerating resume ids, bypassing the visibility control.
+- Technique / pattern: Take the public-resume download route, insert the `/pdf/` variant plus a target resume id; the alternate path skipped the private/public check that the primary route enforced.
+- Takeaway: Alternate representations of the same object (`/pdf/`, `.json`, print/export views) are a separate code path — the authorization check must live on every one, not just the canonical URL.
+
+### 2026-09-21 — Unauthorized team/org creation via IDOR on `userId` (NASA VDP) — n/a
+- Source: [Bugcrowd disclosure d8ed3e0d](https://bugcrowd.com/disclosures/d8ed3e0d-923b-49a8-8a46-767d81fcd5c6/unauthorized-team-and-organization-creation-via-insecure-direct-object-reference-idor)
+- Type: IDOR (write-side, P3)
+- Summary: The Globe team/organization creation POST did not validate the `userId` in the body against the session user, so teams and orgs could be created under any user's identity (ids were numeric and sequential, e.g. `123231405`).
+- Technique / pattern: Capture the create-team/org POST, swap `userId` for another sequential id, and the object is created as that victim user — a write IDOR keyed on a client-supplied identity field.
+- Takeaway: Identity for a write must come from the session, never a body parameter; sequential numeric user ids make the abuse trivially scriptable.
+
+### 2026-09-21 — IDOR discloses PII of 3,200+ PROSAMS users (NASA VDP) — n/a
+- Source: [Bugcrowd disclosure 68f4566e](https://bugcrowd.com/disclosures/68f4566e-2358-40c2-92d0-3a5e21023908/idor-that-allows-disclosing-username-email-firstname-lastname-address-phonenumbers-of-prosams-application-users)
+- Type: IDOR (P1, mass PII)
+- Summary: The PROSAMS application honored object identifiers without an ownership check, exposing usernames, emails, names, phone numbers, addresses, firm names and EIN numbers for over 3,200 users across organizations.
+- Technique / pattern: Iterate the user/record identifier on the affected PROSAMS endpoint; the app returned full profile records for arbitrary ids with no cross-org authorization.
+- Takeaway: A single missing object-level check on a records endpoint escalates to bulk PII disclosure — treat any id-keyed profile route as a mass-extraction risk and rate-limit plus authorize it.
+
+### 2026-09-21 — IDOR in Team Members API exposes emails and roles of any team (NASA VDP) — n/a
+- Source: [Bugcrowd disclosure 1e63488a](https://bugcrowd.com/disclosures/1e63488a-ca15-4ed4-99f3-c0298c72a638/idor-in-team-members-api-exposes-private-emails-and-roles-of-any-team)
+- Type: IDOR (broken object-level authZ)
+- Summary: On globe.gov team management, changing the `orgId` parameter returned member data — emails and role assignments — for teams the caller was not part of.
+- Technique / pattern: Enumerate the `orgId` value on the team-members endpoint while authenticated to an unrelated team; the resolver returned other orgs' member lists with no ownership check.
+- Takeaway: A read endpoint keyed on an org/team id must verify the session belongs to that org — exposed emails and roles feed straight into targeted phishing.
+
 ### 2026-09-21 — Cross-tenant IDOR in GraphQL AddRulesToPixelEvents — add/update/delete any advertiser's pixel rules (TikTok) — bounty
 - Source: [HackerOne #984965](https://hackerone.com/reports/984965)
 - Type: IDOR (cross-tenant, GraphQL)

@@ -12,6 +12,104 @@ Disclosed **security misconfiguration** reports — permissive CORS, default/exp
 
 ## Reports
 
+### 2026-09-22 — Broken link hijacking (impersonation) on jpl.nasa.gov via unregistered Facebook URL (NASA VDP) — n/a (P4)
+- Source: [Bugcrowd #47e4872e](https://bugcrowd.com/disclosures/47e4872e-88bd-4dd2-b943-1b30f4d5b4ad/broken-link-hijacking-impersonation-on-jpl-nasa-gov-via-unregistered-facebook-url)
+- Type: Broken link hijacking / dangling third-party identity
+- Summary: A JPL news article linked to an official Solar System Exploration Facebook page using a misspelled URL, so the handle it pointed at was unregistered; anyone could claim it and receive traffic that users believe is NASA's official account.
+- Technique / pattern: Crawl the target's pages for outbound links to social platforms, app stores, package registries and short-link services, then check each destination for "profile not found" / "account unavailable" responses and whether the identifier is still claimable. Typos in hand-written links are a common source of these.
+- Takeaway: Trust is inherited from the linking page, so an abandoned or misspelled external handle is an impersonation primitive — treat outbound-link inventory as part of dangling-asset triage alongside CNAMEs.
+
+### 2026-09-22 — Clickjacking on cdn.sit.earthdata.nasa.gov (NASA VDP) — n/a (P5, informational)
+- Source: [Bugcrowd #058fc473](https://bugcrowd.com/disclosures/058fc473-2bab-4bb8-86c9-22e64ef1d665/clickjacking-vulnerability-cdn-sit-earthdata-nasa-gov)
+- Type: Missing framing protection (`X-Frame-Options` / CSP `frame-ancestors`)
+- Summary: A staging CDN host could be embedded in an attacker-controlled frame because it sent no anti-framing header; the program accepted it as an informational business risk, since the framed content supported no sensitive state-changing action.
+- Technique / pattern: Framing checks are cheap recon (`curl -I` for `X-Frame-Options` / `Content-Security-Policy`), but severity comes from what a framed click *does* — look for one-click destructive or privilege-granting actions behind the frame before reporting, and check staging hostnames (`sit.`, `uat.`, `dev.`) separately from production.
+- Takeaway: A missing header is a finding only when a click inside the frame has consequences; otherwise expect informational triage, and spend the effort on chaining it instead.
+
+### 2026-09-22 — Amazon S3 bucket misconfiguration allows arbitrary uploads via exposed credentials (BCM Messenger) — n/a (bounty awarded, amount not shown)
+- Source: [HackerOne #764243](https://hackerone.com/reports/764243)
+- Type: Cloud storage misconfiguration + credentials exposed by an API
+- Summary: The messenger's attachment API returned AWS access keys and pre-signed upload policies to any client, and the bucket accepted the resulting uploads without further checks; since account creation needed no verification, anyone could mint accounts and use the company's bucket as free (and abusable) file hosting.
+- Technique / pattern: For mobile targets, bypass SSL pinning (Frida) to read the real API traffic, then inspect responses for credential material — access keys, pre-signed URLs, upload policies — and test what the returned credential actually permits (`put`, `list`, `delete`) rather than assuming it is scoped.
+- Takeaway: Never hand long-lived cloud credentials to a client; issue narrowly scoped, short-lived pre-signed URLs per object, and remember that unverified signup turns any client-side credential into a public one.
+
+### 2026-09-22 — S3 ACL misconfiguration exposes all stored media to any AWS user (Legal Robot) — n/a
+- Source: [HackerOne #189023](https://hackerone.com/reports/189023)
+- Type: Cloud storage misconfiguration (over-permissive bucket ACL)
+- Summary: The company's S3 bucket granted access broadly enough that any account holding AWS credentials could list and copy every object — images, PDFs and video, including the asset used on the homepage.
+- Technique / pattern: Find the bucket from asset URLs in page source, then test it *authenticated* as an arbitrary AWS user, not just anonymously: `aws s3 ls` and a single-object `cp` prove read access without touching data. An `AuthenticatedUsers` grant looks closed to an unauthenticated probe and open to everyone with a free AWS account.
+- Takeaway: Test buckets with your own AWS identity as well as anonymously, and enumerate the verb set carefully — read proves the leak; avoid delete/overwrite tests on live assets.
+### 2026-09-22 — Unauthenticated phpinfo() files could lead to ability file read (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #1794884](https://hackerone.com/reports/1794884)
+- Type: Debug/diagnostic file left in production (exposed `phpinfo()`)
+- Summary: A leftover `info.php` calling `phpinfo()` was reachable without authentication on a DoD host, exposing OS details, PHP build and loaded extensions, configuration directives and environment variables; resolved by removing the file.
+- Technique / pattern: Found through directory/content discovery for common diagnostic filenames (`info.php`, `phpinfo.php`, `test.php`); the page itself is the finding, and its paths, `open_basedir`/`disable_functions` values and env vars are recon that makes later file-read or RCE attempts precise.
+- Takeaway: Include diagnostic filenames in every content-discovery wordlist, and when you hit one, report it with what it concretely reveals (secrets in env vars, absolute paths, disabled protections) rather than as "version disclosure".
+
+### 2026-09-22 — Exposed wp-config.php file (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #3252302](https://hackerone.com/reports/3252302)
+- Type: Server misconfiguration exposing config file
+- Summary: A WordPress `wp-config.php` was directly readable on an in-scope DoD host, leaking MySQL and AWS credentials and secret keys.
+- Technique / pattern: Requested the config file's path directly and received its raw contents instead of PHP execution / a denial.
+- Takeaway: Keep `wp-config.php` and its backup/editor copies (e.g. `wp-config.php.bak`, `wp-config.php~`) in recon wordlists; defenders should block config files at the web server and rotate exposed secrets.
+
+### 2026-09-22 — Several internal applications have open CORS (Tesla) — n/a (20 points)
+- Source: [Bugcrowd #0e3f3821](https://bugcrowd.com/disclosures/0e3f3821-1d26-466b-8599-7cc2f206f4d9/several-internal-applications-have-open-cors-allowing-external-folks-to-access-the-content)
+- Type: CORS misconfiguration (P2)
+- Summary: About ten internal Tesla apps (e.g. `payment-gateway.teslamotors.com`, `location.teslamotors.com`) had permissive CORS, letting an attacker-controlled origin read their responses from a browser on the internal network.
+- Technique / pattern: Used a typosquat domain to get an internal-network browser to load attacker JS, then showed permissive `Access-Control-Allow-Origin` handling let that origin read the internal services' responses.
+- Takeaway: Internal apps are reachable via employees' browsers; a permissive CORS policy on an intranet service turns any visited attacker page into an internal data reader.
+
+### 2026-09-22 — Subdomain takeover on worldcup.starlink.com (SpaceX / Starlink) — n/a (5 points)
+- Source: [Bugcrowd #af807529](https://bugcrowd.com/disclosures/af807529-67e4-4e48-8933-bbe135639a7e/subdomain-takeover-on-worldcup-starlink-com)
+- Type: Subdomain takeover (P4)
+- Summary: The Starlink-owned `worldcup.starlink.com` could be claimed by an attacker; the disclosure does not name the third-party service involved.
+- Technique / pattern: General method: find a dangling DNS record (usually a CNAME) pointing to a deprovisioned third-party resource and register that resource name on the provider to serve content on the company's subdomain.
+- Takeaway: Short-lived campaign/event subdomains are prime takeover candidates; decommissioning a resource must include removing its DNS record.
+
+### 2026-09-21 — Silent webcam activation via Loom extension web-accessible resource (Atlassian) — $800
+- Source: [Bugcrowd #6c751112](https://bugcrowd.com/disclosures/6c751112-6cd1-4a9a-90f1-d502c164ea94/unauthorized-silent-webcam-activation-via-loom-chrome-extension-web-accessible-resources)
+- Type: Security misconfiguration (extension web_accessible_resources)
+- Summary: Loom's Chrome extension (v5.5.173) exposed `bubble.html` as a web-accessible resource to all origins; any site could iframe it and, because camera permission persisted, silently activate the webcam.
+- Technique / pattern: Embed the extension's `bubble.html` in an iframe from an attacker page; with `web_accessible_resources` declared for `all_urls` and no origin check before camera init, the cached permission triggers a live feed.
+- Takeaway: Declare extension `web_accessible_resources` for the narrowest origins possible and verify the embedding origin before touching sensitive APIs — persistent permissions plus open iframing equals silent abuse.
+
+### 2026-09-21 — Swagger UI injection via `configUrl` parameter (U.S. Dept of Defense)
+- Source: [HackerOne #3124103](https://hackerone.com/reports/3124103)
+- Type: Security misconfiguration / resource injection (Swagger UI)
+- Summary: A hosted Swagger UI loaded its configuration from a user-controlled `configUrl` parameter, letting an attacker point it at an arbitrary JSON spec and manipulate UI behavior / reach XSS.
+- Technique / pattern: Supply `?configUrl=` referencing an attacker-hosted spec; Swagger UI fetches and renders it, so malicious spec content drives the page — a resource-injection sink from an unvalidated URL parameter.
+- Takeaway: Never let Swagger/OpenAPI UIs take their spec location from user input — pin `configUrl`/`url` server-side and validate any externally loaded document.
+
+
+### 2026-09-21 — Directory listing exposes sensitive log files (U.S. Department of Labor) — n/a
+- Source: [Bugcrowd disclosure eac8d6fd](https://bugcrowd.com/disclosures/eac8d6fd-4786-4664-89e7-23102e03a9f0/sensitive-log-files-exposed-to-public-through-directory-listing)
+- Type: Security Misconfiguration (directory listing, P2)
+- Summary: Directory indexing was left enabled, making log files that should have been private publicly browsable.
+- Technique / pattern: Browse the directory with indexing on, enumerate and download the exposed log files directly from the listing.
+- Takeaway: Disable auto-indexing (`Options -Indexes` / `autoindex off;`) — an open directory turns any stray log or backup file into a data leak.
+
+### 2026-09-21 — Exposed `.git/` directory leaks source and config on NASA subdomain (NASA VDP) — n/a
+- Source: [Bugcrowd disclosure 976f4f72](https://bugcrowd.com/disclosures/976f4f72-88b9-43e5-a6c5-b6cb79f1ce84/exposed-git-directory)
+- Type: Security Misconfiguration (source exposure, P3)
+- Summary: A NASA subdomain served its `.git/` directory publicly, exposing internal source code and configuration files.
+- Technique / pattern: Request `/.git/` on the host and pull the repository contents (git-dumper-style) to recover source and any secrets committed to config.
+- Takeaway: Deploying from a git working tree without blocking `.git/` at the web server hands out full source and history — deny the path and deploy build artifacts only.
+
+### 2026-09-21 — Subdomain takeover of rtncf-rci.ral.r4.fws.gov via lapsed .org domain (U.S. Fish & Wildlife) — n/a
+- Source: [Bugcrowd disclosure 629b48ac](https://bugcrowd.com/disclosures/629b48ac-85c6-4af2-8702-a0996c874df0/subdomain-takeover-for-rtncf-rci-ral-r4-fws-gov)
+- Type: Security Misconfiguration (subdomain takeover, P3)
+- Summary: A government subdomain held a CNAME to `rtncf-rci.ncusfws.org`, an external domain that had lapsed and become purchasable.
+- Technique / pattern: Detect the dangling CNAME target, register the abandoned `.org` for ~$7, and serve controlled content — proving takeover of the `.gov` subdomain.
+- Takeaway: Dangling CNAMEs point at ordinary registrable domains as often as at cloud services — add a domain-registrability check to takeover triage, not just cloud-provider fingerprints.
+
+### 2026-09-21 — Subdomain takeover of annualmeeting2022.globe.gov via dangling Meteor CNAME (NASA VDP) — n/a
+- Source: [Bugcrowd disclosure 1fdbc7d6](https://bugcrowd.com/disclosures/1fdbc7d6-5a1a-45dc-a710-abbfff353cb8/subdomain-takeover-on-annualmeeting2022-globe-gov)
+- Type: Security Misconfiguration (subdomain takeover, P3)
+- Summary: `annualmeeting2022.globe.gov` still pointed at `us-east-1.galaxy-ingress.meteor.com`, a Meteor hosting endpoint no longer in use, allowing a takeover.
+- Technique / pattern: Confirm the dangling CNAME to the Meteor Galaxy ingress, register a Meteor account and deploy an app on that hostname to serve attacker content from the trusted NASA subdomain.
+- Takeaway: After an event/campaign ends, its subdomain's CNAME often outlives the hosting account — decommission DNS records with the service, and audit CNAMEs pointing at PaaS ingress hostnames.
+
 ### 2026-09-21 — S3 bucket writeable by any authenticated AWS user (HackerOne) — bounty
 - Source: [HackerOne #128088](https://hackerone.com/reports/128088)
 - Type: Misconfiguration (S3 ACL — AuthenticatedUsers)
