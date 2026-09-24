@@ -12,6 +12,34 @@ Disclosed **Remote Code Execution** reports reached via injection chains — **O
 
 ## Reports
 
+### 2026-09-24 — CVE-2025-24813: remote code execution and sensitive file access via partial PUT (Internet Bug Bounty — Apache Tomcat) — n/a
+- Source: [HackerOne #3031518](https://hackerone.com/reports/3031518)
+- Type: Path-handling flaw in partial PUT — arbitrary file write/read escalated to code execution
+- Summary: Tomcat's partial PUT implementation derived its temporary file name from the user-supplied path with the separator replaced by `.`, leaving the caller in control of where content landed. With writes enabled on the default servlet and partial PUT supported, an attacker could read security-sensitive files and inject content into them.
+- Technique / pattern: Look at how a server derives temporary or staging file names from request-controlled input — "sanitisation" that rewrites separators instead of rejecting the path preserves attacker control over the final name. Then chain the write primitive into an existing deserialization or session-persistence path to reach execution.
+- Takeaway: A file-write primitive is only as harmless as the directories it can reach; derive server-side temporary names from a server-generated identifier, never from the client's path.
+
+### 2026-09-24 — Deserialization in Automation Builder via Jint to Newtonsoft serializer coercion (8x8) — $3,000
+- Source: [HackerOne #3861550](https://hackerone.com/reports/3861550)
+- Type: Insecure deserialization — `TypeNameHandling` reached through a scripting-engine bridge (Critical)
+- Summary: `connect.8x8.com`'s Automation Builder exposed Newtonsoft JSON objects directly to the embedded Jint JavaScript engine during server-side template evaluation of an HTTP request step. An authenticated user could abuse Jint's overload resolution to instantiate a `JsonSerializer` and have a crafted JSON response deserialized with `TypeNameHandling` in effect, giving arbitrary type instantiation and code execution on the automation backend.
+- Technique / pattern: Low-code and automation builders embed a scripting sandbox (Jint, Jurassic, Nashorn, V8) and then hand it host objects for convenience. The escape is rarely a sandbox bug — it is the exposed object graph. Enumerate which host types the script context can see, look for anything able to construct a serializer, loader, file helper or process wrapper, then use the engine's own overload-resolution rules to reach a constructor the designers never intended. In .NET, any reachable Newtonsoft serializer with `TypeNameHandling` enabled is an arbitrary-type-instantiation primitive.
+- Takeaway: A scripting sandbox is only as tight as the objects handed into it. On workflow and automation builders, enumerate the host object graph before hunting for engine bugs — and treat a reachable `JsonSerializer` with `TypeNameHandling` as RCE, not as a configuration nit.
+
+### 2026-09-23 — Unauthenticated RCE in Bitbucket Data Center via Hazelcast deserialization (CVE-2022-26133) (Atlassian Bitbucket (Bugcrowd)) — n/a (P1, 40 points)
+- Source: [Bugcrowd ce3d9a93](https://bugcrowd.com/disclosures/ce3d9a93-2168-4785-90b7-47f66a5b8162/rce-in-bitbucket-datacenter-via-hazelcastport)
+- Type: Insecure Java deserialization → unauthenticated RCE
+- Summary: Bitbucket Data Center's clustering layer exposed a Hazelcast port (default `5701`) whose custom authenticator deserialized attacker-supplied data during the cluster-join handshake, so a remote unauthenticated attacker could achieve code execution (CVE-2022-26133).
+- Technique / pattern: The class of issue is untrusted deserialization on an exposed network service: input arriving on the cluster port reached a `readObject` path before authentication. Recognising it starts from noticing a non-HTTP clustering/cache port reachable from outside and confirming the framing it accepts is a serialized-object protocol.
+- Takeaway: Clustering, cache and message-bus ports (Hazelcast, RMI and similar) are an under-tested attack surface that is frequently reachable without authentication. Treat any pre-auth `readObject` on network input as critical, and firewall internal cluster ports off the public network.
+
+### 2026-09-23 — RCE on Confluence Data Center via OGNL Injection (Atlassian) — n/a (P1, 40 points)
+- Source: [Bugcrowd #f76873aa](https://bugcrowd.com/disclosures/f76873aa-7acc-4f39-b94d-f066317e7c41/rce-on-confluence-data-center-via-ognl-injection)
+- Type: Expression-language (OGNL) injection leading to RCE — CVE-2021-26084
+- Summary: Confluence Server/Data Center rendered Webwork tags through Velocity such that a value containing `$` was evaluated twice — first by Velocity, then again by Webwork as an OGNL expression — giving unauthenticated remote code execution. Disclosed 2021-10-04.
+- Technique / pattern: Supply an OGNL payload in a request parameter such as `sourceTemplateId` that the framework maps onto an action setter, use unicode escapes to slip past the `SafeExpressionUtil` sandbox, and reach `@java.lang.Runtime@getRuntime().exec()`; reachable via `/pages/doenterpagevariables.action`, `/signup.action` and `/users/darkfeatures.action`.
+- Takeaway: Double evaluation is the core bug class behind most EL/OGNL RCEs — look for any place a template engine renders a value that a second engine then interprets, and expect expression sandboxes to fall to encoding tricks.
+
 ### 2026-09-22 — Command injection in Harmony trajectory-subsetter gives RCE as root (NASA VDP) — n/a (P1, CVSS 8.8)
 - Source: [Bugcrowd #31ad3b26](https://bugcrowd.com/disclosures/31ad3b26-beae-4a91-879d-c6640cfe41dc/command-injection-in-harmony-trajectory-subsetter-subset-shape-geojson-gives-any-earthdata-user-remote-code-execution-rce-as-root-on-harmony-earthdata-nasa-gov)
 - Type: OS command injection via user-supplied GeoJSON (injection chain → RCE)

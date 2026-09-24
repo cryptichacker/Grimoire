@@ -12,6 +12,118 @@ Disclosed **Insecure Direct Object Reference** reports. Core idea: an object ide
 
 ## Reports
 
+### 2026-09-24 — IDOR in a GraphQL campaign mutation allows deleting any campaign by id (HackerOne) — n/a
+- Source: [HackerOne #1969141](https://hackerone.com/reports/1969141)
+- Type: IDOR — unauthorized object deletion via a GraphQL mutation
+- Summary: A `POST /graphql` mutation accepted a `campaign_id` the caller did not own and carried out the deletion, so any campaign could be destroyed by supplying its identifier.
+- Technique / pattern: Enumerate mutations from the application's JavaScript bundles, then replay each destructive one with an object id taken from a second account. Deletion mutations are routinely missed by authorization test suites precisely because they are awkward to test non-destructively.
+- Takeaway: Authorization has to be enforced inside every resolver, not only on the queries that read an object; treat destructive GraphQL mutations as a first-class IDOR sink.
+
+### 2026-09-24 — IDOR at checkout lets an attacker pay with another user's stored credit card (Yelp) — n/a
+- Source: [HackerOne #391092](https://hackerone.com/reports/391092)
+- Type: IDOR — cross-account use of a stored payment instrument
+- Summary: The Grubhub-backed ordering flow exposed a `/checkout/transaction_platform` request in which the reference to a saved payment method could be swapped for another user's, letting the attacker place and pay for orders on someone else's card without ever seeing the card data.
+- Technique / pattern: On any checkout that references a saved payment method by an opaque token or id, capture the final submit request from account A and replay it from account B carrying A's payment reference. Tokenization hides the card number but does not by itself bind the token to its owner.
+- Takeaway: A payment token is an object reference like any other — the server must verify at charge time that it belongs to the authenticated purchaser, not merely that it is well formed.
+
+### 2026-09-24 — Unauthorized access to confidential data via an admin-only endpoint (NASA VDP) — n/a (P4)
+- Source: [Bugcrowd eb75437c](https://bugcrowd.com/disclosures/eb75437c-841c-44e5-a5b0-2c3613a48309/unauthorized-access-to-confidential-data-via-admin-endpoint)
+- Type: Improper access control — role check missing on a privileged endpoint
+- Summary: An endpoint intended only for the "Photo Approvers - Admins" group returned its sensitive contents to any authenticated user; the route required a session but never checked group membership.
+- Technique / pattern: Authentication was present, so the endpoint did not look unprotected — the gap was the missing *role* check. Harvest admin-only routes from JavaScript bundles, sitemaps and role documentation, then request each one with a low-privilege session and compare against the `403` you expect.
+- Takeaway: "Requires login" and "requires the right role" are two different controls; test every privileged route with an ordinary account rather than assuming a login wall implies authorization.
+
+### 2026-09-24 — Privilege escalation allows deleting any account in an organization, including the main admin (Indeed) — 10 points (P3)
+- Source: [Bugcrowd 96eefd21](https://bugcrowd.com/disclosures/96eefd21-7376-4fd6-b6e0-56168f5ef1fd/privilege-escalation-to-delete-main-admin-user-account-indeed-com)
+- Type: Broken access control — vertical escalation on a user-management action
+- Summary: On `account.indeed.com` a lower-privileged organization member could invoke the member-removal action against any account in the organization, up to and including the owning administrator.
+- Technique / pattern: In multi-tenant team settings, enumerate the member-management actions (invite, change role, remove) and run each from the lowest role against a higher-privileged member id. Removal endpoints are often gated only in the interface, which hides the button but leaves the route open.
+- Takeaway: Destructive team-management routes need a server-side rule that the actor outranks the target; hiding a control in the UI is not authorization.
+
+### 2026-09-24 — IDOR / Broken Access Control on /users/{id} exposes other users' PII and password hash (NASA VDP) — n/a (P3)
+- Source: [Bugcrowd fdb0f70d](https://bugcrowd.com/disclosures/fdb0f70d-1cb2-4709-ad64-78f078d8e2be/idor-broken-access-control-users-id-exposes-other-users-pii-and-password-hash-password_)
+- Type: IDOR — missing ownership check plus an over-permissive serializer
+- Summary: An authenticated user could read other users' profile records by modifying the identifier on a `/users/<id>` API endpoint, and the response additionally leaked sensitive attributes the UI never displays, including the stored password-hash field (`password_`).
+- Technique / pattern: Two defects in one response — the missing object-level authorization check, and a serializer returning the whole ORM row instead of a public projection. After confirming cross-user access, diff the JSON against what the front end actually renders: internal columns (hashes, tokens, `is_admin`, internal hostnames) are routinely still in the payload because nobody reads the raw response.
+- Takeaway: Rate an IDOR by the *fields* in the body, not merely by the fact of cross-user access. A leaked password hash turns a routine read into offline cracking and credential-stuffing material.
+
+### 2026-09-24 — Authenticated IDOR in DIRS Users API allows access to other users' profiles and PII (FCC VDP) — n/a (P1)
+- Source: [Bugcrowd 479095d0](https://bugcrowd.com/disclosures/479095d0-e0f9-4b8d-bd64-feda95bb6b17/authenticated-idor-in-dirs-users-api-allows-access-to-other-users-profiles-and-pii-production)
+- Type: IDOR / Broken Object Level Authorization
+- Summary: In the FCC DIRS production environment an authenticated API endpoint returned any user's full profile and associated company data when a predictable numeric `userid` in the request path was changed, exposing PII and organizational metadata on a system used by telecommunications providers.
+- Technique / pattern: Log in with the lowest privilege the application will grant, find the route that renders *your own* profile (`/users/<userid>`), then walk the numeric identifier in the path. A profile route that answers for neighbouring ids also yields free user enumeration, which lifts the finding from disclosure to a targeted-phishing and social-engineering primitive.
+- Takeaway: "Authenticated" is not "authorized". An identifier in a path segment needs the same ownership check as one in a query string, and enumerability compounds the impact far past the single record you first read.
+
+### 2026-09-24 — IDOR Exposes PII of Tens of Thousands of Users and Supervisors (U.S. Dept Of Defense) — n/a (High)
+- Source: [HackerOne #2967032](https://hackerone.com/reports/2967032)
+- Type: IDOR — sequential numeric identifier (CWE-639)
+- Summary: A system-access-request (SAAR) workflow honored a `saarnId` URL parameter without checking that the session owned the record, so decrementing the value returned other users' submissions — address, full name, email, phone, date of birth, supervisor, DoD ID number, clearance level and Controlled Unclassified Information — across tens of thousands of people.
+- Technique / pattern: Found while using the application exactly as intended: submit one legitimate request, note the identifier handed back in the URL, then decrement it. Sequential integers on a submission workflow are the highest-yield IDOR shape there is, because every lower value is guaranteed to be a real record rather than a guess.
+- Takeaway: Onboarding and request-submission workflows accumulate the richest PII an organization holds and are usually built outside the main product's authorization conventions. Test the identifier returned by your own submission before anything else on the target.
+
+### 2026-09-24 — Insecure Direct Object Reference (IDOR) allows creating folders (SingleStore) — n/a (Low)
+- Source: [HackerOne #3353057](https://hackerone.com/reports/3353057)
+- Type: IDOR — write-side / container-level authorization missing
+- Summary: A low-privileged authenticated user could create folders and files inside other users' workspaces by changing the `clusterID` parameter on a `POST` to `/public/notebooks/api/contents/` on `backend.singlestore.com`; the handler never verified that the session owned the referenced workspace.
+- Technique / pattern: Notebook and workspace features expose a filesystem-style API whose container is named in the request. Take a legitimate create request from your own workspace, swap the container identifier for another tenant's, and look for a success rather than a `403`. A write that lands proves the container itself was never authorized — and unlike a read IDOR, nothing in the response gives it away, so the confirmation has to be a follow-up read from the victim side.
+- Takeaway: Write-side IDOR on a container identifier is easy to miss because nothing is disclosed. Authorize the container (`clusterID`, `workspaceId`, `projectId`), not only the rows or paths beneath it.
+
+### 2026-09-23 — Create-only role can read Access Role configuration (Akeyless (Bugcrowd)) — n/a (P5, informational)
+- Source: [Bugcrowd 5f01f264](https://bugcrowd.com/disclosures/5f01f264-c35f-4323-a246-026b1569cd89/broken-access-control-issue)
+- Type: Broken object-level authorization / inconsistent permission model
+- Summary: On the Akeyless console an account granted only Create permission on Access Roles could still read those roles' details and configuration — inconsistent, since the same Create-only grant correctly blocked reads of Secrets, Keys and Auth Methods.
+- Technique / pattern: Built by hand from a permission matrix: bind an Access Role granting Create (and nothing else) across every resource type, authenticate with those restricted credentials, then attempt a read on each resource type and compare which ones answer.
+- Takeaway: When one resource type enforces a permission correctly, use it as the oracle for the others. Differential testing across resource types surfaces the single handler that skipped the check.
+
+### 2026-09-23 — Improper authorization on the App Search credentials API exposes all API keys (Elastic) — bounty awarded (amount undisclosed)
+- Source: [HackerOne #1218680](https://hackerone.com/reports/1218680)
+- Type: Broken object/function-level authorization
+- Summary: A user holding only the Dev role with access limited to specific engines could still call `/api/as/v1/credentials/` directly and read every API key in the deployment, including private keys with read/write access to all engines.
+- Technique / pattern: The engine restriction was enforced in the UI and on engine-scoped routes but not on the account-wide credentials route. A down-scoped role calling the collection endpoint directly, rather than through the product UI, surfaces the gap.
+- Takeaway: Drive a role-by-endpoint permission matrix from the API, not the UI. Scope checks enforced on data routes are frequently absent on credential, billing and settings routes, and exposed keys turn a read bug into privilege escalation.
+
+### 2026-09-23 — IDOR when editing blogs lets any user rewrite another user's site details (Automattic (IntenseDebate)) — bounty awarded (amount undisclosed)
+- Source: [HackerOne #974222](https://hackerone.com/reports/974222)
+- Type: IDOR / missing ownership check on write
+- Summary: The profile editor on IntenseDebate saved website/blog records keyed on a hidden form field, `hidBlogID`, without verifying that the submitting account owned that blog, so any authenticated user could overwrite another user's stored blog and website information.
+- Technique / pattern: The victim's own blog identifier already appeared in page source as `radMainSite`, supplying a valid target id without brute force. Pairing that identifier leak with the write endpoint that consumes the same id demonstrates impact.
+- Takeaway: Hidden form fields are user input. When an object id is rendered into a page somewhere on the site, check whether a write endpoint consumes the same id without an ownership check — the leak provides the target, the missing check provides the impact.
+
+### 2026-09-23 — IDOR in cashier transaction history exposes another customer's email and phone (Unikrn) — n/a
+- Source: [HackerOne #1966006](https://hackerone.com/reports/1966006)
+- Type: IDOR / broken object-level authorization
+- Summary: The transaction-history flow on the Unikrn cashier host tied returned records to a client-supplied object reference rather than to the authenticated session, so a user could retrieve another customer's cashier data including email address and phone number.
+- Technique / pattern: The identifier was carried in the session-handshake request that runs before `cashier/transaction-history`, so the missing ownership check sat in a setup call rather than the final data call. The bug only reproduced mid-handshake, which is why triage first saw it as non-reproducible.
+- Takeaway: In a multi-step flow, an identifier passed during an early setup call is as security-sensitive as one in the final data call. Review authorization on every request in a sequence, and document the exact request order when a finding depends on it.
+
+### 2026-09-23 — IDOR for changing privacy settings on TikTok Now (TikTok) — n/a
+- Source: [HackerOne #1733627](https://hackerone.com/reports/1733627)
+- Type: IDOR / unauthorized write to another user's privacy settings
+- Summary: An endpoint in the TikTok Now Android app accepted another user's object reference without an ownership check, letting any user change the "Who Can View" privacy setting on somebody else's Memory.
+- Technique / pattern: Proxy the mobile app, capture the settings-update call for your own content, and replay it with another user's content id; privacy toggles are attractive targets because a successful write is verified simply by viewing the victim's content afterwards.
+- Takeaway: Privacy and visibility controls are themselves objects needing authorization — an IDOR here does not read data directly, it silently unlocks it for everyone else.
+
+### 2026-09-23 — IDOR on Add services into victims account (Opera Public Bug Bounty) — n/a (P5)
+- Source: [Bugcrowd #46a394f4](https://bugcrowd.com/disclosures/46a394f4-4efc-4694-864f-a5d1b74e17fc/idor_4-on-add-services-into-victims-account)
+- Type: IDOR / unauthorized write to another account
+- Summary: The service-provisioning flow accepted a publisher account reference without checking ownership, letting an authenticated attacker add services into any publisher's account. Disclosed 2021-09-23.
+- Technique / pattern: Enumerate the write-side endpoints of a feature, not just the read-side ones, and swap the account reference in the add/create request; the researcher found this as one of a numbered series, which is the sign of sweeping one parameter across a whole feature.
+- Takeaway: When one IDOR turns up in an application, test the same identifier across every sibling action — the missing check is usually a pattern across the controller, not a one-off.
+
+### 2026-09-23 — IDOR - remove users from community groups (Atlassian — community.atlassian.com) — n/a (P3, 10 points)
+- Source: [Bugcrowd #2fce1eaa](https://bugcrowd.com/disclosures/2fce1eaa-b482-4279-a7c8-8ca89cdad472/idor-remove-users-from-community-groups)
+- Type: IDOR / broken function-level authorization
+- Summary: Group management on the Atlassian community site did not verify that the caller was entitled to modify the group, so any user could remove any other member from a community group by supplying their identifier. Disclosed 2023-07-21.
+- Technique / pattern: Perform the legitimate action on an object you own, capture the removal request, then replay it substituting another member's id; a destructive IDOR is confirmed by the state change rather than by the response body.
+- Takeaway: Membership and moderation endpoints deserve the same object-level checks as data reads — a "remove member" call with no authorization check is a denial-of-service primitive against a whole community.
+
+### 2026-09-23 — Privilege Escalation of Publisher Account due to IDOR (Opera Public Bug Bounty) — n/a (P2, 20 points)
+- Source: [Bugcrowd #d54dbd31](https://bugcrowd.com/disclosures/d54dbd31-5996-4018-acb6-9792f1c09d67/privilege-escalation-of-publisher-account-due-to-idor)
+- Type: IDOR leading to privilege escalation
+- Summary: An object reference in the publisher account area was not bound to the caller's permission level, letting a low-privilege user raise their own permissions. Disclosed 2022-03-23.
+- Technique / pattern: Compare the requests a high-privilege role issues against what a low-privilege account can reach, then replay the privileged call with the low-privilege session and the attacker's own object id.
+- Takeaway: IDOR is not only about reading other people's data — when the referenced object controls roles or entitlements, the same missing check becomes vertical privilege escalation.
+
 ### 2026-09-22 — Blind enumeration of private card names via sort oracle and ID discovery (Trello) — 5 points (P4)
 - Source: [Bugcrowd #0ecb51a3](https://bugcrowd.com/disclosures/0ecb51a3-2064-4f9d-aa19-aa7b6ae21812/blind-enumeration-of-private-card-names-via-sort-oracle-and-id-discovery)
 - Type: IDOR / broken object-level authorization via side channel

@@ -12,6 +12,118 @@ Disclosed **exposed API / sensitive information disclosure** reports — leaked 
 
 ## Reports
 
+### 2026-09-24 — One-click data exfiltration via the rovoChatPrompt URL parameter in Confluence Rovo (Atlassian) — $6,000 (P2)
+- Source: [Bugcrowd bf1922fb](https://bugcrowd.com/disclosures/bf1922fb-99d0-4d3b-b419-1728720d29ec/one-click-data-exfiltration-via-rovochatprompt-url-parameter-confluence-rovo)
+- Type: Prompt injection via a URL parameter — sensitive information disclosure through an AI assistant
+- Summary: A link carrying attacker-written instructions in the `rovoChatPrompt` parameter was executed by Rovo as though the victim had typed it. The prompt had the assistant gather data the victim could access, then fetch an "image" from an attacker-controlled host with that data embedded in the URL path — exfiltrating Confluence pages, internal documents and API keys on a single click.
+- Technique / pattern: Any parameter that pre-fills an AI assistant's input is an injection sink, and the assistant runs with the victim's privileges. Outbound rendering — images, link previews, webhooks — is the exfiltration channel. Guardrails were bypassed by indirection ("help me identify the bird from the image") rather than by stating the goal outright.
+- Takeaway: Treat a URL-supplied prompt as untrusted input that must never auto-execute, and constrain what an assistant may fetch outbound; a model that can both read private data and request an arbitrary URL is a complete exfiltration primitive.
+
+### 2026-09-24 — Hidden VPN help page exposed by tampering with a Pulse Connect Secure URL parameter (Department of the Interior VDP) — n/a (P5)
+- Source: [Bugcrowd a4e04494](https://bugcrowd.com/disclosures/a4e04494-3100-4c52-98b7-4f7a7e087266/information-disclosure-via-url-tampering)
+- Type: Information disclosure — an undocumented view reachable by changing a page-selector parameter
+- Summary: Changing `p=no_cert` to `p=help` on a Pulse Connect Secure portal's `welcome.cgi` endpoint rendered a built-in help page disclosing the organisation's username format, links to other VPN endpoints and a support contact address.
+- Technique / pattern: Parameters that select which view to render are enumerable — collect the values a product's documentation or source defines and try each one. The payoff is rarely a session; it is the reconnaissance that makes password spraying and social engineering work, since a known username format converts an email list into a credential list.
+- Takeaway: Vendor appliances ship views the operator never chose to publish; audit what each parameter value renders after deployment, and treat username format as sensitive rather than cosmetic.
+
+### 2026-09-24 — Jira admin API token hardcoded in a script shared in a public Slack channel (Mozilla) — n/a
+- Source: [HackerOne #2467999](https://hackerone.com/reports/2467999)
+- Type: Credential disclosure — secret leaked through a chat attachment
+- Summary: A script posted in a publicly joinable Slack channel contained a hardcoded Jira admin API token that granted administrative access to Mozilla's Jira. The key was revoked and the script deleted from the channel.
+- Technique / pattern: Secrets leak wherever code is shared informally, not only in repositories — public chat channels, issue attachments, support tickets, CI logs and pastebins. For programs whose scope permits it, searching public community spaces for uploaded scripts and configuration snippets is as productive as scanning git history.
+- Takeaway: Anywhere that accepts file uploads is a secret store nobody is scanning; keep tokens out of scripts entirely, and point automated secret detection at chat uploads rather than only at commits.
+
+### 2026-09-24 — Publicly accessible WordPress debug.log discloses server paths and plugin detail (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #3318295](https://hackerone.com/reports/3318295)
+- Type: Information disclosure — framework debug log served over HTTP
+- Summary: A WordPress installation left its `debug.log` readable under the content directory; the PHP warnings and deprecation notices inside disclosed absolute server paths along with the names and versions of installed plugins.
+- Technique / pattern: Request the framework's conventional log location directly (`wp-content/debug.log` and its siblings) rather than waiting for a linked index. The content is the value: plugin names and versions map straight onto known CVEs, and absolute paths supply the prefix that local file inclusion and log-poisoning chains need.
+- Takeaway: A debug log is an unauthenticated inventory of the stack; disable `WP_DEBUG_LOG` in production, and where logging must stay on, write it outside the web root and block the path at the server.
+
+### 2026-09-24 — Exposed credentials in a public .env file on a NASA git repository (NASA VDP) — n/a (P3)
+- Source: [Bugcrowd a9ba7ee3](https://bugcrowd.com/disclosures/a9ba7ee3-bb0e-4945-9834-34171056a680/exposed-credentials-in-public-env-file-on-nasa-git-repository)
+- Type: Sensitive information disclosure — secrets committed to a public repository
+- Summary: A `.env` file containing credentials was publicly readable on a NASA git repository. The researcher found it through search-engine dorking, with no interaction with a live application at all.
+- Technique / pattern: Dorking is still the cheapest first pass over a large scope, because the index has already done the crawling and therefore surfaces files nothing links to any more. Combine a `site:` restriction with the artifact name and a distinctive key — a `site:`/`ext:env` pair, or a search for `DB_PASSWORD`, `SECRET_KEY` or `AWS_ACCESS_KEY_ID` alongside the organization's domains and repository hosts. Report the exposure and the need for rotation; do not authenticate with a discovered credential, since possession is the finding and use is generally out of scope.
+- Takeaway: `.env`, `config.json`, `settings.py` and backup files keep leaking through search indexes long after the link is gone. The remediation is rotation, not deletion — a committed secret survives in git history and in caches.
+
+### 2026-09-24 — Unauthenticated restricted file read and out-of-tree file disclosure via GetVectorFile.php (NASA VDP) — n/a (P1)
+- Source: [Bugcrowd 72e039d9](https://bugcrowd.com/disclosures/72e039d9-7e6c-4548-b1c3-4e278e573c6e/unauthenticated-restricted-file-read-and-out-of-tree-file-disclosure-via-getvectorfile-php)
+- Type: Information disclosure — arbitrary file read through a legacy download handler
+- Summary: `GetVectorFile.php` served files from outside the intended application scope to unauthenticated requesters, including protected application files and host operating-system information. It was validated with non-destructive proof-of-concept requests and resolved by the program.
+- Technique / pattern: Legacy server-rendered file handlers (`GetVectorFile.php`, `download.jsp`, `GetFile.ashx`, `Download.aspx`) are wired straight to the filesystem and sit outside whatever middleware guards the modern `/api/*` routes. Find them by grepping HTML and JavaScript for handler paths rather than crawling the JSON API, then test the filename parameter for traversal sequences and for absolute paths. Prove impact with an application config file — which usually holds credentials — plus one harmless OS file, and stop there.
+- Takeaway: File-serving endpoints are an object store with no authorization layer in front of them. Inventory them separately from the API, and rate the finding by what the readable files contain: an app-config read is normally a credential compromise, not a disclosure nit.
+
+### 2026-09-24 — Unauthenticated account registration + email verification bypass + PII leak of 2,480 records (Essity) — n/a (Medium)
+- Source: [HackerOne #3737516](https://hackerone.com/reports/3737516)
+- Type: Exposed API / information disclosure through an authentication-gate bypass chain
+- Summary: A portal intended only for authorized employees and partners exposed a public registration API. An unauthenticated attacker could register an account, bypass the email-verification gate by running the password-reset flow against the still-pending account, log in as an "active" user, and then reach protected API endpoints returning 2,480 employee records (names, emails, profile URLs) — defeating both the SAML SSO requirement and the verification gate.
+- Technique / pattern: Three links, each trivial on its own. The CSRF token needed to register was served from an unauthenticated endpoint (`/actions/blitz/csrf/json`), so that "protection" was self-service. The password-reset flow set the account active as a side effect — reset and verification are two routes to the same state flag, and hardening one rarely hardens the other. Once any session existed, the data APIs authorized on "is logged in" rather than on role or SSO provenance. Run the reset flow against accounts in every lifecycle state: pending, unverified, disabled, deleted.
+- Takeaway: SSO in front of a portal means nothing while a legacy local-registration path still exists behind it. Enumerate every way an account can reach the "active" state, and check whether the data APIs distinguish an SSO-provisioned identity from any authenticated session at all.
+
+### 2026-09-24 — Unauthenticated API allows reading, writing to and deleting any user's private chat history (Essity) — n/a (Critical)
+- Source: [HackerOne #4020767](https://hackerone.com/reports/4020767)
+- Type: Exposed API — authentication enforced on one route, absent on every sibling
+- Summary: An internal Microsoft Teams chatbot backed by a retrieval-augmented knowledge base and Azure OpenAI also exposed an HTTP API with no authentication on any of its data routes. The Bot Framework webhook `/api/messages` correctly returned `401 Missing Authorization header from Bot Service`, but `/api/sessions` (`GET`), `/api/sessions/<session_id>` (`DELETE`), `/api/sessions/<session_id>/history` (`GET`), `/api/chat` (`POST`), `/api/feedback` and `/api/health` were all open — letting an unauthenticated attacker on the internet list every conversation, read any conversation's full message history, create conversations and drive the LLM backend, and delete any conversation. The same API was exposed on the development instance.
+- Technique / pattern: Enumerate the whole route table, not the route the product is documented around. The entire API surface here was seven routes and exactly one was protected — a shape that recurs whenever authentication arrives with a framework integration (a bot webhook, an OAuth callback, a payment webhook) instead of being applied as middleware across the app. Note too that the only control on `/api/chat` was an Azure Application Gateway WAF rule blocking JSON bodies containing the key `session_id`, and a WAF rule is not authentication.
+- Takeaway: Where one route's auth is supplied by an SDK rather than by the application, assume the neighbouring routes have none. Then look for the sibling development or staging host: it almost always shares the deployment and rarely gains the fix first.
+
+### 2026-09-23 — Directory listing on an unauthenticated extranet path leaks source and internal docs (NASA (Bugcrowd)) — n/a (P3)
+- Source: [Bugcrowd ff4614f2](https://bugcrowd.com/disclosures/ff4614f2-3260-4653-ab10-16fccbb6bb58/login-bypass-leads-to-internal-information-disclosure)
+- Type: Information disclosure / broken access control + directory listing
+- Summary: An extranet path intended to be restricted was reachable without authentication and had directory listing enabled, exposing proprietary source code and internal collaboration documents to anyone who requested the path.
+- Technique / pattern: The pattern is a supposedly private path served with autoindex on and no auth gate; content discovery against the directory reveals the enumerable file tree and its downloadable contents.
+- Takeaway: "Private" network zones and extranet paths still need enforced authentication and directory listing disabled. An unauthenticated, browsable directory turns a broken access-control issue into bulk source and document exposure.
+
+### 2026-09-23 — Exposed `.old` backup file discloses internal structure (NASA (Bugcrowd)) — n/a (P5, informational)
+- Source: [Bugcrowd 0c52ff12](https://bugcrowd.com/disclosures/0c52ff12-28ba-4257-95d6-eae2ba2ec97d/sensitive-information-disclosure)
+- Type: Information disclosure / exposed backup artifact
+- Summary: A NASA SOHO subdomain served a leftover `index.html.old` backup file at a predictable path, revealing internal page structure and directory references useful for reconnaissance (no credentials or PII were exposed).
+- Technique / pattern: Detected by requesting common backup/temporary suffixes (`.old`, `.bak`, `.swp`, `~`) alongside known page paths — a routine content-discovery check for development artifacts left in production.
+- Takeaway: Backup and editor-temporary files are a persistent low-effort information leak. Add backup-suffix probing to content discovery, and keep such artifacts out of web-served directories.
+
+### 2026-09-23 — Internal report attachments retrievable through the "Export as .zip" feature (HackerOne) — $12,500
+- Source: [HackerOne #186230](https://hackerone.com/reports/186230)
+- Type: Information disclosure / access-control gap in export
+- Summary: A newly shipped "Export as .zip" feature bundled attachments that should have stayed internal, and an attachment removed from a disclosed report's thread still appeared inside the exported archive. Root-cause work also flagged that inline attachments could be reached by guessing attachment identifiers.
+- Technique / pattern: The pattern is an export/download path re-deriving its contents without re-applying the visibility rules of the primary view. Comparing what the public report shows against what its export contains reveals the gap.
+- Takeaway: Export, print and download features must reapply the same authorization and redaction as the primary view, and a removed item must be gone from every representation. Re-test data-visibility bugs against secondary output formats.
+
+### 2026-09-23 — Report metadata inferable via timing side channel on JSON endpoints (HackerOne) — n/a
+- Source: [HackerOne #350432](https://hackerone.com/reports/350432)
+- Type: Information disclosure / timing side channel
+- Summary: Chaining incremental report IDs, distinguishable HTTP status codes for authenticated vs unauthenticated requests, and response-timing measurement against unauthenticated JSON endpoints created a theoretical path to infer counts of reports matching given criteria. HackerOne judged it not reliably exploitable and later moved the endpoints behind authenticated GraphQL.
+- Technique / pattern: The building blocks are generic: sequential identifiers leak volume between two known IDs, differing status/error responses reveal auth state, and browser timing APIs measure response size differences on endpoints that lack authentication.
+- Takeaway: Predictable sequential IDs plus unauthenticated JSON endpoints leak aggregate information even when individual records are protected. Prefer non-sequential identifiers and require authentication on data endpoints.
+
+### 2026-09-23 — Information Disclosure or 403 Bypass via an archived copy of a protected directory (NASA VDP) — n/a (P3)
+- Source: [Bugcrowd #b781d060](https://bugcrowd.com/disclosures/b781d060-ee5c-4ef6-963f-b174d089c8ba/information-disclosure-or-403-bypass)
+- Type: Access control bypass / information disclosure
+- Summary: Direct requests to an endpoint returned `403 Forbidden`, but an archive of the same directory was downloadable without restriction, so extracting it yielded the protected contents. Disclosed 2025-01-21; resolved by removing the archive.
+- Technique / pattern: When a path returns `403`, look for a parallel representation of the same data — a `.zip` or `.tar.gz` sibling, a backup copy, a cached or mirrored version — since access control is usually applied per route rather than per resource.
+- Takeaway: A `403` protects one route, not the underlying data; always check whether the same content is reachable through an archive, export or alternate path before writing the endpoint off.
+
+### 2026-09-23 — Exposed .svn Metadata Leads to Information Disclosure and Unauthenticated File Access (NASA VDP) — n/a (P2)
+- Source: [Bugcrowd #2b53813a](https://bugcrowd.com/disclosures/2b53813a-7264-46ed-9df9-ae2215c8353d/exposed-svn-metadata-leads-to-information-disclosure-and-unauthenticated-file-access)
+- Type: Exposed version-control metadata / unauthenticated file access
+- Summary: A Subversion metadata directory was served publicly on a NASA portal; the `.svn/entries` file disclosed repository paths, the full file structure, timestamps and MD5 checksums, and the referenced files could then be fetched without authentication. Disclosed 2025-10-31.
+- Technique / pattern: Request version-control metadata paths such as `.svn/entries`, `.git/config` and `.git/HEAD` on every host, then use the recovered file list as a map for retrieving individual files directly.
+- Takeaway: Leftover VCS metadata turns a blind directory into an index — the finding is not the metadata file itself but the unauthenticated reads it makes possible.
+
+### 2026-09-23 — IDOR in Report CSV export discloses IDs of Custom Field Attributes of Programs (HackerOne) — n/a
+- Source: [HackerOne #510759](https://hackerone.com/reports/510759)
+- Type: Exposed API / information disclosure via bulk export
+- Summary: The `POST /reports/export` endpoint accepted arbitrary `report_ids[]` values without checking team ownership, and the generated CSV header leaked the custom-field attribute ids belonging to other teams.
+- Technique / pattern: Point export, report-generation and bulk-download endpoints at identifiers you do not own, and read the metadata of the result — headers, column names and filenames — not just the rows, which may legitimately come back empty.
+- Takeaway: Export endpoints are a frequently unguarded parallel path to data the UI protects, and generated headers can disclose internal identifiers even when the body does not.
+
+### 2026-09-23 — User object in GraphQL exposes private program information (HackerOne) — n/a
+- Source: [HackerOne #350964](https://hackerone.com/reports/350964)
+- Type: Exposed API / GraphQL information disclosure
+- Summary: A GraphQL query reachable by anyone holding admin or member access to a single sandbox team revealed whether external programs existed in the directory, including programs configured as private.
+- Technique / pattern: From the lowest-privilege account that can reach the schema, walk related objects outward from the user node and look for fields that answer existence questions; leaking "this program exists" is a disclosure even when no attributes are returned.
+- Takeaway: GraphQL's object graph lets a low-privilege node reach high-privilege neighbours — authorization has to live on each field and edge, and existence itself is sometimes the confidential fact.
+
 ### 2026-09-22 — Unauthenticated disclosure of organizer email addresses via The Events Calendar REST API, CVE-2025-9808 (NASA VDP) — n/a (P5)
 - Source: [Bugcrowd #08b14f25](https://bugcrowd.com/disclosures/08b14f25-72b5-4d36-83a3-5aeb1e3f11cc/unauthenticated-disclosure-of-nasa-organizer-email-addresses-via-the-events-calendar-rest-api-cve-2025-9808)
 - Type: Over-exposed plugin REST endpoint (information disclosure)

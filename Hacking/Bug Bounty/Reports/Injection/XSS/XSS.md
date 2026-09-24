@@ -12,6 +12,48 @@ Disclosed **Cross-Site Scripting** reports — reflected, stored, and DOM-based.
 
 ## Reports
 
+### 2026-09-24 — Stored XSS via a video/mp2t MIME deny-list bypass leads to REST API authentication bypass (Atlassian Confluence Data Center) — $3,600 (P2)
+- Source: [Bugcrowd d5f4aa80](https://bugcrowd.com/disclosures/d5f4aa80-77da-49bb-a259-afe23b6bfa0a/authentication-bypass-in-the-rest-api-via-xss-on-safari-and-chrome-ios-iphone-only)
+- Type: Stored XSS — MIME deny-list bypass with browser-specific rendering
+- Summary: Confluence blocked dangerous upload types with a deny-list that omitted `video/mp2t`. An HTML payload uploaded under a `.png` name with its `Content-Type` rewritten to `video/mp2t` passed validation, and WebKit browsers on iOS rendered it as HTML — the payload then minted a Personal Access Token in the victim's account, giving persistent API access.
+- Technique / pattern: Upload a benign-looking file, intercept the request and rewrite only the declared MIME type, then walk a list of uncommon types looking for one the deny-list missed. Rendering behaviour is per-engine, so a type that is inert in desktop Chrome can still execute on iOS WebKit — re-test served uploads on mobile engines before calling them safe.
+- Takeaway: Content-type deny-lists fail the moment one browser disagrees about what is renderable; allow-list the few types you actually serve, and serve user uploads from a separate origin with `Content-Disposition: attachment`.
+
+### 2026-09-24 — Author to stored XSS in wp-admin via unescaped sub-size filename in get_media_item() (WordPress) — n/a (Critical)
+- Source: [HackerOne #3931771](https://hackerone.com/reports/3931771)
+- Type: Stored XSS — attribute-context breakout from attachment metadata
+- Summary: The REST attachments controller stored the attacker-supplied `sub_sizes[].file` string verbatim into `_wp_attachment_metadata['sizes'][...]['file']` — no `sanitize_file_name()`, no `pattern`, no `sanitize_callback`. `image_get_intermediate_size()` then string-concatenated that raw value into the image URL and `get_media_item()` echoed the result into a single-quoted `src` attribute with no escaping at all, so a filename containing `'` closed the attribute and the `<img>` element and injected arbitrary markup into an administrator's `wp-admin` page.
+- Technique / pattern: Trace a stored value across three hops — the write (schema and validation), the transform (concatenation into a URL) and the render (which quoting context it lands in). The tell at the write here was a REST schema declaring only `array( 'type' => 'string' )`: a field that is typed but never constrained. The impact multiplier is the render surface: `get_media_items()` draws *every* attachment in the library, so one poisoned upload fires for every administrator who opens the Media screen, with no targeting or social engineering.
+- Takeaway: Metadata written by one endpoint and rendered by another crosses a trust boundary neither side owns. Audit the `sanitize_callback` and `pattern` at the write *and* the escaping at the render, and rate a stored XSS by how many privileged users the rendering surface reaches automatically.
+
+### 2026-09-23 — HTML injection via client-side prototype pollution on the Tesla toolbox app (Tesla (Bugcrowd)) — $200
+- Source: [Bugcrowd 57b28008](https://bugcrowd.com/disclosures/57b28008-4653-4dec-88c3-4d38e40023ff/toolbox-teslamotors-com-html-injection-via-prototype-pollution-potential-xss)
+- Type: Prototype pollution → HTML injection (CSP-limited)
+- Summary: The `backbone.queryparams.js` library mapped URL query parameters onto a JavaScript object without guarding reserved keys, so a crafted query string could write onto `Object.prototype` and inject attacker-controlled HTML into the rendered page.
+- Technique / pattern: Detected with a harmless canary parameter (writing a marker key via `__proto__`) and checking whether it appeared on `Object.prototype` in the console — a quick site-wide test wherever query strings are mapped onto objects. Inline script was blocked by CSP, so impact was shown with markup-only elements, including a full-screen iframe rendering a fake login overlay.
+- Takeaway: Run a prototype-pollution canary on any page that parses query strings into objects. A strong CSP caps script execution but does not stop HTML injection, and a full-screen injected iframe is a credible phishing primitive on its own.
+
+### 2026-09-23 — Account takeover via DOM-based XSS in the Microsoft Teams integration (Trello / Atlassian (Bugcrowd)) — $3,600
+- Source: [Bugcrowd 81d71c8d](https://bugcrowd.com/disclosures/81d71c8d-952e-450c-82d9-f7ef8cfd7fe5/account-takeover-at-https-trello-com)
+- Type: DOM-based XSS → session hijack
+- Summary: Trello's Teams-tab integration loaded an attacker-controllable `contentUrl` parameter into an iframe without validating its scheme or origin, allowing script execution in the Trello origin. Session cookies lacking `HttpOnly` were then readable from script.
+- Technique / pattern: Found by enumerating the app's embed/integration routes rather than the main UI, then tracing `contentUrl` from the query string to the iframe sink. Impact followed from cookies missing the `HttpOnly` flag being reachable by page script.
+- Takeaway: Integration surfaces such as Teams/Slack tabs and embed routes belong to the main origin's attack surface and are often exempt from the product UI's hardening. A missing `HttpOnly` flag is what escalates an XSS to account takeover.
+
+### 2026-09-23 — Clipboard DOM-based XSS (GitLab) — n/a
+- Source: [HackerOne #1196958](https://hackerone.com/reports/1196958)
+- Type: DOM-based XSS via clipboard data
+- Summary: GitLab's `copy_as_gfm.js`, which moves GitHub Flavored Markdown into and out of the clipboard, did not sanitise pasted content, so a payload crafted on an attacker-controlled page executed when a victim copied it and pasted into any GitLab markdown field.
+- Technique / pattern: Treat the clipboard as an untrusted input source: host a page that writes crafted HTML into the copy buffer, paste it into the target's rich-text or markdown editor, and watch whether the paste handler reconstructs markup instead of escaping it.
+- Takeaway: Paste handlers and rich-text converters are an overlooked DOM XSS sink — anything that parses `text/html` from a `DataTransfer` object is processing attacker-controlled markup.
+
+### 2026-09-23 — Stored Cross-Site Scripting (XSS) in Blog Title Field (NASA VDP — globe.gov) — n/a (P2)
+- Source: [Bugcrowd #a38df6f3](https://bugcrowd.com/disclosures/a38df6f3-d632-47a2-b3d1-a65096db82c8/stored-cross-site-scripting-xss-in-blog-title-field-globe-community-blogs-community-blogs)
+- Type: Stored XSS (non-privileged user to anyone)
+- Summary: The blog title field on the community blogs feature stored markup unescaped, so a payload placed in a post title executed in the browser of every user who loaded the community blogs listing at `/globe-community/blogs/community-blogs`. Disclosed 2024-03-20.
+- Technique / pattern: Submit a non-`script` event-handler payload such as `<svg/onload=prompt(document.domain)>` in the title, then visit the listing page where titles are rendered; event-handler vectors survive filters that only strip `script` tags.
+- Takeaway: Titles, names and other "short" fields are often escaped on the detail page but forgotten on listing and index pages — test every place a stored value is rendered, not just the obvious one.
+
 ### 2026-09-22 — Stored XSS in /admin/products and /admin/collections rich-text HTML editor (Shopify) — $5,300
 - Source: [HackerOne #1147433](https://hackerone.com/reports/1147433)
 - Type: Stored XSS (rich-text editor HTML mode)

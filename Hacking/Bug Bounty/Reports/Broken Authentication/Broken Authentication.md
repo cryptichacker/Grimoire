@@ -12,6 +12,118 @@ Disclosed **broken authentication & session management** reports — account tak
 
 ## Reports
 
+### 2026-09-24 — Authentication bypass through HTTP request smuggling on apm.ap.tesla.services (Tesla) — 40 points (P3)
+- Source: [Bugcrowd 5e1f7404](https://bugcrowd.com/disclosures/5e1f7404-5421-4f3d-916a-443446afbb52/authentication-bypass-through-http-request-smuggling-on-https-apm-ap-tesla-services)
+- Type: HTTP request smuggling (CL.TE) — front-end authentication bypassed
+- Summary: The front end and back end disagreed about request length when both `Content-Length` and `Transfer-Encoding: chunked` were present, letting a second request be smuggled past the proxy that enforced authentication. The normally `401` endpoint `/metrics` returned its contents.
+- Technique / pattern: Where authentication lives in a reverse proxy rather than in the application, a desync becomes an authorization bypass for every route behind it. Confirm the desync with timing behaviour first, then prove impact by smuggling a request to a known-protected path and watching the status change from `401` to `200`.
+- Takeaway: An edge-enforced auth control is only as sound as the two servers' agreement about where one request ends; the fix is consistent parsing, not another rule at the edge.
+
+### 2026-09-24 — Session not invalidated on password change on my.zapinfo.io (Indeed) — $100 (P4)
+- Source: [Bugcrowd cbd696e7](https://bugcrowd.com/disclosures/cbd696e7-85cc-45d4-932c-089d0a276a02/session-is-not-invalidated-on-password-change-https-my-zapinfo-io)
+- Type: Broken session management — no server-side revocation after a credential change
+- Summary: On the ZapInfo platform, which carried its own credential store alongside Indeed credentials, existing sessions stayed valid after a password change, so an attacker holding a stolen session kept access straight through the victim's remediation.
+- Technique / pattern: Sign in from two browsers, change the password in one, and keep issuing authenticated requests from the other. Test this separately for every credential path the application supports — a product that added local credentials beside an SSO provider often wires revocation into only one of them.
+- Takeaway: Changing a password is the user's remediation step; if it does not revoke sessions server-side it is only a UI gesture, and which login path was used decides whether the revocation code runs at all.
+
+### 2026-09-24 — Internal admin panel reached by bypassing OAuth and generating a valid session (Mapbox) — n/a
+- Source: [HackerOne #294911](https://hackerone.com/reports/294911)
+- Type: Authentication bypass — session established without a completed OAuth verification
+- Summary: Mapbox's internal portal created its application session in a way that did not depend on the OAuth verification having succeeded, so a valid session could be generated directly and used to read data behind the admin interface. Mapbox fixed it by reworking session handling.
+- Technique / pattern: Treat the identity-provider handshake and the local session as two separate things. After the redirect back from the provider, replay or tamper with the callback and check whether the application still issues a session — the flaw is almost always in the step that converts the provider's answer into a local cookie.
+- Takeaway: OAuth proves who the user is; it does not by itself decide who gets a session. Bind session creation to a server-side validated assertion and to the authorization state that started the flow.
+
+### 2026-09-24 — Authentication bypass via improper input validation in the login-token method (Rocket.Chat) — n/a
+- Source: [HackerOne #1447619](https://hackerone.com/reports/1447619)
+- Type: Authentication bypass — unvalidated request data forwarded to a login handler
+- Summary: Data from HTTP POST requests was forwarded to Rocket.Chat's hardcoded login handlers, including the `login-token` method, without adequate validation of the supplied token, opening a path to authenticate as another user.
+- Technique / pattern: Applications built on Meteor-style method dispatch expose every registered login handler to whatever the HTTP layer forwards. Enumerate the handlers the framework registers and send each a type-confused argument — an object or array where a string token is expected — since handlers commonly validate the value but not its type.
+- Takeaway: Every login handler a framework registers is an authentication entry point; validate the type and shape of credentials at the HTTP boundary, before dispatch picks a handler.
+
+### 2026-09-24 — Authentication bypass: session created for NASA SIPS administrator account with any password (NASA VDP) — n/a (P2)
+- Source: [Bugcrowd ac8d1f0e](https://bugcrowd.com/disclosures/ac8d1f0e-c0cf-4784-97b2-ba10e7b49da4/authentication-bypass-session-created-for-nasa-sips-administrator-account-with-any-password)
+- Type: Broken authentication — login endpoint issues a session despite failed password validation
+- Summary: A NASA SIPS backend API login endpoint contained improper password-validation logic: submitting an administrative username with an arbitrary password still resulted in a session being created, giving unauthorized access to the administrative account. Triaged P2 and remediated; no sensitive data was exfiltrated during discovery.
+- Technique / pattern: Compare the *whole* response to a wrong-password attempt against one for a known-bad username, rather than reading the status line. The tells are a `Set-Cookie` or token issued alongside an apparent failure, a body that says "invalid" while the session behind it is already valid, or a front end that blocks on a flag the backend never enforces. Then replay the cookie you were handed against a protected route — that, and not the login response, is the proof.
+- Takeaway: A login endpoint has two outcomes that must never drift apart: the message and the session. Always replay the cookie from a "failed" login against an authenticated route before accepting that the login actually failed.
+
+### 2026-09-24 — SAML authentication bypass leading to unauthenticated admin takeover on scijinks.gov / nesdis.noaa.gov (NASA VDP) — n/a (P1)
+- Source: [Bugcrowd abfa03c7](https://bugcrowd.com/disclosures/abfa03c7-9c7d-46f7-b255-9766199dac4a/saml-authentication-bypass-leading-to-unauthenticated-admin-takeover-on-scijinks-gov-nesdis-noaa-gov)
+- Type: Broken authentication — SAML assertion accepted with no signature validation
+- Summary: The SAML Assertion Consumer Service endpoint at `/saml/acs` did not verify that incoming SAML responses were cryptographically signed by the trusted identity provider. A fabricated response carrying no digital signature at all was accepted and processed, so supplying an arbitrary `NameID` yielded a fully authenticated Drupal administrator session in a single unauthenticated HTTP request. Both `scijinks.gov` and `nesdis.noaa.gov` were affected because they share one Drupal instance.
+- Technique / pattern: Locate the ACS route (`/saml/acs`, `/saml/consume`, `/sso/acs`, `/simplesaml/module.php/saml/sp/saml2-acs.php`) and `POST` a self-made `SAMLResponse` to it directly instead of driving the IdP login UI. Escalate in order: no signature at all, then a self-signed signature, then signature wrapping of a legitimate assertion — the no-signature case is the fastest and is exactly what failed here. Map which other hostnames share the back end, because an ACS flaw on an obscure domain can own the flagship one.
+- Takeaway: The ACS endpoint is unauthenticated by definition, which makes it the highest-value route in any SSO deployment. Test it as a raw `POST`, and always check which hostnames sit on the same CMS instance.
+
+### 2026-09-24 — Authentication bypass in ID4me handling via missing JWT signature verification in User OIDC (Nextcloud) — $2,500
+- Source: [HackerOne #3489490](https://hackerone.com/reports/3489490)
+- Type: Broken authentication — unverified JWT signature in a federated OIDC flow (CVSS 8.1, High)
+- Summary: The Nextcloud User OIDC app, in versions from `0.3.0` through the `6.0.0` line, did not verify the signature on JWTs received through the ID4me identity-discovery flow, so a malicious or attacker-controlled ID4me authority could forge a token and impersonate any user on an affected instance. Fixed in `3.1.0`, `4.1.0`, `5.1.0`, `6.4.0` and `8.3.0`, with disabling ID4me offered as the workaround.
+- Technique / pattern: In federated identity the trust question has two halves — is this token signed, and is the signer the issuer we trust for this user. ID4me-style discovery resolves the identity provider dynamically from the identifier the user types, so the second half is attacker-influenced by design and the signature check becomes the only remaining boundary. On open-source targets, read the token-handling path directly and look for a decode call standing where a verify call belongs: `parse` instead of `verify`, `decode(..., verify: false)`, or a JWKS that is fetched but never applied.
+- Takeaway: Dynamic issuer discovery combined with unverified signatures is a total authentication bypass. Any code path that turns a user-supplied identifier into an issuer URL needs both signature verification and an issuer allow-list.
+
+### 2026-09-24 — 1-Click Account Takeover via Open Redirect through Regex Bypass in Domain Validation (Khan Academy) — n/a (Critical)
+- Source: [HackerOne #3723458](https://hackerone.com/reports/3723458)
+- Type: Broken authentication — transfer-token leak via an unescaped dot in a domain allow-list regex
+- Summary: Khan Academy's cross-domain login used a `continue` parameter to mint a one-time transfer auth token and pass it in the URL to another Khan Academy subdomain. The `KA_DOMAIN_REGEX` validating that redirect target contained an unescaped dot, so an attacker could register a domain that satisfied the pattern, receive the victim's transfer token, and replay it on a legitimate Khan Academy domain to obtain a full session (`KAAS`, `KAAL`, `KAAC` cookies) as the victim.
+- Technique / pattern: Two reusable moves. First, parameters named `continue`, `next`, `returnTo` or `redirect_uri` on an apex domain often trigger a cross-domain authentication handshake rather than a plain redirect — watch for a token appearing in the outbound URL, which is the whole finding. Second, the validating regex is usually shipped to the client: the researcher recovered `KA_DOMAIN_REGEX` from a leaked source map and then read it for the classic flaws — an unescaped `.` matching any character, a missing `$` anchor, a missing `^`.
+- Takeaway: A secret travelling through a redirect URL is only as strong as the allow-list validating that URL, and that allow-list is usually a regex you can read out of the bundle or its source map. Validate redirect targets against an exact host allow-list, never a pattern.
+
+### 2026-09-23 — 2FA can be disabled without confirming the account password (Localize (HackerOne)) — bounty awarded (amount undisclosed)
+- Source: [HackerOne #783258](https://hackerone.com/reports/783258)
+- Type: Broken authentication / missing re-authentication on 2FA disable
+- Summary: The `/api/user/two-factor/set` endpoint let a logged-in session turn off (or reconfigure) two-factor authentication without supplying the account password, so anyone holding a session cookie could strip 2FA and reconfigure it.
+- Technique / pattern: Observed by capturing the legitimate disable request and noting the server acted on it without any password field — the check for re-authentication on a security-downgrade action was simply absent.
+- Takeaway: Disabling or re-enrolling 2FA is a security-downgrade action and must require a fresh password (or step-up) check server-side. A session cookie alone should never be enough to remove a second factor.
+
+### 2026-09-23 — 2FA requirement bypassed via the embedded submission form (HackerOne) — $10,000
+- Source: [HackerOne #418767](https://hackerone.com/reports/418767)
+- Type: Broken authentication / inconsistent enforcement of a security control
+- Summary: A program required reporters to enable 2FA before submitting, but that requirement was enforced only on the standard submission page; the embedded submission form at `hackerone.com/[program]/embedded_submissions/new` performed no equivalent check, so reports could be filed without 2FA. Investigation also surfaced a separate attachment-access issue, raising the total award.
+- Technique / pattern: Found by locating an alternate entry point to the same action — the embedded form linked from the program policy page — and confirming the gate present on the primary path was missing there.
+- Takeaway: A security control has to be enforced on every path to an action, not just the main UI. Embedded, legacy and API entry points to the same operation are where inconsistent enforcement hides.
+
+### 2026-09-23 — Email address change without verification enabling password-reset takeover (NASA (Bugcrowd)) — n/a (P5, informational)
+- Source: [Bugcrowd 2b1f3782](https://bugcrowd.com/disclosures/2b1f3782-127b-4265-acb1-53da1ff66a5c/able-to-change-email-address-without-any-verification-cause-account-takeover)
+- Type: Broken authentication / missing verification on sensitive change
+- Summary: The account settings flow allowed changing the registered email address with no verification of the new address or re-authentication, which an attacker with a briefly unattended session could chain into a password reset to the new address.
+- Technique / pattern: The test is whether a sensitive-field change (email, phone, recovery address) requires re-authentication or a confirmation step; here it required neither, so the new address could immediately receive a reset link.
+- Takeaway: Treat email/phone/recovery changes as sensitive actions gated by password re-entry or a confirmation link to the old address. An unverified email change quietly becomes an account-recovery bypass.
+
+### 2026-09-23 — Sessions not invalidated after password reset (Atlassian (Bugcrowd)) — n/a (P4, informational)
+- Source: [Bugcrowd 19c9f3c7](https://bugcrowd.com/disclosures/19c9f3c7-e60a-4d29-8cfe-ea2be0b64549/failure-to-invalidate-session-after-password-reset)
+- Type: Broken authentication / session management
+- Summary: On Atlassian Identity, changing an account password did not terminate other active sessions, so a session established before the reset stayed authenticated afterwards.
+- Technique / pattern: Demonstrated by logging into one account in two browsers, changing the password in one, and confirming the second browser remained logged in — the canonical test for session invalidation on credential change.
+- Takeaway: A password reset is the primary way a user evicts an attacker, so it must revoke all other sessions server-side. Test that credential changes invalidate concurrent sessions, not just the current one.
+
+### 2026-09-23 — Improper access control in the email/authentication tab (Weblate) — n/a
+- Source: [HackerOne #223434](https://hackerone.com/reports/223434)
+- Type: Broken authentication / account identity management
+- Summary: A flaw in how confirmed and secondary email addresses were added and removed in the authentication tab allowed the account's verified identity set to be manipulated in a way the confirmation flow was meant to prevent.
+- Technique / pattern: Walk the full lifecycle of a secondary identity — add, confirm, remove, re-add and re-order — while watching which step actually re-validates ownership; bugs concentrate at removal and re-add, where confirmation is often skipped.
+- Takeaway: Email management is part of the authentication surface because the address set drives password recovery — test every transition in that lifecycle, not just the initial confirmation.
+
+### 2026-09-23 — Privilege Escalation via Insufficient Access Controls in Registration (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #796379](https://hackerone.com/reports/796379)
+- Type: Broken authentication / privilege escalation at registration
+- Summary: The registration endpoint of an education application let a user tamper with the signup request and register directly as an administrator, because the role was taken from client input rather than assigned server-side.
+- Technique / pattern: Intercept the registration request and add or alter role, group and permission fields — including ones the form never sends but the back end may accept — then check the privileges of the resulting account.
+- Takeaway: Registration is an authentication boundary: any role or entitlement field that reaches the server from the client must be ignored, since mass-assignment at signup grants admin without ever touching a login flow.
+
+### 2026-09-23 — HTTP Desync Attack (Request Smuggling) — Mass Session Hijacking (Foxy.io) — $500 (P1)
+- Source: [Bugcrowd #7b175e9d](https://bugcrowd.com/disclosures/7b175e9d-8ff0-47e3-bd33-a8b1e51aa499/http-desync-attack-request-smuggling-mass-session-hijacking)
+- Type: HTTP request smuggling leading to session hijacking
+- Summary: The front-end server honoured `Content-Length` while the back-end honoured `Transfer-Encoding`, letting an attacker smuggle a request that captured following users' requests — including session cookies and auth tokens — with no user interaction. Disclosed 2022-01-31; traced to a CloudFront desync issue AWS later patched.
+- Technique / pattern: Send an ambiguous request carrying both `Content-Length` and `Transfer-Encoding`, time the response to confirm the desync, then park a prefix that appends the next victim's request into an attacker-controlled page where the full headers are logged.
+- Takeaway: Wherever a CDN or proxy sits in front of an origin the two may disagree on request boundaries; smuggling turns that disagreement into mass credential capture, so test CDN-fronted hosts specifically.
+
+### 2026-09-23 — Broken Authentication and Session Token Weakness on admin.phacility.com (Phabricator) — n/a
+- Source: [HackerOne #1271710](https://hackerone.com/reports/1271710)
+- Type: Broken authentication / session management
+- Summary: Weak session-token handling in the authentication flow could allow someone other than the account owner to assume a valid session.
+- Technique / pattern: Proxy the mobile client's traffic, exercise account operations such as adding an address in the email settings page, and inspect how session tokens are generated, transmitted and re-validated across those requests.
+- Takeaway: Proxying the mobile app frequently reveals token handling the web front-end hides, and account-settings flows are the highest-value place to inspect session re-validation.
+
 ### 2026-09-22 — Session not invalidated after logout allows session reuse (Genius) — n/a (P5, accepted risk)
 - Source: [Bugcrowd #460e8d40](https://bugcrowd.com/disclosures/460e8d40-5bc0-4128-8567-1195a45f550a/session-not-invalidated-after-logout-allowing-session-reuse-server-side-also)
 - Type: Session management — no server-side invalidation on logout

@@ -12,6 +12,13 @@ Disclosed **Server-Side Template Injection** reports (often escalating to RCE). 
 
 ## Reports
 
+### 2026-09-24 — Management Console editor privilege escalation to root SSH via nomad template injection and audit-forward (GitHub) — n/a (High)
+- Source: [HackerOne #2332623](https://hackerone.com/reports/2332623)
+- Type: Template injection chained to command injection and privilege escalation (GitHub Enterprise Server)
+- Summary: On GitHub Enterprise Server, a user holding only the Management Console *editor* role could inject a Nomad template expression through the audit-log-forwarding configuration. The appliance rendered that template server-side while building the forwarding job, escalating a deliberately limited console role all the way to administrative SSH access on the appliance.
+- Technique / pattern: Configuration fields on appliance management consoles are frequently rendered as templates by the orchestration layer that writes the service definition — Nomad and Consul templates, systemd unit files, log-forwarder configs, cron entries. Treat every free-text setting (syslog destinations, custom headers, hostnames, certificate fields) as a template sink and probe it with the *orchestrator's* expression syntax rather than generic web payloads. The privilege boundary worth attacking is the one inside the admin UI: an "editor" who cannot SSH but can write config that a root-level process will interpolate.
+- Takeaway: Appliance management consoles have internal role tiers, and the values a lower tier may write are usually interpolated into a higher-tier execution context. Fingerprint the orchestration layer first, then test its template syntax in every field that role is allowed to edit.
+
 ### 2026-09-22 — Server Side Template Injection (The Plugin People) — $100
 - Source: [Bugcrowd #c5699c3d](https://bugcrowd.com/disclosures/c5699c3d-69b6-49f5-b036-f53a5d3e3c6e/server-side-template-injection-ssti)
 - Type: Server-Side Template Injection (P4)

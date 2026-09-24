@@ -12,6 +12,118 @@ Disclosed **security misconfiguration** reports — permissive CORS, default/exp
 
 ## Reports
 
+### 2026-09-24 — Django Debug Panel exposed without access control on a non-production Relay host (Mozilla) — n/a
+- Source: [HackerOne #2078707](https://hackerone.com/reports/2078707)
+- Type: Security misconfiguration — development debug tooling reachable from the internet
+- Summary: The Django Debug Panel was left enabled and unauthenticated on `dev.fxprivaterelay.nonprod.cloudops.mozgcp.net`, exposing request internals, settings and database query detail that a debugging interface surfaces by design.
+- Technique / pattern: Enumerate `nonprod`, `dev` and `stage` hostname components from certificate transparency logs and passive DNS, then probe the framework's known debug paths. Development deployments inherit the production domain's trust but rarely its access controls.
+- Takeaway: Debug tooling is a production-grade information leak wherever it is reachable; gate it on an environment flag that cannot be true on an internet-facing host rather than on a hostname convention.
+
+### 2026-09-24 — Nginx misconfiguration allows downloading PHP source directly, including SAML SSO configuration (GSA Bounty) — n/a
+- Source: [HackerOne #268382](https://hackerone.com/reports/268382)
+- Type: Security misconfiguration — server returns script files as static content
+- Summary: An Nginx `location` rule failed to hand some `.php` paths to the PHP handler, so the raw source was returned instead of executed; the files retrievable this way included SAML single sign-on configuration.
+- Technique / pattern: Where a server mixes static and interpreted content, probe the cases the handler rule misses — alternate extensions and casing, a trailing dot or slash, and files under directories that have their own `location` block. Source returned as text is the signal.
+- Takeaway: Source disclosure hands over the secrets embedded in configuration; make the interpreter mapping deny-by-default so an unmatched path is refused rather than served as a file.
+
+### 2026-09-24 — Bulk directory listing exposure across multiple NASA subdomains (NASA VDP) — n/a (Informational)
+- Source: [Bugcrowd fb4354a1](https://bugcrowd.com/disclosures/fb4354a1-3cd8-4395-a619-2ae39b986c5f/bulk-directory-listing-exposure-on-multiple-nasa-subdomains)
+- Type: Security misconfiguration — autoindex enabled on public web roots
+- Summary: Several NASA hosts, among them `neo.gsfc.nasa.gov/archive` and `maps.nccs.nasa.gov/download`, returned browsable directory indexes revealing file layout and unlinked files. The program accepted the risk, as those archives are published deliberately for contributors and mirrors.
+- Technique / pattern: Sweep a subdomain list for index pages rather than treating one hit as the finding, then judge each by what the listing actually reveals — backups, configuration or unlinked data versus an intentional mirror. Reporting the index alone, with no sensitive file behind it, is what pushes these to informational.
+- Takeaway: Directory listing is a severity multiplier, not a vulnerability in itself; the report lands only when the index leads to a file that was never meant to be public.
+
+### 2026-09-24 — Directory listing on a SATCORPS web server exposes PHP source across multiple directories (NASA VDP) — n/a (P5)
+- Source: [Bugcrowd 26e3e95b](https://bugcrowd.com/disclosures/26e3e95b-a1af-4baf-afc0-8b05de8abef5/source-code-disclosure)
+- Type: Security misconfiguration — directory listing leading to source disclosure
+- Summary: A misconfigured directory setting on a NASA SATCORPS server made PHP source files browsable and readable across several directories. NASA rated the finding informational, citing its open-source development posture.
+- Technique / pattern: Chain the two findings instead of reporting the index on its own — enumerate the listed directories, fetch the source returned as text, and grep it for credentials, internal hostnames and database connection strings. That grep is what separates an informational listing from a real disclosure.
+- Takeaway: Whether exposed source matters depends on what is in it; an organisation that publishes its code openly has already accepted the exposure, so lead with the secret you found rather than with the listing.
+
+### 2026-09-24 — Broken access control: publicly editable NASA research documents holding active mission data (NASA VDP) — n/a (P3)
+- Source: [Bugcrowd efe6dc8e](https://bugcrowd.com/disclosures/efe6dc8e-7364-42c0-8467-2371d610d82a/vulnerability-report-broken-access-control-ongoing-project-publicly-editable-google-sheet-owned-by-senior-nasa-researcher)
+- Type: Security misconfiguration — third-party document sharing left at "anyone with the link can edit"
+- Summary: Five interconnected documents owned by a senior NASA researcher were shared with *edit* permission to anyone holding the link. They contained active operational project-management data for 12+ Earth Science missions, daily task assignments for 6+ researchers and Gantt charts of mission timelines, so any unauthenticated visitor could modify, delete or silently corrupt live planning data. The link was discovered on a public NASA forum.
+- Technique / pattern: Attack surface includes the SaaS documents an organization links to, not only the hosts it runs. Harvest Google Docs/Sheets, Airtable, Notion and Figma URLs from public forums, mailing lists, slide decks, PDFs and cached pages within scope, then check each one's permission level while signed out — and check *write* access specifically, since read-only sharing is common and edit access is the actual finding.
+- Takeaway: The impact here is integrity and availability, not just disclosure, and silent modification of operational data is far harder to detect than a leak. Name the write capability explicitly when reporting: "publicly readable" and "publicly editable" are different severities.
+
+### 2026-09-24 — Unauthorized access to CI/CD infrastructure and project secrets via exposed GitLab Runner token (NASA VDP) — n/a (P1)
+- Source: [Bugcrowd cc46ad29](https://bugcrowd.com/disclosures/cc46ad29-f297-4847-abcd-9f5da5a85621/unauthorized-access-to-ci-cd-infrastructure-and-project-secrets-via-compromised-gitlab-runner-token)
+- Type: Security misconfiguration — leaked CI runner registration credential
+- Summary: A publicly exposed GitLab Runner registration token let an external researcher register and authenticate an unauthorized runner inside NASA's SMCE CI/CD infrastructure. A runner that joins the fleet can be assigned jobs carrying CI/CD secrets and can influence build output, which is a supply-chain impact; further exploitation was intentionally avoided.
+- Technique / pattern: CI registration tokens are long-lived bearer credentials, and they are routinely committed to repositories, pasted into runbooks and left inside `.gitlab-ci.yml` or provisioning scripts. Grep exposed repositories, CI configuration and documentation for runner-registration commands and token prefixes. The proof of impact is the registration itself — a runner that successfully joins is authorized to receive jobs and the variables attached to them — so there is no need to actually harvest a secret to demonstrate the boundary is open.
+- Takeaway: Treat CI registration tokens like deploy keys, not like configuration. Demonstrate impact by joining the fleet and stopping there: it proves the trust boundary while keeping the test non-destructive.
+
+### 2026-09-24 — NASA LSDA/NLSP data platform allows unauthenticated write to production Elasticsearch cluster (NASA VDP) — n/a (P2)
+- Source: [Bugcrowd 2a6e8df3](https://bugcrowd.com/disclosures/2a6e8df3-c772-4349-9940-00a9b4ad417f/nasa-lsda-nlsp-data-platform-allows-unauthenticated-write-to-production-elasticsearch-cluster)
+- Type: Security misconfiguration — authorization middleware not reached on part of the ingestion path
+- Summary: A NASA science data platform exposed data-ingestion API routes that accepted writes from unauthenticated users. The access-control layer correctly classified anonymous requesters as having no write permission and enforced that on some models — an anonymous write to one returned `403` with an explicit authorization denial — but other models on the same ingestion path were written without the check ever running. Requests that failed did so on *field validation* rather than authentication, confirming there was no auth boundary in front of the write handler. The platform's schemas were also readable unauthenticated, supplying the field names needed to build a valid write.
+- Technique / pattern: Use the sibling endpoint that correctly denies you as the oracle for the ones that do not. Enumerate every model or resource on the same path and compare *error shapes*, not status codes alone: a `403 authorization denied` means the guard ran, whereas a `400 missing required field` means the request already reached the handler. The researcher confirmed non-destructively with clearly marked test records containing no real data, then reported them for cleanup.
+- Takeaway: Differential error analysis across sibling resources isolates the one handler that skipped the middleware. A validation error is a stronger signal than a success: it proves you are past authentication even when the write itself fails.
+
+### 2026-09-24 — CORS misconfiguration / broken access control on admin.myndr.net (Myndr) — n/a (CVSS 7.5)
+- Source: [HackerOne #3930102](https://hackerone.com/reports/3930102)
+- Type: Security misconfiguration — credentialed CORS reflecting any subdomain origin
+- Summary: `admin.myndr.net` reflected any `*.myndr.net` origin into `access-control-allow-origin` together with `access-control-allow-credentials: true`, so any page hosted on a Myndr subdomain could read authenticated admin-panel responses — including CSRF nonces, session data and admin functionality — and chain that into full admin account takeover. Reported endpoints included `/`, `/auth/login-admin`, `/auth/login-admin-new-password` and `/cp/postcode`.
+- Technique / pattern: Send `Origin: https://evil.myndr.net` on an unauthenticated request and read the response headers; a reflected origin plus `access-control-allow-credentials: true` and `vary: Origin` is the entire proof. The escalation is the half that matters: once a credentialed cross-origin read works, the CSRF nonce that was the last control on state-changing admin routes becomes readable, so a CORS read turns into a CSRF write.
+- Takeaway: Wildcard-subdomain trust collapses the origin boundary onto the weakest subdomain an attacker can obtain — a takeover, a user-content host, a forgotten staging box. Before rating a reflected-subdomain CORS finding informational, ask what a readable admin response hands you next.
+
+### 2026-09-23 — Subdomain takeover of an abandoned subdomain pointing to Google infrastructure (Ubiquiti (HackerOne)) — n/a
+- Source: [HackerOne #181665](https://hackerone.com/reports/181665)
+- Type: Security misconfiguration / dangling DNS → subdomain takeover
+- Summary: `moderator.ubnt.com` still pointed (via `ghs.google.com`) to a Google-hosted service that had never been claimed, so an attacker could register the subdomain through Google's normal onboarding and serve content from a Ubiquiti hostname.
+- Technique / pattern: Found by resolving the subdomain, seeing it aliased to a shared hosting endpoint (`ghs.google.com`) with no active tenant, and confirming the hosting provider would let a new account claim that hostname.
+- Takeaway: A `CNAME` to a third-party SaaS/hosting endpoint with no active account behind it is takeover-prone. Verify the target service actually has a claimed, live tenant, and remove stale aliases.
+
+### 2026-09-23 — Subdomain takeover via dangling DNS to a decommissioned EC2 instance (8x8 (HackerOne)) — n/a
+- Source: [HackerOne #1101877](https://hackerone.com/reports/1101877)
+- Type: Security misconfiguration / dangling DNS → subdomain takeover
+- Summary: An EC2 instance was retired but its DNS record was left pointing at the released address, leaving an 8x8 subdomain claimable by whoever next obtained that infrastructure.
+- Technique / pattern: Standard dangling-DNS review: enumerate subdomains and flag records that resolve to cloud infrastructure no longer owned by the target (a released elastic IP or an unclaimed service endpoint).
+- Takeaway: Decommissioning must remove or update DNS as part of teardown. Continuously monitor for records pointing at cloud resources you no longer control — they are directly claimable.
+
+### 2026-09-23 — Grafana admin access via default credentials (Kistler (Bugcrowd)) — n/a (P1, 40 points)
+- Source: [Bugcrowd f810da90](https://bugcrowd.com/disclosures/f810da90-2aff-4970-b6b9-09a471e1b805/grafana-admin-login-via-default-credentials)
+- Type: Security misconfiguration / default credentials
+- Summary: A public-facing Grafana instance still used its default administrator login, granting full admin access to the monitoring and dashboard platform.
+- Technique / pattern: Third-party dashboard and monitoring software (Grafana, Kibana and similar) frequently ships with a well-known default admin login that survives deployment; checking that default against an exposed instance is the whole test.
+- Takeaway: Fingerprint exposed third-party software and check each product's documented default login. Monitoring stacks are often stood up quickly and left with defaults, yet expose infrastructure detail and sometimes data-source credentials.
+
+### 2026-09-23 — Unauthorised admin access via unchanged default password (Tesla (Bugcrowd)) — n/a (P2, 20 points)
+- Source: [Bugcrowd 82bb3923](https://bugcrowd.com/disclosures/82bb3923-4097-4a64-a5f7-d5f6e59f1b6d/unauthorised-admin-access-due-to-default-password)
+- Type: Security misconfiguration / default credentials
+- Summary: An administrative panel was reachable and still protected only by its shipped default password, letting anyone who found the panel log in with admin privileges.
+- Technique / pattern: The finding is the pairing of an exposed admin interface with an unchanged vendor default login — located by discovering the admin path, then trying the product's documented default credentials.
+- Takeaway: Default credentials on an internet-reachable admin panel remain one of the highest-impact, lowest-effort findings. Inventory admin interfaces and confirm shipped defaults were rotated before go-live.
+
+### 2026-09-23 — Source code leakage due to exposed sourcemap (Atlassian — Bitbucket Cloud) — $200 (P4)
+- Source: [Bugcrowd #8cc82a04](https://bugcrowd.com/disclosures/8cc82a04-b1b2-452a-9e68-b332e4fc7794/source-code-leakage-due-to-exposed-sourcemap)
+- Type: Security misconfiguration / source code disclosure
+- Summary: Production JavaScript on `bitbucket.org` shipped alongside its source maps, letting anyone reconstruct the original front-end source tree straight from the browser. Disclosed 2021-01-22; accepted by Atlassian as a known business risk.
+- Technique / pattern: Open developer tools against the target's production bundles and check the Sources tree for mapped original files, or request the `.map` file appended to each bundle URL, then dump the recovered tree.
+- Takeaway: Source maps are a build-config leftover rather than a vulnerability in themselves — but the recovered source is where hidden endpoints, feature flags and client-side secrets are found, so treat it as recon input.
+
+### 2026-09-23 — Public Apache Server Status Endpoint Causes Sensitive Data Exposure of Internal System Information (NASA VDP) — n/a (P4)
+- Source: [Bugcrowd #7c9313ff](https://bugcrowd.com/disclosures/7c9313ff-516f-4f8f-820f-eb693843f2b2/public-apache-server-status-endpoint-causes-sensitive-data-exposure-of-internal-system-information)
+- Type: Security misconfiguration / server hardening
+- Summary: An Apache diagnostic status page was reachable without authentication or IP restriction on a NASA subdomain, exposing server software version, platform details, uptime and load metrics, and worker process state. Disclosed 2026-04-16.
+- Technique / pattern: Passive reconnaissance plus non-intrusive probing of well-known diagnostic paths such as `/server-status` on each host; the finding is a configuration oversight, so no exploitation beyond loading the page was needed.
+- Takeaway: Diagnostic endpoints that ship enabled by default are a reliable low-effort check on every host — their value to an attacker is the precise version fingerprint they hand over for targeting known CVEs.
+
+### 2026-09-23 — Subdomain takeover via a DNS record pointing to a deleted S3 bucket (Affirm) — n/a
+- Source: [HackerOne #1297689](https://hackerone.com/reports/1297689)
+- Type: Security misconfiguration / subdomain takeover (dangling DNS)
+- Summary: A subdomain still carried a DNS record pointing at an AWS S3 bucket that no longer existed; the researcher claimed the bucket name and served their own content from the company domain.
+- Technique / pattern: Resolve every known subdomain, flag the ones whose targets return cloud-provider "no such bucket" errors, then register the referenced resource and host a proof file — often enough to also obtain a valid TLS certificate for the name.
+- Takeaway: Decommissioning a cloud resource must include removing the DNS record; a dangling `CNAME` hands an attacker a trusted origin for phishing, cookie theft and certificate issuance.
+
+### 2026-09-23 — S3 Bucket Takeover: brave-apt (Brave Software) — n/a
+- Source: [HackerOne #1791558](https://hackerone.com/reports/1791558)
+- Type: Security misconfiguration / cloud storage takeover (supply chain)
+- Summary: An S3 bucket at `https://s3-us-west-2.amazonaws.com/brave-apt/`, used in the Linux installation path for the Brave browser, was left unclaimed and openly reachable, so an attacker who registered the bucket name could serve content into that distribution flow.
+- Technique / pattern: Enumerate the program's infrastructure for bucket references in install scripts and documentation, request each bucket URL directly, and check whether the name resolves to an unowned bucket that can be re-registered.
+- Takeaway: Buckets referenced by installers and package repositories are supply-chain assets — an unclaimed one is not an information leak, it is code execution on every machine that installs from it.
+
 ### 2026-09-22 — Broken link hijacking (impersonation) on jpl.nasa.gov via unregistered Facebook URL (NASA VDP) — n/a (P4)
 - Source: [Bugcrowd #47e4872e](https://bugcrowd.com/disclosures/47e4872e-88bd-4dd2-b943-1b30f4d5b4ad/broken-link-hijacking-impersonation-on-jpl-nasa-gov-via-unregistered-facebook-url)
 - Type: Broken link hijacking / dangling third-party identity

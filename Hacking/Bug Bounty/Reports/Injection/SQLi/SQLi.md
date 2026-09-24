@@ -12,6 +12,41 @@ Disclosed **SQL injection** reports — error/boolean/time-based, UNION, blind, 
 
 ## Reports
 
+### 2026-09-24 — SQL injection in TScenObject action ScenObjects on contactws.contact-sys.com leading to RCE (QIWI) — n/a
+- Source: [HackerOne #816254](https://hackerone.com/reports/816254)
+- Type: SQL injection — injectable field in a JSON request body, escalated to code execution
+- Summary: An API served from `contactws.contact-sys.com` on a non-standard port passed the `SCEN_ID` value out of a JSON POST body into a query without sanitisation; the injection reached a database account privileged enough to be turned into remote code execution on the host.
+- Technique / pattern: The sink was not a URL query string but a field nested inside a JSON body sent to an internal-looking application server — parameter discovery has to cover nested JSON keys and non-standard ports, not just `?param=`. Once injection was confirmed, the pivot went from reading rows to OS command execution through the DBMS's own facilities.
+- Takeaway: Grade an SQL injection by what the database account can reach, not by the row it returns; a DBMS running with high privilege turns any injection into a host compromise.
+
+### 2026-09-24 — JQL injection in the Jira REST API exposes admin-only group membership to unauthenticated users (Atlassian) — 10 points (P3)
+- Source: [Bugcrowd 2acd4db2](https://bugcrowd.com/disclosures/2acd4db2-c50e-4b33-8dc2-a18c78b90f9b/jql-injection-in-jira-rest-api-allows-unauthenticated-users-to-access-information-only-admin-and-sysadmins-should-access)
+- Type: Query-language injection (JQL) — information disclosure through the error path
+- Summary: A crafted JQL query pairing the `membersOf()` function with a deliberately invalid condition caused Jira's search API to evaluate the function while building its error message, returning group membership such as `jira-administrators` to an unauthenticated caller.
+- Technique / pattern: Treat any application-specific query language — JQL, LDAP filters, GraphQL filter DSLs, search syntaxes — as an injection surface with the same shape as SQL. The trick was pairing a privileged function with a guaranteed-failing predicate so the answer arrives in the error response, which is often produced before or outside the permission check.
+- Takeaway: Error messages are an output channel; a query language that resolves privileged functions while reporting a validation failure leaks exactly what the permission check was meant to hide.
+
+### 2026-09-24 — Unauthenticated SQL injection in the order parameter on mars.nasa.gov public JSON APIs (NASA VDP) — n/a (P1)
+- Source: [Bugcrowd e1a4a6b9](https://bugcrowd.com/disclosures/e1a4a6b9-0e92-4192-8f75-2b891c6b2541/unauthenticated-sql-injection-in-the-order-parameter-mars-nasa-gov-api-v1-news_items-events-missions)
+- Type: SQL injection — `ORDER BY` clause, unauthenticated (PostgreSQL)
+- Summary: The `order` parameter of the public endpoints `/api/v1/news_items/`, `/api/v1/events/` and `/api/v1/missions/` was placed into the SQL `ORDER BY` clause without being bound as a parameter or checked against an allow-list of permitted columns. The site's own front end already sent raw SQL fragments there (`order=publish_date desc,created_at desc`), so SQL text in that parameter was the designed behaviour.
+- Technique / pattern: `ORDER BY` cannot take a bind parameter, which makes sort parameters a standing injection sink. The researcher proved a real SQL parser — not a token deny-list — was reading the value using comment asymmetry: `id/**/desc` and `id/*x*/desc` both produced exactly `id desc`, because a balanced comment (even one containing text) is treated as whitespace, while the unterminated `id/*desc` and the stray-close `id*/desc` both failed with HTTP 403. A filter that merely stripped or rejected comments could not produce that asymmetry. The result is a clean oracle — `200` means valid SQL referencing a real column, `403` means the query failed at the database — which is all a blind column and data extraction needs.
+- Takeaway: When a parameter carries SQL fragments by design, treat it as a sink rather than a feature. Balanced-versus-unbalanced comment probes separate "parsed as SQL" from "filtered by a deny-list" without sending a single destructive payload, and the status-code oracle that falls out is enough to enumerate blind.
+
+### 2026-09-23 — Time-based blind SQL injection in the WordPress login form (Acronis) — bounty awarded (amount undisclosed)
+- Source: [HackerOne #1224660](https://hackerone.com/reports/1224660)
+- Type: Time-based blind SQLi (bypass of an earlier fix)
+- Summary: The `log` (username) parameter of `/wp-login.php` on a regional Acronis site reached the database without adequate sanitisation, giving time-based blind SQL injection on an unauthenticated endpoint. It was filed as a bypass of the fix for an earlier report.
+- Technique / pattern: Confirmed the classic way for a blind case: submit an expression that makes the database pause for a chosen number of seconds only when a condition holds, and observe that response latency tracks the requested delay across trials. No data appears in the response, so timing is the signal. The original filter was defeated with an alternative boolean operator.
+- Takeaway: Always re-test a patched injection against the original endpoint — filter-based fixes are routinely bypassed with alternative operators. Login forms on peripheral or regional marketing sites are unauthenticated and often fall outside the main app's hardening.
+
+### 2026-09-23 — Blind SQL Injection in a POST parameter (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #1102591](https://hackerone.com/reports/1102591)
+- Type: SQL injection (boolean-based blind)
+- Summary: A POST parameter on a DoD host was concatenated into a query without sanitisation; the host and parameter name are redacted in the public disclosure, but the injection was confirmed through differential responses.
+- Technique / pattern: Submit paired payloads that differ only in their boolean outcome, such as `-1' OR 1=1 or '4mEwSPwJ'='`, and compare the two responses; a consistent true/false split confirms injection even with errors suppressed and no data echoed back.
+- Takeaway: Blind SQLi is found by diffing responses, not by reading error messages — always test POST bodies and headers, not only query strings, and confirm with a control payload that should evaluate false.
+
 ### 2026-09-22 — Unauthenticated error-based SQL injection via POST parameter name in NASA Space Place API (NASA VDP) — n/a (P1)
 - Source: [Bugcrowd #2b1df6dc](https://bugcrowd.com/disclosures/2b1df6dc-0ea2-42ee-a16a-9bbfc33e151a/unauthenticated-error-based-sql-injection-via-post-parameter-name-in-api-experiment-answer-new)
 - Type: SQL injection through an identifier sink (parameter *name*, not value)
