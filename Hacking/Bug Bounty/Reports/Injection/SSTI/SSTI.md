@@ -12,6 +12,13 @@ Disclosed **Server-Side Template Injection** reports (often escalating to RCE). 
 
 ## Reports
 
+### 2026-09-25 — CVE-2022-22954: server-side template injection in VMware Workspace ONE Access leads to remote code execution (U.S. Department of Defense) — n/a
+- Source: [HackerOne #1537543](https://hackerone.com/reports/1537543)
+- Type: Server-side template injection (SSTI) to RCE — known CVE on an in-scope asset
+- Summary: A DoD-operated host was running a VMware Workspace ONE Access / Identity Manager version affected by CVE-2022-22954, an unauthenticated server-side template injection that allows arbitrary code execution on the appliance.
+- Technique / pattern: This is the asset-inventory half of SSTI hunting rather than a new payload: fingerprint the product and version on every in-scope host, map it to published template-injection CVEs, and confirm with a benign arithmetic or reflection probe before attempting anything further. Edge identity and SSO appliances are high-value because they sit in front of authentication for everything behind them.
+- Takeaway: A large share of real SSTI findings are unpatched known CVEs in third-party products, not bespoke bugs in the target's own templates. Keep an inventory of identity, portal and collaboration appliances with their versions, and re-check them whenever a template-injection CVE lands. (Logged as an older, well-known reference case.)
+
 ### 2026-09-24 — Management Console editor privilege escalation to root SSH via nomad template injection and audit-forward (GitHub) — n/a (High)
 - Source: [HackerOne #2332623](https://hackerone.com/reports/2332623)
 - Type: Template injection chained to command injection and privilege escalation (GitHub Enterprise Server)

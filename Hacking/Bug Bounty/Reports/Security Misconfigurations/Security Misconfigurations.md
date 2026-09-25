@@ -12,6 +12,34 @@ Disclosed **security misconfiguration** reports — permissive CORS, default/exp
 
 ## Reports
 
+### 2026-09-25 — Internet-exposed internal LibreChat instance with open self-registration grants access to internal models (AWS Vulnerability Disclosure Program) — n/a
+- Source: [HackerOne #3287396](https://hackerone.com/reports/3287396)
+- Type: Security misconfiguration — self-registration enabled on an internal tool exposed to the internet
+- Summary: An internal LibreChat deployment was reachable from the internet with local self-registration left on for non-corporate email domains, so anyone could create an account and use the UI to query internal and proprietary foundation models.
+- Technique / pattern: Internal tooling is routinely assumed to be protected because corporate SSO is "expected", while the application's own signup path stays enabled beside it. The researcher registered with an outside address and reached the model list. The recurring pattern: an internal-looking hostname, a login page that also offers "sign up", and no domain allowlist behind it.
+- Takeaway: On every internal tool you find exposed, check the registration policy separately from the login page — disable local signup, enforce a domain allowlist, and put the deployment behind network controls rather than relying on obscurity of the hostname.
+
+### 2026-09-25 — Exposed forward proxy allows access to internal domains via the Host header (Reddit) — n/a
+- Source: [HackerOne #2967634](https://hackerone.com/reports/2967634)
+- Type: Security misconfiguration — open forward proxy reaching internal-only hosts
+- Summary: A proxy listening on a high port was reachable from the internet and would forward requests based on the supplied `Host` header, so setting that header to an internal domain returned employee-only content from behind the perimeter.
+- Technique / pattern: The researcher found the internal domain first — certificate-transparency data via Censys showed hostnames that only make sense internally — then sent a request through the open proxy with that hostname in the `Host` header. An open proxy turns the `Host` header into a name resolver for the internal network, giving SSRF-like reach without needing a vulnerable application feature.
+- Takeaway: Port-scan your own edge for proxy software on non-standard ports and confirm it refuses hosts outside an explicit allowlist. Pair certificate-transparency mining for internal-looking names with any proxy you find, and remember that internal hostnames are public information.
+
+### 2026-09-25 — Host header injection leads to cookie domain manipulation on sealevel.nasa.gov (NASA Vulnerability Disclosure Program) — 5 points (P5)
+- Source: [Bugcrowd fd00af00](https://bugcrowd.com/disclosures/fd00af00-5511-4516-bfe7-c4ae38c52cd4/re-host-header-injection-leads-to-cookie-domain-manipulation-on-sealevel-nasa-gov)
+- Type: Security misconfiguration — request host reflected into cookie scope
+- Summary: The application derived cookie attributes from the incoming request host, so injecting a crafted `Host` header influenced the `Domain` on which cookies were set, widening their scope beyond the intended host.
+- Technique / pattern: Host-header injection is usually hunted for cache poisoning and password-reset link poisoning; this report shows a third sink — the `Domain` attribute of `Set-Cookie`. Send the request with a modified `Host` (and with `X-Forwarded-Host`) and read the `Set-Cookie` response header rather than looking at the page body.
+- Takeaway: Derive cookie domain and any absolute URL from server-side configuration, never from the request host, and have the web server reject requests whose `Host` is not in an explicit allowlist. When testing host-header injection, inspect response headers for cookie scope alongside redirects and cached content.
+
+### 2026-09-25 — Broken link hijacking: abandoned X/Twitter handle still linked from a live nasa.gov page (NASA Vulnerability Disclosure Program) — n/a (P4)
+- Source: [Bugcrowd 71f7148f](https://bugcrowd.com/disclosures/71f7148f-919f-44c1-b8a4-28e1cf284993/broken-link-hijacking-abandoned-x-twitter-handle-nasa_finesse-still-linked-from-a-live-nasa-gov-page)
+- Type: Security misconfiguration — dangling outbound link enabling impersonation
+- Summary: A live NASA page about the FINESSE/BASALT programs linked to an official-looking X/Twitter handle that had been abandoned and was no longer registered; the researcher claimed the handle as proof of concept, showing that anyone could have registered it and spoken as NASA from a link the agency itself published.
+- Technique / pattern: Crawl the target's own pages for outbound links to social handles, app-store listings, package names, community channels and short links, then check each destination for unclaimed or deleted status and whether it is re-registrable. The value comes from the *linking* page's authority, so prioritize links on official program and press pages.
+- Takeaway: Treat outbound links as an asset inventory with an expiry date — audit them on a schedule and remove or update the ones whose destinations have been abandoned, since a link from an official page lends the attacker's account the organization's credibility.
+
 ### 2026-09-24 — Django Debug Panel exposed without access control on a non-production Relay host (Mozilla) — n/a
 - Source: [HackerOne #2078707](https://hackerone.com/reports/2078707)
 - Type: Security misconfiguration — development debug tooling reachable from the internet

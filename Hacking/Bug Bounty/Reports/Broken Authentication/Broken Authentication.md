@@ -12,6 +12,34 @@ Disclosed **broken authentication & session management** reports — account tak
 
 ## Reports
 
+### 2026-09-25 — Taskcluster web-server OAuth2 authorization codes are reusable and the exchange handler checks the wrong expiry (Mozilla) — n/a
+- Source: [HackerOne #3734676](https://hackerone.com/reports/3734676)
+- Type: Broken authentication — OAuth2 authorization-code replay
+- Summary: In `services/web-server/src/servers/oauth2.js` the token-exchange handler neither consumed the authorization code nor enforced the code's own expiry, so a leaked code could be redeemed repeatedly — and long past the ten-minute lifetime RFC 6749 requires — to mint fresh bridge access tokens for the original user.
+- Technique / pattern: Two checks to run against any OAuth2 or magic-link exchange: redeem the same code twice and see whether the second attempt still returns a token, then redeem it again after its nominal lifetime. Also check *which* timestamp the handler compares against — an expiry check reading the session's or token's field instead of the code's passes while enforcing nothing.
+- Takeaway: Authorization codes, password-reset tokens and magic links must be single-use and expiry-checked against their own issue time. Delete or mark the code inside the same transaction that issues the token, so a replay cannot race the invalidation.
+
+### 2026-09-25 — CVE-2026-13608: OpenLDAP SASL state confusion ends negotiation without authenticating (curl) — n/a
+- Source: [HackerOne #3822248](https://hackerone.com/reports/3822248)
+- Type: Broken authentication — protocol state-machine confusion
+- Summary: In `lib/openldap.c`, `oldap_state_sasl_resp()` advanced to `OLDAP_STOP` whenever `Curl_sasl_continue()` returned `CURLE_OK` with `progress != SASL_INPROGRESS`, without distinguishing "authentication completed successfully" from "idle, no mechanism available". A malicious LDAP server could send a malformed SASL challenge to push the connection past negotiation.
+- Technique / pattern: Audit authentication state machines for transitions where two different conditions collapse into the same next state — particularly where a success path and an "unable to proceed" path share a return code. In client-side protocol code, the malicious-server direction is the one that gets least attention.
+- Takeaway: A state machine must treat "authenticated" and "nothing left to try" as distinct outcomes; when a negotiation ends without a positive proof of authentication, the connection has to fail closed rather than continue.
+
+### 2026-09-25 — Session hijacking via reusable JSESSIONID exposes OAuth token and profile data (NASA Vulnerability Disclosure Program) — n/a (P4)
+- Source: [Bugcrowd 553cc72a](https://bugcrowd.com/disclosures/553cc72a-72b5-4217-8b72-7c4a32ceffed/critical-session-hijacking-via-reusable-jsessionid-exposes-oauth-token-and-profile-data)
+- Type: Broken session management — session identifier remains valid after it should be retired
+- Summary: A `JSESSIONID` cookie stayed usable after the point where it should have been invalidated, so replaying a captured value re-established an authenticated session and returned the victim's OAuth token and profile information.
+- Technique / pattern: The standard session-lifecycle matrix: record the session cookie, then log out, change the password, and let the session idle out, replaying the old value after each event. Note also what the re-established session hands back — a response containing an OAuth access token turns one stolen cookie into durable API access.
+- Takeaway: Server-side session state must be destroyed on logout, credential change and expiry — clearing the cookie client-side proves nothing. Never echo long-lived tokens into responses that a replayed session can reach.
+
+### 2026-09-25 — One-click board takeover and DELETE CSRF via path traversal in signature verification (Trello) — 20 points (P2)
+- Source: [Bugcrowd 4b84e39f](https://bugcrowd.com/disclosures/4b84e39f-82fc-471a-9595-d27b347b3210/one-click-takeover-of-the-victim-s-board-and-a-delete-csrf-that-can-permanently-delete-any-workspace-or-board-the-victim-has-access-to)
+- Type: Broken authentication / CSRF via path traversal in a verification parameter
+- Summary: The signature-verification step for board access built a request from a path component that accepted `../` sequences, so a crafted link pointed the verifier at an arbitrary endpoint; any `200` response satisfied the check and granted board access. The same traversal primitive re-routed `DELETE` requests to organization-deletion endpoints, letting a single clicked link destroy workspaces and boards.
+- Technique / pattern: When a server validates a request by calling a URL assembled from user input, traversal in that input re-points the call at an endpoint the attacker chooses — and a check that only tests for an HTTP status is satisfied by any reachable route. The researcher then scripted the post-verification actions to copy board contents before the victim noticed.
+- Takeaway: Verification must compare a cryptographic signature over canonicalized input, never "did fetching this constructed URL return 200". Normalize and reject traversal in every path segment, and treat a verifier that follows attacker-influenced URLs as an authorization bypass primitive.
+
 ### 2026-09-24 — Authentication bypass through HTTP request smuggling on apm.ap.tesla.services (Tesla) — 40 points (P3)
 - Source: [Bugcrowd 5e1f7404](https://bugcrowd.com/disclosures/5e1f7404-5421-4f3d-916a-443446afbb52/authentication-bypass-through-http-request-smuggling-on-https-apm-ap-tesla-services)
 - Type: HTTP request smuggling (CL.TE) — front-end authentication bypassed

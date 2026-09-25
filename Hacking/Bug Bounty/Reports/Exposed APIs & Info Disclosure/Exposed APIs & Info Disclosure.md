@@ -12,6 +12,34 @@ Disclosed **exposed API / sensitive information disclosure** reports — leaked 
 
 ## Reports
 
+### 2026-09-25 — Unauthenticated testing endpoint of the notify_push component exposes internal IP addresses (Nextcloud) — n/a
+- Source: [HackerOne #3513471](https://hackerone.com/reports/3513471)
+- Type: Sensitive information disclosure via an unauthenticated diagnostic endpoint
+- Summary: A self-test endpoint belonging to the `notify_push` component answered without authentication and returned internal IP addressing, handing an unauthenticated caller a view of the deployment's private network layout.
+- Technique / pattern: Sidecar and helper daemons — push/notify services, metrics exporters, health shims, queue workers — ship self-test and diagnostic routes that are assumed to be reachable only from inside the cluster, and stay open when the component is deployed alongside the public app. Enumerate the routes of each auxiliary component separately from the main application's route map.
+- Takeaway: Every companion service needs its own authentication and network policy; a diagnostic route is production attack surface. Bind self-test endpoints to loopback or require a shared secret, and never echo internal addressing to an unauthenticated caller.
+
+### 2026-09-25 — Email enumeration via the identity-verification step on password-protected shares (Nextcloud) — n/a
+- Source: [HackerOne #3507273](https://hackerone.com/reports/3507273)
+- Type: Information disclosure — response-differential (oracle) enumeration
+- Summary: When a password was requested for an email-protected share, the application returned a different message depending on whether the submitted address was the share's intended recipient, so anyone holding a share token could confirm who the share was addressed to.
+- Technique / pattern: The researcher submitted a known-wrong address and a candidate address to the same flow and diffed the responses. Any branch that words its reply differently for a valid subject is an enumeration oracle, and the differential can be in wording, status code, redirect target, response length or timing rather than in an explicit error.
+- Takeaway: Identity-verification and password-request flows must return a single indistinguishable response for every input. Compare responses byte-for-byte, including headers and timing, when testing — and when designing, generate the reply before the lookup decides anything.
+
+### 2026-09-25 — Source code and internal infrastructure disclosure via a publicly exposed GitLab repository on git.smce.nasa.gov (NASA Vulnerability Disclosure Program) — n/a (P2)
+- Source: [Bugcrowd b080842d](https://bugcrowd.com/disclosures/b080842d-1a0c-4eaa-9c91-989a01c48a54/source-code-and-internal-infrastructure-disclosure-via-publicly-exposed-gitlab-repository-on-git-smce-nasa-gov)
+- Type: Sensitive information disclosure — self-hosted VCS project left public
+- Summary: A repository on a self-hosted GitLab instance was readable without authentication, disclosing internal source code along with infrastructure and architecture details.
+- Technique / pattern: Self-hosted GitLab, Gitea and Gerrit instances on organization subdomains expose a project-explore listing that enumerates every repository whose visibility is public or internal; the researcher browsed that listing rather than guessing paths. The same instances also serve raw file, blob and pipeline-artifact routes that can remain reachable after the web UI is locked down.
+- Takeaway: Audit visibility on every project of a self-hosted VCS, not just the instance's sign-in page, and re-check after migrations — default-public project settings are the usual cause. Treat a public repository listing on an internal-looking subdomain as a finding in itself.
+
+### 2026-09-25 — Systemic API misconfiguration in CKAN harvesting exposes internal secrets, an infrastructure map and PII (NASA Vulnerability Disclosure Program) — 7 points (P5)
+- Source: [Bugcrowd 2309545f](https://bugcrowd.com/disclosures/2309545f-8d7f-4c94-90cf-caef26a09dff/systemic-api-misconfiguration-in-ckan-harvesting-exposes-internal-secrets-infrastructure-map-and-pii)
+- Type: Exposed API / sensitive information disclosure through data-portal harvesting configuration
+- Summary: The harvesting API of a CKAN open-data portal returned harvest source configuration to callers who should not see it, disclosing internal secrets, a map of connected infrastructure and personal information. The program accepted the risk rather than treating it as impactful, so it was closed as informational.
+- Technique / pattern: Data-portal and ETL platforms store the credentials and endpoints of every upstream system inside the objects that describe a harvest or sync job. Those config objects are often served by the same public read API as the datasets themselves, so listing harvest sources yields an inventory of internal hosts plus whatever secrets the connectors need.
+- Takeaway: Wherever a platform ingests from elsewhere, the ingestion configuration is a credential store — keep it behind a separate authorization boundary from the published data. When reviewing any open-data or integration API, enumerate the job/connector/source objects, not just the content ones.
+
 ### 2026-09-24 — One-click data exfiltration via the rovoChatPrompt URL parameter in Confluence Rovo (Atlassian) — $6,000 (P2)
 - Source: [Bugcrowd bf1922fb](https://bugcrowd.com/disclosures/bf1922fb-99d0-4d3b-b419-1728720d29ec/one-click-data-exfiltration-via-rovochatprompt-url-parameter-confluence-rovo)
 - Type: Prompt injection via a URL parameter — sensitive information disclosure through an AI assistant

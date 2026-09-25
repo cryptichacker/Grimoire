@@ -12,6 +12,20 @@ Disclosed **Cross-Site Scripting** reports — reflected, stored, and DOM-based.
 
 ## Reports
 
+### 2026-09-25 — Stored XSS via SVG upload: check_content blocklist bypass and 256-byte scan limit (phpBB) — n/a
+- Source: [HackerOne #3606773](https://hackerone.com/reports/3606773)
+- Type: Stored XSS via file upload (content-inspection bypass)
+- Summary: Two independently exploitable flaws in `phpbb\files\filespec_storage::check_content()` — a bypassable blocklist and a scan that only inspected the first 256 bytes of the uploaded file — let an attacker upload an SVG carrying script that then executed for every viewer, giving self-propagating worm potential. Reproduced on `4.0.0-a2-dev`.
+- Technique / pattern: The researcher read the upload validator, saw that it matched a deny-list of patterns and that the inspection window was capped at a fixed byte count, and padded the SVG so the dangerous markup sat past the end of the scanned region.
+- Takeaway: Any content scanner with a byte budget can be defeated by padding the payload past the window, and a deny-list of dangerous tags will always trail the markup the browser accepts. Validate uploads by allow-list, parse the whole file, and serve user-supplied SVGs from a sandboxed origin or with `Content-Disposition: attachment`.
+
+### 2026-09-25 — Reflected DOM XSS in the VOTable Viewer leads to authenticated ARK user PII exfiltration via same-origin XHR (NASA Vulnerability Disclosure Program) — n/a (P3)
+- Source: [Bugcrowd 00cb5011](https://bugcrowd.com/disclosures/00cb5011-6768-4b68-a4a2-6b48a9ae35b3/reflected-dom-xss-in-votable-viewer-leads-to-authenticated-ark-user-pii-exfiltration-via-same-origin-xhr)
+- Type: Reflected DOM-based XSS chained to authenticated data exfiltration
+- Summary: A viewer application rendered user-supplied input into the DOM without sanitization; because it shared an origin with NASA's ARK proposal-management platform, injected script could issue same-origin `XHR` calls with the victim's live session and read researcher PII available to that account.
+- Technique / pattern: The researcher treated the reflection as a foothold rather than the finding, and inventoried what else was served from the same origin. A low-sensitivity data viewer sitting beside a sensitive authenticated application turns a modest DOM sink into credentialed access to the neighbour's API.
+- Takeaway: Score a DOM XSS by the origin it runs in, not by the app that contains it. Sensitive applications should not share an origin with sandbox, preview or viewer tooling, and any XSS on a shared origin should be triaged against the most sensitive neighbour.
+
 ### 2026-09-24 — Stored XSS via a video/mp2t MIME deny-list bypass leads to REST API authentication bypass (Atlassian Confluence Data Center) — $3,600 (P2)
 - Source: [Bugcrowd d5f4aa80](https://bugcrowd.com/disclosures/d5f4aa80-77da-49bb-a259-afe23b6bfa0a/authentication-bypass-in-the-rest-api-via-xss-on-safari-and-chrome-ios-iphone-only)
 - Type: Stored XSS — MIME deny-list bypass with browser-specific rendering

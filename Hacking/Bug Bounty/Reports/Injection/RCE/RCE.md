@@ -12,6 +12,13 @@ Disclosed **Remote Code Execution** reports reached via injection chains — **O
 
 ## Reports
 
+### 2026-09-25 — node --run POSIX positional argument escaping allows shell command injection (Node.js) — n/a
+- Source: [HackerOne #3817602](https://hackerone.com/reports/3817602)
+- Type: OS command injection via faulty shell argument escaping
+- Summary: `node --run <script> -- <args>` appends positional arguments to the package script after escaping each one for the shell, but on POSIX the escaping did not correctly handle single quotes, so an argument containing `'` could close the intended quoted argument and inject further shell syntax into the command line that runs.
+- Technique / pattern: Wherever a tool builds a shell string from user input and relies on hand-rolled quoting, the test is a single `'` (and then `'; id; '`) in each interpolated value. The bug class is the escaper's model of the shell diverging from the shell's real parsing rules.
+- Takeaway: Do not hand-roll shell escaping; pass argument vectors directly with `execFile`-style APIs instead of composing a command string. When a wrapper must quote, a single-quote character in the input is the canonical probe — and this is the same root cause as JSON-encoded data interpolated into a `shell=True` template.
+
 ### 2026-09-24 — CVE-2025-24813: remote code execution and sensitive file access via partial PUT (Internet Bug Bounty — Apache Tomcat) — n/a
 - Source: [HackerOne #3031518](https://hackerone.com/reports/3031518)
 - Type: Path-handling flaw in partial PUT — arbitrary file write/read escalated to code execution

@@ -12,6 +12,20 @@ Disclosed **SQL injection** reports — error/boolean/time-based, UNION, blind, 
 
 ## Reports
 
+### 2026-09-25 — Unauthenticated SQL injection via REST batch route confusion (Essity) — n/a
+- Source: [HackerOne #3873072](https://hackerone.com/reports/3873072)
+- Type: SQL injection (unauthenticated, blind) via batch-endpoint dispatch desynchronization
+- Summary: Nesting a crafted batch payload inside a request to the WordPress REST batch route `/wp-json/batch/v1` triggered a route-dispatch desynchronization, letting user-controlled input bypass the normal parameter sanitization and reach a raw SQL `NOT IN (...)` clause — with no authentication, cookies or nonces required.
+- Technique / pattern: Generic batch and multiplex endpoints re-enter the framework's own routing to run each sub-request. The researcher nested batch payloads so the parameters were resolved against a different handler than the one that sanitized them, then confirmed a blind boolean differential on the resulting query.
+- Takeaway: Batch, multiplex, GraphQL-alias and JSON-RPC style endpoints are sanitization-bypass surfaces because they dispatch requests a second time inside the trusted boundary. Test them with nested and repeated sub-requests, and make sure each sub-request re-runs the full validation and authorization chain.
+
+### 2026-09-25 — Blind SQL injection in a hidden search page leads to full database extraction (NASA Vulnerability Disclosure Program) — n/a (P1)
+- Source: [Bugcrowd 4b4a2cd5](https://bugcrowd.com/disclosures/4b4a2cd5-2fee-4407-b09f-74c14a8257df/blind-sql-injection-in-search-functionality-leads-to-full-database-extraction)
+- Type: Blind SQL injection
+- Summary: A search parameter on a page that was not linked from anywhere on the site, and so was never reached by ordinary crawling, carried a blind SQL injection that allowed complete extraction of the backing database.
+- Technique / pattern: Automated tooling produced false negatives here — both `sqlmap` and `ghauri` failed to flag the parameter — so the researcher confirmed the injection by hand from boolean response differentials and then wrote a bespoke extraction script. The page itself was found by content discovery rather than by following links.
+- Takeaway: A clean scanner result is not evidence of absence; confirm boolean and timing differentials manually before dismissing a parameter. Unlinked and forgotten pages surfaced by wordlists, sitemaps or archive crawling tend to run the least-maintained query code on the host.
+
 ### 2026-09-24 — SQL injection in TScenObject action ScenObjects on contactws.contact-sys.com leading to RCE (QIWI) — n/a
 - Source: [HackerOne #816254](https://hackerone.com/reports/816254)
 - Type: SQL injection — injectable field in a JSON request body, escalated to code execution

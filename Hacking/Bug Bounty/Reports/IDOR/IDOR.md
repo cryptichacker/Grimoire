@@ -12,6 +12,34 @@ Disclosed **Insecure Direct Object Reference** reports. Core idea: an object ide
 
 ## Reports
 
+### 2026-09-25 — Autotranslate DDP method exposes private messages without authentication or room access check (Rocket.Chat) — n/a
+- Source: [HackerOne #3734326](https://hackerone.com/reports/3734326)
+- Type: IDOR / broken object-level authorization (BOLA)
+- Summary: The Meteor DDP method `autoTranslate.translateMessage` accepted a client-supplied message object and passed it to `translateMessage()` without checking `Meteor.userId()` or verifying room membership, so any connected user could read message bodies from rooms they were not a member of — including private channels, DMs and end-to-end-encrypted rooms.
+- Technique / pattern: The equivalent REST route had already been fixed, so the researcher looked for the *other* transports that reach the same server function and replayed the call over DDP supplying only a target message id. The method returned the message content, confirming the authorization check lived in the route rather than in the shared handler.
+- Takeaway: Patching one transport does not patch a capability. Inventory every protocol surface that reaches the same handler — REST, DDP/WebSocket, RPC, GraphQL — and enforce the ownership check inside the handler, not per route.
+
+### 2026-09-25 — Hidden and restricted tags can be mutated through synonym ID paths without per-tag authorization (Discourse) — n/a
+- Source: [HackerOne #3689633](https://hackerone.com/reports/3689633)
+- Type: IDOR / missing per-element authorization in a bulk operation
+- Summary: `TagsController#create_synonyms` authorized only the route's target tag with `guardian.ensure_can_edit_tag!(@tag)`, then processed attacker-supplied synonym tag ids from the request body without re-checking edit permission or visibility for each one, letting a user fold hidden or restricted tags into a tag they legitimately control.
+- Technique / pattern: Reading the open-source controller showed a single guard standing in front of a loop over ids taken from the payload. The researcher then sent one tag id they owned together with one restricted tag id and watched the second be accepted.
+- Takeaway: In bulk and relationship-forming endpoints the guard is usually written once against the named container. Authorize every element of an id array or id list, not just the primary object named in the path.
+
+### 2026-09-25 — Cross-tenant data access: IDOR and information disclosure in the Jira custom field metadata endpoint (Atlassian) — 10 points (P3)
+- Source: [Bugcrowd e73a6c59](https://bugcrowd.com/disclosures/e73a6c59-737f-48b1-9202-dae9aa49092d/cross-tenant-data-access-idor-and-information-disclosure-in-jira-custom-field-metadata-endpoint)
+- Type: IDOR / cross-tenant broken access control
+- Summary: A Jira endpoint that serves custom field metadata did not scope its authorization check to the caller's own tenant, so manipulating the identifiers in the request returned field configuration data belonging to other customer organizations.
+- Technique / pattern: In a multi-tenant SaaS product, the researcher took an ordinary authenticated request from their own site and swapped the object identifiers for ones belonging to a different tenant. Configuration and metadata endpoints are a good place to try this because they are often treated as low-sensitivity plumbing and skipped when tenant scoping is added to the main data APIs.
+- Takeaway: In multi-tenant apps every query must be scoped by tenant at the data layer, not merely checked for "is this caller authenticated". Metadata, schema and configuration endpoints deserve the same tenant filter as the records themselves.
+
+### 2026-09-25 — Authenticated BFLA in the DIRS Critical Need of Help API exposes all submitted requests and PII (FCC Vulnerability Disclosure Program) — n/a (P1)
+- Source: [Bugcrowd 4f63c6af](https://bugcrowd.com/disclosures/4f63c6af-68cf-4d58-a1c9-911fb8a202ad/authenticated-bfla-in-dirs-critical-need-of-help-api-allows-unauthorized-access-to-all-submitted-requests-and-pii)
+- Type: Broken function-level authorization (BFLA) / IDOR
+- Summary: An authenticated endpoint in the FCC DIRS platform was intended only for *submitting* emergency assistance requests, but it also answered `GET` and returned every historical submission — bulk PII, emergency details and operational metadata belonging to other organizations and individuals.
+- Technique / pattern: Verb enumeration against a write-only route: the researcher took an endpoint the UI only ever issues `POST` to and tried `GET` on the same path with a low-privileged account. The read path had no function-level authorization because the designers never expected it to be reachable.
+- Takeaway: Authorize per method, not per path. Any route the UI uses in one direction should be tested in every other verb, and a "submit" endpoint that silently supports a list operation is a bulk-disclosure bug.
+
 ### 2026-09-24 — IDOR in a GraphQL campaign mutation allows deleting any campaign by id (HackerOne) — n/a
 - Source: [HackerOne #1969141](https://hackerone.com/reports/1969141)
 - Type: IDOR — unauthorized object deletion via a GraphQL mutation
