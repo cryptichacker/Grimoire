@@ -12,6 +12,62 @@ Disclosed **Insecure Direct Object Reference** reports. Core idea: an object ide
 
 ## Reports
 
+### 2026-09-27 — Improper Authorization Leads to Vertical Privilege Escalation (Lovable VDP) — n/a
+- Source: [HackerOne #3371448](https://hackerone.com/reports/3371448)
+- Type: IDOR / broken function-level authorization (BFLA)
+- Summary: A workspace member holding only the Editor role could call the admin-only endpoint `/workspaces/<WORKSPACE_ID>/tool-preferences/ai_gateway/enable`, because the route enforced no server-side role check. A non-admin could therefore flip a workspace-wide administrative setting.
+- Technique / pattern: Log in with the lowest role a tenant offers, then replay every administrative request you can discover — from the admin UI, JS bundles or API docs — using that low-privilege session. The tell is a route whose path already scopes the tenant correctly, so object-level authorization looks fine, while the *function* behind it is only hidden in the UI.
+- Takeaway: Scoping a route to a workspace id is not authorization; every privileged capability needs its own server-side role check, and "the button is not rendered for Editors" is not one.
+
+### 2026-09-27 — Improper access control on LinkedIn Pages: a downgraded admin keeps super-admin actions (LinkedIn) — n/a
+- Source: [HackerOne #1587246](https://hackerone.com/reports/1587246)
+- Type: IDOR / stale privilege after a role change
+- Summary: A user granted `super admin` on a LinkedIn Page kept the ability to publish as super admin after their role was edited down to `analyst`, because the already-open session's privileges were never re-evaluated against the new role.
+- Technique / pattern: Take a role you are about to lose, open the privileged view, have the role downgraded *without closing the session*, then replay the privileged action unchanged. Authorization computed at grant time — or cached in session/view state — leaves a window that an ordinary UI reload would hide.
+- Takeaway: Re-derive permissions from current server-side state on every request, and invalidate or re-authorize open sessions whenever a role is changed or removed.
+
+### 2026-09-27 — View another user's profile by swapping the `UID2` cookie (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #1004745](https://hackerone.com/reports/1004745)
+- Type: IDOR / identity taken from a client-supplied cookie
+- Summary: A profile page decided whose record to display from a `UID2` cookie value rather than from the authenticated session, so an authenticated attacker who rewrote that cookie to another user's id read that user's profile.
+- Technique / pattern: Treat the cookie jar as a parameter surface — after logging in, diff every cookie for anything resembling an identity (`UID`, `userid`, `acct`, an encoded email) and increment or swap it. A cookie is attacker-controlled input exactly like a query parameter, but it is often consumed by an older code path that predates the session layer.
+- Takeaway: Identity must be derived server-side from the session token alone; never read the subject of a request from a cookie, header or body field the client can rewrite.
+
+### 2026-09-27 — Sensei LMS below 4.5.2: arbitrary private-message sending via IDOR, CVE-2022-2080 (Automattic) — n/a
+- Source: [HackerOne #1592596](https://hackerone.com/reports/1592596)
+- Type: IDOR / missing sender validation on a write
+- Summary: The Sensei LMS WordPress plugin never verified that the sender of a private message was the teacher or the original participant of that conversation, so any authenticated user could inject messages into arbitrary private threads — though not read the replies.
+- Technique / pattern: On messaging, comment and thread features, test the *write* side separately from the read side, because participation checks are frequently implemented only where a conversation is rendered. Supply another conversation's id in the send request from an unrelated account; a write-only IDOR still enables impersonation and harassment even when reads stay protected.
+- Takeaway: Every message-send path must re-check that the session is a participant in that specific thread, and a partial IDOR (write without read) is still a reportable authorization failure.
+
+### 2026-09-26 — IDOR protection bypass by changing HTTP method in IBM Your Learning endpoint (IBM) — n/a
+- Source: [HackerOne #2456603](https://hackerone.com/reports/2456603)
+- Type: IDOR / broken object-level authorization
+- Summary: An IBM Your Learning endpoint enforced object-level authorization on one HTTP verb but not on others, so re-issuing the same request with a different method bypassed the IDOR protection and reached another user's object. IBM confirmed and remediated it.
+- Technique / pattern: After an object-reference tamper is blocked, replay the identical request with a different verb (`GET` to `POST`, `POST` to `PUT`/`PATCH`, plus `HEAD` and override headers such as `X-HTTP-Method-Override`). Authorization filters are often wired per route+verb, so an unmapped verb falls through to a handler with no check.
+- Takeaway: A "fixed" IDOR is only fixed for the verb that was tested; always re-test every method the route accepts, because access control bound to route+verb pairs leaves gaps.
+
+### 2026-09-26 — Remove every user, admin and owner from their teams on developers.mtn.com via IDOR + information disclosure (MTN Group) — n/a (Critical 9-10)
+- Source: [HackerOne #1448550](https://hackerone.com/reports/1448550)
+- Type: IDOR / missing object-level access control
+- Summary: The team member-removal request on `developers.mtn.com` trusted attacker-supplied `user_id` and `team_id` values with no ownership check, so any authenticated user could evict arbitrary users (including team owners and admins) from teams they had no access to. The response also leaked the victim's username and the team name.
+- Technique / pattern: Create three accounts to establish a victim relationship you are deliberately outside of, intercept the legitimate "remove member" call in a proxy, then swap both identifiers for the victim pair and replay. Because both IDs were short sequential integers (4 digits), the request could be driven through an intruder-style sweep over the full `user_id` x `team_id` space to affect every team at once.
+- Takeaway: Object-level checks must cover both the target object and the container it lives in; short sequential IDs turn a single-victim IDOR into a platform-wide denial of service, and a response that echoes names converts it into a PII leak as well.
+
+### 2026-09-26 — Insecure Direct Object Reference in report participant removal (HackerOne) — $500
+- Source: [HackerOne #46397](https://hackerone.com/reports/46397)
+- Type: IDOR on a destructive DELETE endpoint
+- Summary: The program-portal call that removes an external participant, `DELETE /reports/<reportId>/external_users/<userId>`, did not verify that `<userId>` was actually a participant on that report, so changing the value generated a genuine "you were removed" notification email to any user on the platform.
+- Technique / pattern: Look for identifiers embedded in the URL path of destructive verbs rather than in the body; path parameters are frequently used to load the object but not to authorize it. The impact here is the side effect (a platform-sent email) rather than data read, so mass abuse is proven by the notification, not by a response body.
+- Takeaway: IDOR impact is not limited to reading data; write and delete endpoints can be abused to send trusted, legitimate-looking notifications from the target's own infrastructure. Check that the referenced object belongs to the parent resource, not just that it exists.
+
+### 2026-09-26 — Broken Access Control on NASA SPDF host (NASA Vulnerability Disclosure Program) — n/a (Informational)
+- Source: [Bugcrowd f0e3ceec](https://bugcrowd.com/disclosures/f0e3ceec-b3a8-416f-90c2-759a45f78a67/broken-access-control)
+- Type: Broken access control / unauthorized resource access
+- Summary: A researcher reported that restricted directories and resources on a NASA SPDF host could be reached without proper authorization, exposing research documents and operational logs. NASA closed it as Informational (accepted risk).
+- Technique / pattern: Enumerate object identifiers programmatically against a status route (the report used a script sweeping campaign IDs against a `/status` endpoint) and compare responses across locales, then walk the directory structure toward administrative and user-management paths. Scripted enumeration plus response-diffing is what separates a guess from evidence.
+- Takeaway: Enumeration evidence is necessary but not sufficient; this closed as Informational because the write-up asserted broad impact (CSRF chaining, admin panel reach) without demonstrating it. Prove the single strongest reproducible consequence rather than listing hypothetical ones.
+
 ### 2026-09-25 — Autotranslate DDP method exposes private messages without authentication or room access check (Rocket.Chat) — n/a
 - Source: [HackerOne #3734326](https://hackerone.com/reports/3734326)
 - Type: IDOR / broken object-level authorization (BOLA)

@@ -12,6 +12,63 @@ Disclosed **security misconfiguration** reports — permissive CORS, default/exp
 
 ## Reports
 
+### 2026-09-27 — Takeover of hackerone.engineering during a GitHub Pages CNAME-hold release (HackerOne) — n/a
+- Source: [HackerOne #2085260](https://hackerone.com/reports/2085260)
+- Type: Security misconfiguration / subdomain takeover through a provider-side claim window
+- Summary: For roughly ten minutes GitHub released its hold on the `hackerone.engineering` custom domain while HackerOne's DNS still pointed at GitHub Pages, and a researcher claimed the hostname in their own repository. HackerOne remediated by enabling GitHub's Domain Verification for the host and moving the Pages domain to a verified state.
+- Technique / pattern: The takeover window does not open only when *you* delete a resource — it also opens when the *provider* stops reserving the name, after a plan change, a repository transfer or rename, a verification lapse or an account migration. Re-check every dangling-CNAME candidate repeatedly rather than once, because a host that answers "claimed by someone else" today can be claimable for minutes tomorrow.
+- Takeaway: Pair every custom-domain CNAME with the provider's domain-verification feature so the name stays reserved to you even when the underlying site or plan changes.
+
+### 2026-09-27 — Unprotected admin panel on app.lemlist.com reachable by any ordinary user (lemlist) — n/a
+- Source: [HackerOne #937921](https://hackerone.com/reports/937921)
+- Type: Security misconfiguration / missing authorization on an administrative surface
+- Summary: Administrative endpoints on `app.lemlist.com`, discovered by reading the application's JavaScript bundles, carried no role check, so any ordinary authenticated user could load the admin panel.
+- Technique / pattern: Treat the frontend bundle as the application's route table — pull every path, route definition and feature-flag name out of the JS, then request the admin-looking ones from a plain free account. Single-page applications ship the admin routes to every visitor because one bundle serves all roles, and the server-side check is often assumed to be implied by the UI not rendering the link.
+- Takeaway: Admin routes must be authorized server-side and independently of the client bundle; extract paths from JavaScript rather than only crawling what the UI links to.
+
+### 2026-09-27 — Subdomain takeover of a Bosch host via a dangling Azure Traffic Manager CNAME (Bosch) — 20 points
+- Source: [Bugcrowd #9ae60aa2](https://bugcrowd.com/disclosures/9ae60aa2-fb4c-4ae9-a4ad-49952de29125/subdomain-takeover)
+- Type: Security misconfiguration / subdomain takeover (dangling CNAME)
+- Summary: `sidaccounts.bosch.com` kept a CNAME to `sidaccounts.trafficmanager.net` after the underlying Azure Traffic Manager profile was abandoned; the researcher registered that Traffic Manager name themselves and so controlled what was served on the Bosch subdomain.
+- Technique / pattern: A classic worth keeping for its provider specifics — Traffic Manager profile names are globally unique and free to claim, so a resolution chain of host to `*.trafficmanager.net` ending in NXDOMAIN or a default page is a takeover signature. Enumerate subdomains, resolve each CNAME, and bucket the targets by cloud provider so each vendor's claim test can be applied in turn.
+- Takeaway: Remove DNS records together with, or before, the cloud resource they point at, and reconcile DNS against live cloud inventory as a recurring task rather than only at teardown.
+
+### 2026-09-27 — Public Amazon S3 bucket behind a NASA JPL host exposes stored files (NASA VDP) — n/a
+- Source: [Bugcrowd #b4053dc4](https://bugcrowd.com/disclosures/b4053dc4-2ad1-48f7-a1a6-308dc63ec549/amazon-s3-bucket-misconfiguration)
+- Type: Security misconfiguration / world-readable cloud storage
+- Summary: The bucket behind `descanso.jpl.nasa.gov` was reachable at its S3 endpoint with no access restriction, letting anyone who knew the URL list and download the HTML, PDF and image files it held. NASA accepted it as an informational business risk, as no PII was exposed, and removed the bucket.
+- Technique / pattern: Derive candidate bucket names mechanically from hostnames already in scope, since the `<host>.s3.amazonaws.com` convention means a site's own domain name is frequently the bucket name, then test list and read access. Note how this one was triaged: with no sensitive content a public bucket alone is informational, which is why enumerating the bucket's full verb set and the sensitivity of its objects is what decides severity.
+- Takeaway: Bucket naming that mirrors public hostnames makes cloud storage trivially discoverable; rate an exposure by what the objects are and which verbs are permitted, not by the bucket being public.
+
+### 2026-09-26 — Magic-link login token reusable across browsers (lemlist) — n/a (High 8.8)
+- Source: [HackerOne #1486327](https://hackerone.com/reports/1486327)
+- Type: Security misconfiguration / broken passwordless-auth token handling
+- Summary: The email "magic link" used to log in to `app.lemlist.com` was not single-use and was not bound to the requesting session, so the same link worked repeatedly and in any browser or incognito window, letting anyone who obtained it log into the victim's account.
+- Technique / pattern: For any passwordless or "click to log in" flow, request one link and then replay it: use it a second time, in a fresh browser, from a different IP, and after the stated expiry. Each success is a separate defect (no single-use, no session binding, no expiry, no IP pinning). Capture the link once and script the reuse to prove it deterministically.
+- Takeaway: Magic links are bearer credentials and need the same hygiene as password-reset tokens: high entropy, short expiry, one-time use, and invalidation of the token the moment it is consumed.
+
+### 2026-09-26 — CORS misconfiguration allowing credentialed cross-origin reads (U.S. Dept Of Defense) — n/a (High 7-8.9)
+- Source: [HackerOne #470298](https://hackerone.com/reports/470298)
+- Type: Security misconfiguration / CORS
+- Summary: A DoD JSON API reflected an arbitrary `Origin` into `Access-Control-Allow-Origin` while also returning `Access-Control-Allow-Credentials: true`, so an attacker page could issue a credentialed `XMLHttpRequest` and read the authenticated response, bypassing CSRF protections for state-changing actions.
+- Technique / pattern: Send a request with `Origin: exploit.com` and inspect the response headers; a reflected origin combined with `Access-Control-Allow-Credentials: true` is the whole proof. Demonstrate impact with a hosted page doing `xhr.withCredentials = true` against a sensitive endpoint. Because a credentialed cross-origin read can retrieve CSRF tokens, a CORS read frequently escalates into CSRF writes.
+- Technique / pattern: Do not stop at exact-origin reflection; also test the `null` origin and substring/suffix trust bugs (an origin merely containing the allowed host).
+- Takeaway: Reflecting `Origin` with credentials enabled is equivalent to allowing any site to act as the logged-in user. Use a strict allowlist of trusted origins and never combine wildcard/reflected origins with credentialed responses.
+
+### 2026-09-26 — Missing SPF enabling email spoofing from a gov domain (GSA Bounty) — n/a
+- Source: [HackerOne #263508](https://hackerone.com/reports/263508)
+- Type: Server security misconfiguration / mail (missing SPF)
+- Summary: The email domain lacked an enforcing SPF policy, so mail could be sent that appeared to originate from an address at the organization's own domain and was delivered to victims' inboxes.
+- Technique / pattern: Check the domain's `TXT` records for SPF (and, by extension, DKIM/DMARC), then send a test message spoofing a first-party sender and confirm inbox (not spam) delivery. The report's own trajectory shows the caveat: without DMARC-enforcement evidence and a concrete phishing scenario, mail-auth findings are routinely rated low or N/A.
+- Takeaway: Missing SPF/DKIM/DMARC enables convincing phishing from the target's own name, but severity hinges on demonstrating enforcement gaps and delivery. Publish `SPF -all`, sign with DKIM, and set a `DMARC` reject policy.
+
+### 2026-09-26 — Missing X-Frame-Options / clickjacking on video player (20 Minuten) — n/a (P5, Informational)
+- Source: [Bugcrowd be140cd9](https://bugcrowd.com/disclosures/be140cd9-c640-4bdd-a34f-74e71669fadd/lack-of-security-headers)
+- Type: Server security misconfiguration / missing security headers
+- Summary: `https://videoplayer.20min.ch` returned responses without an `X-Frame-Options` (or equivalent frame-ancestors) header, so the page could be framed by a malicious site for UI-redressing (clickjacking). Closed as P5 / Informational.
+- Technique / pattern: Check response headers for framing controls and build a minimal PoC page that embeds the target in an `iframe`; if it renders, framing is allowed. Severity depends entirely on whether a framed, sensitive, click-driven action exists, so a bare header-absence report on a static or non-interactive page is expected to close as Informational.
+- Takeaway: Missing security headers are only worth reporting when tied to a concrete exploited action. Defensively, set `Content-Security-Policy: frame-ancestors` (and legacy `X-Frame-Options`) on any page with state-changing UI.
+
 ### 2026-09-25 — Internet-exposed internal LibreChat instance with open self-registration grants access to internal models (AWS Vulnerability Disclosure Program) — n/a
 - Source: [HackerOne #3287396](https://hackerone.com/reports/3287396)
 - Type: Security misconfiguration — self-registration enabled on an internal tool exposed to the internet

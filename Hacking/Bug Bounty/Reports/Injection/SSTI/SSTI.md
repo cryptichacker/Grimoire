@@ -12,6 +12,13 @@ Disclosed **Server-Side Template Injection** reports (often escalating to RCE). 
 
 ## Reports
 
+### 2026-09-26 — Chain of ESI injection and reflected XSS leading to account takeover (U.S. Dept Of Defense) — n/a (High 8.2)
+- Source: [HackerOne #1073780](https://hackerone.com/reports/1073780)
+- Type: Edge Side Includes (ESI) injection chained to reflected XSS -> account takeover
+- Summary: A DoD host sat behind a cache/proxy layer that parsed Edge Side Includes markup in upstream responses. Injecting ESI tags into a reflected value let the researcher have the edge layer process attacker-controlled directives, which was chained with reflected XSS to take over an account. Resolved and rated High (8.2).
+- Technique / pattern: ESI injection is server-side template injection performed at the CDN/proxy tier rather than in the application's own engine. Detect it by reflecting `<esi:...>` markup (for example an `esi:include` pointing at a collaborator host) and watching whether the tag disappears from the response or triggers an outbound fetch; the proxy strips or executes what the application merely echoed. Because ESI processors can often read cookies and issue requests, an injection there escalates a low-value reflection into session theft.
+- Takeaway: When a reflected-input finding looks low impact, ask what sits in front of the application: a caching/edge layer that interprets markup turns an echo into a second injection point. Test for proxy-tier template languages (ESI and similar) alongside application-side ones.
+
 ### 2026-09-25 — CVE-2022-22954: server-side template injection in VMware Workspace ONE Access leads to remote code execution (U.S. Department of Defense) — n/a
 - Source: [HackerOne #1537543](https://hackerone.com/reports/1537543)
 - Type: Server-side template injection (SSTI) to RCE — known CVE on an in-scope asset

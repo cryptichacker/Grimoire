@@ -12,6 +12,62 @@ Disclosed **exposed API / sensitive information disclosure** reports — leaked 
 
 ## Reports
 
+### 2026-09-27 — Asana S3 attachments leaked via a server-signed arbitrary `s3_path` plus OSINT (Asana) — $2,500
+- Source: [Bugcrowd #5399313d](https://bugcrowd.com/disclosures/5399313d-b86d-4965-9c32-dbf77660d4ea/user-data-from-the-asana-s3-bucket-can-be-leaked-via-presigned-url-and-osint)
+- Type: Exposed API / server-side signing of a client-supplied storage path
+- Summary: A websocket mutation to `/s3_attachment_create` accepted an `s3_path` field without validating it, so the server would generate a valid presigned URL for any object path the client named. Combined with S3 keys harvested from public sources, that gave read access to other users' attachments.
+- Technique / pattern: Look for the shape "client names the storage location, server signs it" in upload and attachment flows — presigned-URL issuance endpoints, `create_attachment`, `direct_upload`, `get_signed_url`. The server is the trust anchor for the signature, so an unvalidated path parameter turns it into a signing oracle for the whole bucket; websocket and RPC mutations are a good hunting ground because they often sit outside the REST validation layer.
+- Takeaway: Derive the storage key server-side from the authenticated session and the target record; never sign a path that arrived in the request, and scope presigned URLs to a single object the caller is authorized for.
+
+### 2026-09-27 — Hardcoded credentials in client-side JavaScript open the Lucidworks Fusion admin panel (U.S. EPA VDP) — n/a
+- Source: [Bugcrowd #d900e24e](https://bugcrowd.com/disclosures/d900e24e-af98-48d1-ac5f-74c1c2ec5ad5/public-user-login-credentials-leaked-for-lucidworks-fusion-admin-panel)
+- Type: Exposed API / secrets shipped in client-side code
+- Summary: A cleartext credential pair sat in `app_v2_1.js` and a Base64-encoded administrative pair in `setup.js`, giving access to the Lucidworks Fusion admin interface at `search.epa.gov/admin`. From that session the researcher reached dashboards, DevOps panels and configuration interfaces exposing internal system information and service logs, and also demonstrated prototype pollution against notification objects held in session storage.
+- Technique / pattern: Pull and beautify every script a search or admin frontend loads, then grep for credential-shaped strings *and* for Base64 blobs, because encoding is not a control. Setup and bootstrap scripts are the most productive files since they configure the backend rather than render the UI; rate the finding by walking the administrative routes the recovered session actually opens.
+- Takeaway: Anything shipped to the browser is public — backend credentials belong on the server behind an authenticating proxy, and Base64 in a bundle should be read as plaintext.
+
+### 2026-09-27 — Unauthenticated PII exposure through an ECFS prototype API directory (FCC VDP) — n/a
+- Source: [Bugcrowd #1f0205ac](https://bugcrowd.com/disclosures/1f0205ac-3eb1-45c8-a777-a27b10e66bd5/sensitive-data-exposure-user-personal-details)
+- Type: Exposed API / unauthenticated data exposure on a non-production host
+- Summary: The `/filings/` path on the host `ecfsapi-prototype.fcc.gov` returned filer records including email and physical addresses with no authentication at all. It was triaged P1 and has been resolved.
+- Technique / pattern: Enumerate the environment variants of every API hostname in scope — `-prototype`, `-dev`, `-staging`, `-uat`, `api2`, numbered versions — because these carry production data far more often than they carry production controls, and they are usually absent from the WAF and monitoring covering the main host. Certificate-transparency logs and DNS brute-forcing both surface them.
+- Takeaway: Non-production hostnames must not hold production records, and each deployment needs its own authentication rather than inheriting the main host's perimeter.
+
+### 2026-09-27 — PII of all site users exposed through faulty access control on an endpoint (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #904659](https://hackerone.com/reports/904659)
+- Type: Exposed API / broken access control on a user-listing endpoint
+- Summary: A redacted DoD site let any registered user reach an endpoint listing all site users and, by selecting a username, view their personally identifiable information — the check on that endpoint did not distinguish "logged in" from "allowed to see other users".
+- Technique / pattern: The cheapest privilege boundary to test is "any account at all versus everyone else's data": register, then hunt for directory, listing, search, org-chart and member-picker endpoints and see what a plain user may enumerate. Authorization written as an authentication check is the usual cause, and it is invisible to an unauthenticated scan.
+- Takeaway: Authenticated does not mean authorized — listing endpoints need an explicit role or relationship check, and a self-registrable account is the right baseline for testing them.
+
+### 2026-09-26 — Unauthenticated JSON API endpoint exposing internal user IDs, names and corporate emails (Mars) — n/a (Medium 4.6)
+- Source: [HackerOne #3360293](https://hackerone.com/reports/3360293)
+- Type: Exposed API / information disclosure (CWE-200)
+- Summary: An unauthenticated JSON API endpoint returned sensitive account data — internal UUIDs, display names, corporate email addresses, and even administrative role flags — with no authentication, enabling user enumeration and targeted attacks. Fixed by adding authentication and minimizing the returned fields.
+- Technique / pattern: During recon, hit JSON/REST endpoints directly with no session and read the raw body: endpoints built for an authenticated front end frequently answer anonymous callers and over-return internal fields (UUIDs, roles, emails) the UI never shows. Role flags in the payload are the escalation signal — they turn a directory leak into a target list of privileged accounts.
+- Takeaway: Two controls were missing at once — authentication and data minimization. Require auth on every data endpoint and serialize only the fields the caller is authorized to see; internal identifiers and role metadata should never appear in an anonymously reachable response.
+
+### 2026-09-26 — Information disclosure in API endpoint /users (U.S. Dept Of Defense) — n/a (Low, Resolved)
+- Source: [HackerOne #3027405](https://hackerone.com/reports/3027405)
+- Type: Exposed API / information disclosure
+- Summary: A `/users` API endpoint returned user information that should not have been exposed; the report was triaged, resolved, and later publicly disclosed (rated Low).
+- Technique / pattern: Enumerate REST collection endpoints (`/users`, `/accounts`, `/members`) and inspect the full JSON body, not just the rendered UI: APIs routinely over-return fields (internal IDs, emails, roles, flags) that the front end hides. Compare authenticated vs unauthenticated responses and trim query params to see what the server discloses by default.
+- Takeaway: Practice response minimization on APIs; serialize only the fields a caller is authorized to see rather than the whole record. UI-side filtering is not access control, and a verbose collection endpoint is a standing information-disclosure surface.
+
+### 2026-09-26 — Critical information disclosure via search path leak (Department of Interior VDP) — n/a (P5, Informational)
+- Source: [Bugcrowd 810206c6](https://bugcrowd.com/disclosures/810206c6-f547-48b9-9fc6-64da9933b029/critical-information-disclosure-at-https-www-doi-gov)
+- Type: Sensitive data exposure / path disclosure
+- Summary: A search parameter on `doi.gov` disclosed internal file paths (for example a `pdsimage2.wr.usgs.gov/data/` location) pointing at further resources. It was classified P5 / Informational as disclosure of already-public information.
+- Technique / pattern: Feed crafted queries into search and lookup features and read the responses for absolute paths, host names, and directory structures leaking from error text or result metadata. Path disclosure is useful mainly as recon that feeds a stronger bug (LFI, directory traversal, access-control test) rather than as an end in itself.
+- Takeaway: Path and host disclosure alone usually rates Informational; its value is as a stepping stone. Chain the leaked path to a demonstrable read of non-public data before claiming "critical," and defensively return generic errors that never echo server-side paths.
+
+### 2026-09-26 — Open redirect via redirect-uri leaking verification PII through Referer (Persona) — n/a (P5, Informational)
+- Source: [Bugcrowd eaa43961](https://bugcrowd.com/disclosures/eaa43961-ac08-481a-8196-26552516dd77/open-redirect-using-redirect-uri-parameter-in-the-url-leads-to-mass-information-disclosure-of-all-sensitive-information-collected-during-verification)
+- Type: Information disclosure via open redirect (GET-based)
+- Summary: Persona's identity-verification flow let an attacker override the post-inquiry destination with a `redirect-uri` parameter that was not validated, so when a user finished verification and was redirected to an attacker-controlled site, sensitive data (SSN, government ID, email) traveled to that site in the `Referer` header and URL. Closed as Informational.
+- Technique / pattern: On any flow that carries sensitive values in the URL or query string, test whether the redirect target is attacker-controllable, then observe what leaks to the third-party origin via `Referer` and forwarded parameters. The leak is a composition bug: open redirect plus sensitive data in the URL plus a permissive referrer policy.
+- Takeaway: Never put sensitive identifiers in URLs, validate redirect targets against an allowlist, and set `Referrer-Policy: no-referrer` (or `same-origin`) on pages that handle PII, so a redirect cannot exfiltrate data through the browser.
+
 ### 2026-09-25 — Unauthenticated testing endpoint of the notify_push component exposes internal IP addresses (Nextcloud) — n/a
 - Source: [HackerOne #3513471](https://hackerone.com/reports/3513471)
 - Type: Sensitive information disclosure via an unauthenticated diagnostic endpoint

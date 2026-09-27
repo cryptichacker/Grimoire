@@ -12,6 +12,62 @@ Disclosed **broken authentication & session management** reports — account tak
 
 ## Reports
 
+### 2026-09-27 — Account takeover on app.withpersona.com via unverified email change plus a pre-staged reset link (Persona) — n/a
+- Source: [Bugcrowd #cfd286b4](https://bugcrowd.com/disclosures/cfd286b4-2f63-4746-90cd-7dfdb7b497e9/account-takeover-attackers-can-take-over-coming-accounts-from-app-withpersona-com)
+- Type: Broken authentication / pre-account takeover through reset-token persistence
+- Summary: An attacker registered with a throwaway address, verified it, requested a password-reset link and kept it, then changed the account's email to a victim's address — which the application accepted without re-verifying the new address. The victim then found their address "already taken", and once they ran the reset flow the attacker's previously issued link still granted access.
+- Technique / pattern: Two defects compose here and each is worth testing on its own: whether an email change on an already-*verified* account returns it to the unverified state, and whether reset tokens issued before the account's identity changed are invalidated. The "already taken" signup error is the observable that tells a victim someone got there first.
+- Takeaway: Changing an account's email must revoke every outstanding credential and reset token and return the account to unverified; otherwise identity can be moved onto a victim's address while old tokens stay live.
+
+### 2026-09-27 — auth.tesla.com account takeover of internal Tesla accounts via identity-provider confusion (Tesla) — 40 points
+- Source: [Bugcrowd #4d9d22af](https://bugcrowd.com/disclosures/4d9d22af-3a9f-45ce-8eef-8d4fba06a205/auth-tesla-com-account-takeover-of-internal-tesla-accounts)
+- Type: Broken authentication / identity-provider confusion
+- Summary: Tesla ran separate identity providers for external users (`auth.tesla.com`) and staff (`sso.tesla.com`), but the Tesla Retail Tool never checked *which* provider had authenticated a session. The researcher used open-source research to find former employees' names, derived their corporate email addresses, registered those addresses on the external provider, and signed in to the internal tool with the privileges still attached to those disabled internal accounts.
+- Technique / pattern: Where an organization runs more than one identity provider, treat "which issuer minted this token" as part of authorization rather than a detail. Test whether self-service signup on the customer IdP can claim an address in the corporate domain, and whether the relying application keys entitlements on the email claim alone. Deprovisioning that disables the internal account while leaving its role mappings behind is what makes it exploitable.
+- Takeaway: Relying parties must pin the expected issuer, and require domain-verified enrollment, before trusting an email claim; entitlements should be removed with the account rather than left attached to an address.
+
+### 2026-09-27 — Two-factor authentication bypass through a misleading 2FA activation flow (Algolia) — n/a
+- Source: [HackerOne #145629](https://hackerone.com/reports/145629)
+- Type: Broken authentication / incomplete second-factor enrollment
+- Summary: Algolia's 2FA activation flow let a user reach a state where they reasonably believed the second factor was enabled while enrollment had not actually completed, so accounts that looked protected were still single-factor.
+- Technique / pattern: Enrollment is a state machine, so test it half-finished — scan the QR code but never submit a code, submit an invalid code, close the tab mid-flow, or call the enable endpoint without the confirmation step — then check what the account's 2FA flag and the login path each believe. A UI reporting "enabled" while the server disagrees, or the reverse, is a real finding even though no cryptography broke.
+- Takeaway: Flip the second-factor flag only after a code has been verified, and make the account's displayed 2FA state read from the same server-side value the login path enforces.
+
+### 2026-09-27 — Unauthorized access to PII via the WordPress REST users endpoint leads to administrator takeover (MTN Group) — n/a
+- Source: [HackerOne #2450685](https://hackerone.com/reports/2450685)
+- Type: Broken authentication / user enumeration through a framework default endpoint
+- Summary: The WordPress REST route `wp-json/wp/v2/users/15` returned user records, including an administrator's email address, because restrictions on the post-author listing were insufficient; the report chains that disclosure to takeover of the administrator account.
+- Technique / pattern: On any WordPress-backed host request `wp-json/wp/v2/users` and its per-id form before anything else — the endpoint is enabled by default and leaks usernames through the `slug` field, sometimes addresses too. Then treat those identities as input to the auth surface: a known admin username plus an unthrottled login or a weak reset flow is one chain, not two unrelated findings.
+- Takeaway: Disable or restrict framework default enumeration endpoints, and rate a "low" user-enumeration leak by the auth weaknesses it feeds rather than on its own.
+
+### 2026-09-26 — Two-factor authentication code brute-force (Ubiquiti Inc.) — n/a (Medium 6.6)
+- Source: [HackerOne #350288](https://hackerone.com/reports/350288)
+- Type: Broken authentication / insufficient rate limiting on 2FA
+- Summary: The `www.ubnt.com` login flow did not adequately rate-limit the 2FA code submission, so an attacker who already had the victim's username and password could brute-force the second-factor code and complete login.
+- Technique / pattern: Once past the password step, capture the 2FA verification request and replay it in a proxy across the full code space (a 6-digit numeric code is only 1,000,000 candidates, often far fewer given short validity windows). Watch for the absence of attempt counters, lockouts, or per-code invalidation. Rotate any anti-automation token that is returned so throttling keyed on it does not stop the sweep.
+- Takeaway: A second factor is only as strong as the rate limiting behind it. Enforce a strict attempt cap per code, invalidate the code after N failures, and expire codes quickly, so guessing is infeasible even after credential compromise.
+
+### 2026-09-26 — Session (refresh tokens) not invalidated after password reset (Gener8) — n/a (Medium)
+- Source: [HackerOne #917213](https://hackerone.com/reports/917213)
+- Type: Broken session management
+- Summary: After a user completed a password reset, their existing refresh tokens remained valid, so an adversary holding a previously issued refresh token could regain access to the account even though the password had just been changed.
+- Technique / pattern: Log in as the victim in session A, trigger a password reset from session B, then keep using session A (and specifically exercise the refresh-token endpoint). If A still works, the reset did not revoke prior sessions. Refresh tokens are the usual gap because reset logic often clears the access-token cookie but never the long-lived refresh token in the token store.
+- Takeaway: A password reset is a trust-revocation event and must invalidate all existing sessions and refresh/remember-me tokens server-side, not merely issue a new password. Test the refresh path explicitly, not just the current cookie.
+
+### 2026-09-26 — Two-factor authentication bypass (Dropbox) — 10 points (P3, Resolved)
+- Source: [Bugcrowd a52b0ff2](https://bugcrowd.com/disclosures/a52b0ff2-014e-45f5-bb9b-3578265ef7eb/bypass-2fa)
+- Type: Broken authentication / 2FA bypass
+- Summary: A researcher demonstrated a way to bypass Dropbox's two-factor authentication; Dropbox remediated it via an automatic update to existing users. Technical specifics were withheld at the researcher's request.
+- Technique / pattern: 2FA-bypass hunting focuses on the state transitions around the second factor: whether the post-password session is already partly authenticated, whether the 2FA step can be skipped by navigating directly to a post-login endpoint, whether the verify response can be tampered (for example a success/failure flag), and whether alternate login paths (mobile API, OAuth, remember-device) enforce the factor at all.
+- Takeaway: Enforce the second factor server-side on every authentication path and treat the pre-2FA session as fully unauthenticated; a single endpoint or API that trusts the password-only state defeats the whole control.
+
+### 2026-09-26 — Unused password-reset token does not expire (Dropbox) — n/a (P5, Informational)
+- Source: [Bugcrowd d3708bf3](https://bugcrowd.com/disclosures/d3708bf3-952e-461b-b274-e774bec0568f/unused-password-reset-token-not-expring)
+- Type: Broken authentication / weak reset-token lifecycle
+- Summary: The researcher reported that a password-reset token remained valid rather than being invalidated after use; the program closed it as Informational, judging the observed behaviour to be within intended design.
+- Technique / pattern: Test reset tokens along three axes: single-use (does it still work after one successful reset?), expiry (does it work long after issuance?), and invalidation-on-newer-request (does requesting a second link kill the first?). Note the outcome here: without a demonstrated takeover path, a "token lifetime" observation often reads as intended behaviour and closes Informational.
+- Takeaway: Reset tokens should be single-use, short-lived, and invalidated when a newer one is issued; but to earn severity, pair the lifecycle flaw with a realistic path to the token (leakage, referer, predictability) rather than reporting the property in isolation.
+
 ### 2026-09-25 — Taskcluster web-server OAuth2 authorization codes are reusable and the exchange handler checks the wrong expiry (Mozilla) — n/a
 - Source: [HackerOne #3734676](https://hackerone.com/reports/3734676)
 - Type: Broken authentication — OAuth2 authorization-code replay

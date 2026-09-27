@@ -12,6 +12,20 @@ Disclosed **SQL injection** reports — error/boolean/time-based, UNION, blind, 
 
 ## Reports
 
+### 2026-09-27 — SQL injection on a redacted DoD host allowing full database exfiltration (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #1489744](https://hackerone.com/reports/1489744)
+- Type: SQLi / error-based
+- Summary: A `POST` endpoint on a redacted DoD host concatenated request input into a SQL query. The report's stated impact was exfiltration of the whole database plus a path onward to remote code execution, demonstrated with `curl`-based proofs of concept.
+- Technique / pattern: The disclosed probe uses a cast-to-type error oracle rather than a `UNION` — a payload shaped like `OR(cast(version as date))LIKE'A` forces the database to coerce a value into an incompatible type, so the resulting error message, or its absence, both confirms injection and leaks the coerced value. This is the technique to reach for where nothing is reflected in the response body.
+- Takeaway: Error-based type-casting oracles confirm injection on endpoints that echo nothing back, and on many engines a confirmed injection should immediately be assessed for an OS-execution primitive rather than reported as read-only data access.
+
+### 2026-09-26 — Time-based blind SQL injection in document search (U.S. Dept Of Defense) — n/a (Medium)
+- Source: [HackerOne #2759243](https://hackerone.com/reports/2759243)
+- Type: SQL injection (time-based blind, MSSQL)
+- Summary: The `sortBy` parameter of an ASP.NET document-search endpoint (`/app/SearchDocs.aspx`) was concatenated into an `ORDER BY` clause, letting a request inject `WAITFOR DELAY` and control the server's response time.
+- Technique / pattern: Sort and order parameters are a classic blind-SQLi surface because they land in `ORDER BY`, where quoting is often omitted and the value is not returned in the response. Confirm with a paired differential: send `WAITFOR DELAY '0:0:5'` and `WAITFOR DELAY '0:0:0'` and compare timings, which rules out network noise. Extract data one character at a time with conditional delays, e.g. `IF (SUBSTRING(DB_NAME(),1,1)='A') WAITFOR DELAY '00:00:05'`.
+- Takeaway: Test every parameter that influences query shape, not just the ones that look like filters; `sortBy`, `sortOrder`, `groupBy` and column names are rarely parameterizable and therefore rarely parameterized. A two-request timing pair is the cheapest credible proof of blind SQLi.
+
 ### 2026-09-25 — Unauthenticated SQL injection via REST batch route confusion (Essity) — n/a
 - Source: [HackerOne #3873072](https://hackerone.com/reports/3873072)
 - Type: SQL injection (unauthenticated, blind) via batch-endpoint dispatch desynchronization

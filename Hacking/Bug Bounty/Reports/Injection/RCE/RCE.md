@@ -12,6 +12,20 @@ Disclosed **Remote Code Execution** reports reached via injection chains — **O
 
 ## Reports
 
+### 2026-09-27 — CyberGhost VPN Linux client: command injection via a user-writable config reaches root (CyberGhost) — 40 points
+- Source: [Bugcrowd #93d4a008](https://bugcrowd.com/disclosures/93d4a008-31dc-441c-a160-ab81d217e288/linux-client-command-injection-local-privilege-escalation)
+- Type: RCE / OS command injection (local privilege escalation)
+- Summary: The Linux client assembled a `curl` command for its WireGuard setup by concatenating the `token` and `secret` values read from the user-writable `~/.cyberghostvpn/config.ini`. A user whose `sudo` rights were limited to running `cyberghostvpn` could inject shell metacharacters into `token`, start a WireGuard connection, and have the payload execute as root — the proof of concept rewrote `/etc/sudoers` for unrestricted root.
+- Technique / pattern: For any binary a user may run through `sudo`, enumerate every file it reads afterwards — config files, profiles, cached tokens, log paths — and check which of those the same unprivileged user can write. A config value concatenated into a shell string is the classic sink here, and the privilege boundary being crossed is `sudo`-for-one-command rather than a network boundary.
+- Takeaway: A restricted `sudo` entry is only as tight as the inputs the privileged process trusts; build commands as argument arrays and treat any user-writable config consumed by a root process as untrusted input.
+
+### 2026-09-26 — Unauthenticated remote code execution via CVE-2025-4428 on an Ivanti EPMM instance (Unisys Vulnerability Disclosure Engagement) — n/a (CVSS 7.2, Resolved)
+- Source: [Bugcrowd d67973a0](https://bugcrowd.com/disclosures/d67973a0-7e45-455a-882a-9a5bc7a6ba0d/unauthenticated-remote-code-execution-cve-2025-4428)
+- Type: RCE via code-expression injection in a third-party product
+- Summary: An internet-facing Ivanti Endpoint Manager Mobile instance on a Unisys-owned domain was vulnerable to CVE-2025-4428, where the affected endpoint evaluates unsanitised user input as a code expression, giving arbitrary command execution with no authentication.
+- Technique / pattern: Asset-inventory-driven hunting: fingerprint third-party appliances on a program's domains (favicons, version strings, distinctive paths, response headers), map the version against recently published CVEs, then confirm with the lowest-impact probe available (typically a benign expression such as an arithmetic evaluation that proves input reaches an evaluator) before escalating. The report noted the behaviour matched a sibling CVE, a useful hint that a family of parameters shares one unsafe evaluator.
+- Takeaway: Known-CVE triage on exposed vendor products is legitimate, high-value work; the win is disciplined version fingerprinting plus a safe proof-of-concept, not weaponised exploitation. Patch cadence on edge appliances is the real defensive lesson.
+
 ### 2026-09-25 — node --run POSIX positional argument escaping allows shell command injection (Node.js) — n/a
 - Source: [HackerOne #3817602](https://hackerone.com/reports/3817602)
 - Type: OS command injection via faulty shell argument escaping

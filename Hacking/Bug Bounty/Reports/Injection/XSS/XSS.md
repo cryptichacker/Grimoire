@@ -12,6 +12,34 @@ Disclosed **Cross-Site Scripting** reports — reflected, stored, and DOM-based.
 
 ## Reports
 
+### 2026-09-27 — CVE-2025-4123: Grafana open redirect chained to stored XSS and full-read SSRF (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #3286945](https://hackerone.com/reports/3286945)
+- Type: XSS / stored, via a client-side open redirect in a third-party dashboard
+- Summary: A DoD Grafana host was affected by CVE-2025-4123 (Grafana OSS and Enterprise): a path-traversal weakness in the public redirect handler produced an open redirect an unauthenticated attacker could use to load a malicious plugin path, yielding stored XSS, and — where the Grafana Image Renderer plugin was installed — full-read SSRF, with account takeover as the stated impact.
+- Technique / pattern: Fingerprint the version of every off-the-shelf dashboard, BI and monitoring product in scope and match it to published advisories rather than hunting a novel bug. The instructive part is the chain: the redirect handler is only "low severity" until it becomes the loader for attacker-chosen frontend code, and an optional server-side rendering plugin turns that XSS into a server-side fetch primitive.
+- Takeaway: Score an open redirect by what the origin behind it can load and reach, and treat optional rendering or export plugins as an escalation multiplier when patching third-party dashboards.
+
+### 2026-09-27 — Stored XSS in a staff member's name fires inside the internal admin panel (Shopify) — maximum bounty in the XSS category
+- Source: [HackerOne #946053](https://hackerone.com/reports/946053)
+- Type: XSS / stored, second-order, internal tooling
+- Summary: A payload a researcher had left years earlier in the name of a staff member on a test shop eventually executed inside Shopify's internal administration panel, showing the staff-name field was not escaped when internal tooling rendered it.
+- Technique / pattern: Plant persistent out-of-band beacon payloads — not `alert` — in every low-friction identity field such as staff name, shop name, display name and address, and accept that the vulnerable renderer may be an internal tool you cannot see, reached weeks or months later. The sink lives in a different serializer from the customer-facing UI, so "it renders safely in the storefront" says nothing about the admin view.
+- Takeaway: Escape stored values at every render surface, internal back-office tools included; blind stored XSS is the only practical way to cover sinks that are not reachable from outside.
+
+### 2026-09-26 — Unrestricted file upload leading to stored XSS for token hijacking in Jira Service Desk (Atlassian) — 10 points (P3)
+- Source: [Bugcrowd 61a50171](https://bugcrowd.com/disclosures/61a50171-aa55-4126-b9f4-4e82b4b8c301/unrestricted-file-upload-stored-xss-for-token-hijacking)
+- Type: Stored XSS via unrestricted file upload
+- Summary: In Jira Service Desk Server and Data Center before 4.10.0, the customer-portal endpoint `/servicedesk/customer/portals` accepted HTML file uploads from a project administrator, and the uploaded file was later served in a way that executed its script in viewers' browsers, enabling session/token theft.
+- Technique / pattern: When an upload feature is reachable, test whether the server restricts by extension, by declared `Content-Type`, or not at all, and (critically) how the file is served back. An `.html` or `.svg` file returned with a renderable content type and no `Content-Disposition: attachment` becomes stored XSS on the application's own origin. Chain it to a privileged-but-not-admin role to show cross-user impact.
+- Takeaway: Upload validation and upload serving are two separate controls. Serve user files from a sandboxed origin, force download for non-image types, and never let a low-tier authenticated role plant executable markup that higher-privileged users will open.
+
+### 2026-09-26 — Sanitization bypass giving stored XSS, blind SSRF and open redirect in publisher description (Opera) — 10 points
+- Source: [Bugcrowd e4ec1598](https://bugcrowd.com/disclosures/e4ec1598-77cb-4129-8191-85904ff344e6/bypass-sanitizetion-for-stored-xss-blind-ssrf-external-open-redirect-on-publisher-description)
+- Type: Stored XSS (sanitizer bypass), chained with blind SSRF and open redirect
+- Summary: Opera's publisher description field ran user input through a sanitizer that could be bypassed, so markup persisted to the database and executed on render; the same weakly-filtered field also accepted values that made the server fetch external URLs (blind SSRF) and that redirected users off-site.
+- Technique / pattern: Treat one weakly-filtered rich-text field as three separate surfaces. Probe the sanitizer with mutation-style payloads (unusual tag/attribute casing, nested or malformed tags, `svg`/`math` contexts, and attributes the allowlist forgot such as `on*` variants or `href`/`src` with alternate schemes). Whatever bypasses the filter for script execution usually also bypasses it for URL fields, so immediately retest the same payload shape for server-side fetches and for redirect targets.
+- Takeaway: A sanitizer bypass is worth more than one report's worth of impact; enumerate every sink the field feeds (HTML render, server-side fetch, redirect) before writing it up, and prefer a real bypass over an allowlisted-tag curiosity.
+
 ### 2026-09-25 — Stored XSS via SVG upload: check_content blocklist bypass and 256-byte scan limit (phpBB) — n/a
 - Source: [HackerOne #3606773](https://hackerone.com/reports/3606773)
 - Type: Stored XSS via file upload (content-inspection bypass)
