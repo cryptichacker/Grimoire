@@ -16,6 +16,21 @@ Hashcat is the fastest **offline** password recovery tool — GPU-accelerated, s
 
 ## Command Shape
 
+```mermaid
+flowchart LR
+    Hf[Captured hash] --> Id[Identify type<br/>-m mode]
+    Id --> AM{Attack mode -a}
+    AM -->|a0| Dict[Dictionary + rules]
+    AM -->|a1| Comb[Combinator]
+    AM -->|a3| Mask[Mask / brute-force]
+    AM -->|a6 a7| Hyb[Hybrid word + mask]
+    Dict --> Run[Run + session]
+    Comb --> Run
+    Mask --> Run
+    Hyb --> Run
+    Run --> Pot[Cracked to potfile]
+```
+
 ```bash
 hashcat -m <hash-mode> -a <attack-mode> [options] <hashfile> [wordlist|mask]
 ```

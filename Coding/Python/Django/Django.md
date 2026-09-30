@@ -89,6 +89,21 @@ Field lookups: `__gt __gte __lt __in __icontains __startswith __isnull __range _
 
 ## Views & URLs
 
+> **Request/response cycle:**
+
+```mermaid
+flowchart LR
+    C[Client] --> MW1[Middleware in]
+    MW1 --> URL[URL dispatcher]
+    URL --> V[View]
+    V --> M[Models / ORM]
+    M --> DB[(Database)]
+    V --> T[Template render]
+    T --> MW2[Middleware out]
+    MW2 --> R[Response]
+    R --> C
+```
+
 ```python
 # blog/views.py — function-based
 from django.shortcuts import render, get_object_or_404, redirect

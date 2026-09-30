@@ -16,6 +16,15 @@ Kustomize is Kubernetes' built-in, **template-free** configuration manager: you 
 
 ## The Model: base + overlays
 
+```mermaid
+flowchart LR
+    Base[base/<br/>kustomization.yaml] --> K[kustomize build]
+    OvD[overlays/dev] --> K
+    OvP[overlays/prod<br/>patches, images, replicas] --> K
+    K --> M[Final manifests]
+    M --> AP[kubectl apply]
+```
+
 ```text
 app/
 ├── base/

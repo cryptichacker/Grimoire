@@ -189,6 +189,17 @@ secret/           # Secrets engine mount
 **Auto-unseal (Enterprise/Cloud):** use a cloud KMS (AWS KMS, Azure Key Vault, GCP KMS) so Vault unseals automatically on startup — convenient but requires trusting the cloud provider.
 
 ### Request flow
+
+```mermaid
+flowchart LR
+    App[Client / App] -->|1 authenticate| Auth[Auth Method<br/>AppRole / K8s / LDAP]
+    Auth -->|2 token| App
+    App -->|3 request secret + token| Core[Vault Core]
+    Core -->|4 check| Pol[ACL Policies]
+    Pol -->|allowed| Eng[Secrets Engine<br/>KV / DB / PKI]
+    Eng -->|5 static or dynamic secret| App
+    Core <--> St[(Storage Backend<br/>encrypted at rest)]
+```
 ```text
 1. Client Request → 2. HTTP API (with Token) → 3. Authentication Validation
 → 4. Policy Check (Authorization) → 5. Route to Secrets Engine

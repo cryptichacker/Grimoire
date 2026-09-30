@@ -90,6 +90,19 @@ DnsAdmins          → control DNS → code exec as SYSTEM on DC (exploit path)
 ```
 
 ### Forests, Trees & Trusts
+
+```mermaid
+flowchart TD
+    F["Forest = security / trust boundary"] --> T1[Tree: contoso.com]
+    F --> T2[Tree: fabrikam.com]
+    T1 --> D1[Domain: contoso.com]
+    D1 --> C1[Child: eu.contoso.com]
+    D1 --> C2[Child: us.contoso.com]
+    D1 --> OU1[OU: Servers]
+    D1 --> OU2[OU: Workstations]
+    OU1 --> O1["Objects: users, computers, groups, GPOs"]
+    T1 -. two-way transitive trust .- T2
+```
 Trusts define **authentication paths** (not authorization) between domains.
 
 | Trust | Notes |
@@ -157,6 +170,19 @@ S-1-5-21-<DomainID>-<RID>
 **Keys:** User key = `NTLM = MD4(password)`. **krbtgt key** encrypts all TGTs (→ Golden Ticket). Service account key encrypts service tickets (→ Silver Ticket). Session keys are per-session.
 
 ### The full flow
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant DC as KDC (Domain Controller)
+    participant S as Service
+    C->>DC: AS-REQ (pre-auth: timestamp enc. with user key)
+    DC-->>C: AS-REP (TGT, enc. with krbtgt key)
+    C->>DC: TGS-REQ (TGT + target SPN)
+    DC-->>C: TGS-REP (service ticket, enc. with service key)
+    C->>S: AP-REQ (present service ticket)
+    S-->>C: AP-REP (access granted)
+```
 ```text
 USER            KDC(AS)         KDC(TGS)        SERVICE
  │──1 AS-REQ────►│               │               │   (username + timestamp enc w/ user key)

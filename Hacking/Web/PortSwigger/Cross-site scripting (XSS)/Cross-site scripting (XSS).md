@@ -14,6 +14,19 @@ last-verified: 2026-08-25
 XSS lets an attacker inject JavaScript that runs in another user's browser in the context of the vulnerable site, compromising that user's interaction with the app. The attacker's script runs with the victim's session, so it can do anything the user can.
 
 ## Three types
+
+```mermaid
+flowchart TD
+    subgraph Reflected
+      R1[Payload in request] --> R2[Echoed in response] --> R3[Runs in victim browser]
+    end
+    subgraph Stored
+      S1[Payload saved on server] --> S2[Served to every viewer] --> S3[Runs for all]
+    end
+    subgraph DOM-based
+      D1[Payload in URL / DOM] --> D2[Unsafe JS sink] --> D3[Runs client-side]
+    end
+```
 - **Reflected XSS** — input in an HTTP request is echoed unsafely into the immediate response:
   ```
   https://insecure-website.com/status?message=<script>alert(1)</script>

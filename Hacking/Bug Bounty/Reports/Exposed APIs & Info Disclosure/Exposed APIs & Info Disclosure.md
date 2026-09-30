@@ -12,6 +12,191 @@ Disclosed **exposed API / sensitive information disclosure** reports — leaked 
 
 ## Reports
 
+### 2026-09-30 — Alert Subscribers API Returns Subscriber Emails to Low-Privileged Users (SingleStore) — n/a
+- Source: [HackerOne #3353000](https://hackerone.com/reports/3353000)
+- Type: Exposed API / information disclosure through missing role check (triaged as privilege escalation)
+- Summary: In SingleStore Helios, users holding a low-privileged role could call the Alert Subscribers API endpoint and retrieve the email addresses and alert-severity preferences of every notification subscriber, despite having no authorization to view that page. Resolved by restricting the endpoint.
+- Technique / pattern: Notification, alerting and subscription settings are administrative screens that the UI hides by role while the backing endpoint checks only that the caller is authenticated. Enumerate the calls a privileged account's admin screens make, then replay each one from the lowest role the product offers — the response body is the finding, since subscriber lists pair verified corporate addresses with an interest signal that is directly usable for targeted phishing.
+- Takeaway: Hiding an admin screen is not authorizing its API. Rate a disclosure by what the leaked fields enable rather than by their apparent sensitivity: an email list scoped to "people who receive production alerts" is a social-engineering target list, not just contact data.
+
+
+### 2026-09-30 — Publicly Accessible CDN Endpoint Exposing XML Object Metadata Including ETag (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #3346375](https://hackerone.com/reports/3346375)
+- Type: Information disclosure — object listing and metadata exposure
+- Summary: A CDN URL returned a raw XML listing of stored objects including `Key`, `LastModified`, `Size`, `StorageClass` and `ETag` for each one. The files themselves remained access-controlled, but filenames, timestamps, sizes and content hashes were world-readable.
+- Technique / pattern: Request the bucket or CDN root rather than a known object path and look for an S3-style XML listing. `ETag` is the interesting field: a single-part S3 upload sets it to the object's MD5, so an exposed value lets an attacker confirm that a file matches a known copy elsewhere, spot duplicates and versions, and correlate content across systems and past leaks — a multipart upload produces a non-MD5 marker instead.
+- Takeaway: Object listing is a separate permission from object read, so deny it explicitly. Treat exposed filenames, timestamps and hashes as reconnaissance and fingerprinting material even when downloads themselves are blocked.
+
+### 2026-09-30 — Unauthenticated Metrics Endpoint Exposes Internal Grafana and Infrastructure Data (NASA VDP) — n/a
+- Source: [Bugcrowd #a2dbc42c](https://bugcrowd.com/disclosures/a2dbc42c-f4e5-4af4-97e0-0ce9c49f14be/unauthenticated-metrics-endpoint-exposes-sensitive-internal-grafana-nasa-infrastructure-data)
+- Type: Exposed API / information disclosure — observability endpoint (P4)
+- Summary: A publicly reachable Prometheus-style metrics endpoint exposed internal Grafana and InfluxDB telemetry: user, admin and organization counts, authentication activity statistics, Grafana build details (branch, revision, edition, version, Go version), plugin usage, database connection details, and host architecture and resource metrics. Accepted and resolved.
+- Technique / pattern: Sweep every discovered host for the standard observability paths — `/metrics`, `/debug/vars`, `/actuator/prometheus`, `/-/metrics` — because exposition-format text is rarely reviewed for sensitivity. The payoff is twofold: the build and version labels give an exact fingerprint for selecting known CVEs, and the gauge names themselves enumerate users, admins and organizations without touching any application endpoint.
+- Takeaway: Metrics and health endpoints are production attack surface. Bind them to an internal interface or require authentication, and keep build, version and plugin labels out of anything internet-facing.
+
+### 2026-09-30 — Unauthenticated Public Download of an Internal Mobile Device Inventory XLSX (NASA VDP) — n/a
+- Source: [Bugcrowd #cec21217](https://bugcrowd.com/disclosures/cec21217-102d-41e8-a14e-50779f002334/unauthenticated-public-download-of-nasa-internal-mobile-device-inventory-xlsx-exposing-pii-and-operational-asset-data)
+- Type: Information disclosure — unauthenticated document download (P3)
+- Summary: An internal mobile-device inventory spreadsheet containing PII alongside operational asset data was downloadable from a NASA host without authentication. Reported through the VDP and resolved after coordinated disclosure.
+- Technique / pattern: Office documents on an organization's web hosts are found by crawler- and search-driven discovery rather than by application testing: filetype-scoped search queries, directory listings, `sitemap.xml`, and cached index entries regularly surface inventories, rosters and asset registers that were uploaded but never meant to be linked. Search-engine caches also keep them reachable after the link is removed.
+- Takeaway: Treat any spreadsheet or PDF sitting on a web host as published data. An inventory that pairs staff identities with asset identifiers is high-value for follow-on targeting, so it needs authentication or removal plus a cache-eviction request, not merely an unlinked path.
+
+
+### 2026-09-30 — Sensitive and PII-bearing documents indexed by search engines on globe.gov (NASA VDP) — n/a
+- Source: [Bugcrowd #a47a5fe7](https://bugcrowd.com/disclosures/a47a5fe7-0c03-4d77-9a3f-fed114dcffd0/exposure-of-sensitive-information-that-contain-sensitive-markings-and-pii-information-via-search-engine-indexing)
+- Type: Sensitive information disclosure via search-engine indexing
+- Summary: The `/documents/` path on the globe.gov domain was not excluded from indexing, so applications containing personally identifiable information and files carrying restricted handling markings were retrievable through ordinary search queries.
+- Technique / pattern: Run site-scoped queries against a document directory (`site:target inurl:/documents/ filetype:pdf`) before probing the application itself — indexed content needs no exploitation and evidences the exposure with a link the triager can open.
+- Takeaway: Access control, not `robots.txt`, is what keeps documents private; indexable directories should also carry `X-Robots-Tag: noindex`, and anything already indexed must be treated as copied.
+
+### 2026-09-30 — Confidential PDF with employee PII found via Google dorking (Department of the Interior VDP) — n/a
+- Source: [Bugcrowd #ab094307](https://bugcrowd.com/disclosures/ab094307-76cf-4235-876f-ee34b306ed30/google-dork-leaded-information-confidential-in-pdf)
+- Type: Sensitive data exposure / disclosure of secrets (P3)
+- Summary: A PDF marked confidential and containing employee names, signatures, dates and security-contract details was publicly reachable at an ordinary web URL and surfaced by an indexed search, requiring no authentication or technical exploitation.
+- Technique / pattern: Combine a domain filter with sensitivity keywords and a file-type filter — for example `site:example.gov ("confidential" OR "employee only" OR "internal") filetype:pdf` — so the documents' own handling markings do the triage work for you.
+- Takeaway: Files that label themselves confidential are the highest-signal OSINT target; publishing workflows need a gate that reads classification markings before a document reaches a public path.
+
+### 2026-09-30 — Unauthenticated access to SWEHB admin pages leaking internal scheduling and PII (NASA VDP) — n/a
+- Source: [Bugcrowd #f425b701](https://bugcrowd.com/disclosures/f425b701-318e-4fd6-ba9e-4710130a8ca7/unauthenticated-access-to-nasa-swehb-admin-pages)
+- Type: Broken access control / information disclosure
+- Summary: Admin pages on the SWE handbook domain were viewable without authentication and disclosed internal scheduling information together with a lead developer's personal data.
+- Technique / pattern: The pages were located with a plain indexed search (`site:nasa.gov "blog"`) rather than by brute force — the crawler has often already walked an admin surface that a wordlist would miss, so search the index before running a directory scan.
+- Takeaway: Admin routes need a server-side authentication check and a `noindex` policy; being unlinked from the main navigation is not access control.
+
+### 2026-09-30 — NASA/USGS personnel contact details exposed in public Earthdata metadata (NASA VDP) — n/a
+- Source: [Bugcrowd #a5cd0ef0](https://bugcrowd.com/disclosures/a5cd0ef0-84ad-44db-a5cf-ceb9ae1c5d40/critical-personal-data-leak-exposed-sensitive-contact-information-of-nasa-usgs-personnel)
+- Type: Sensitive information disclosure in API / catalogue metadata
+- Summary: Publicly accessible metadata on NASA's Earthdata platform carried personnel contact information — phone numbers and email addresses — with no access restriction or protection.
+- Technique / pattern: Pull the raw records a data-catalogue API returns rather than the rendered page, and grep the JSON or XML for contact, owner, maintainer and point-of-contact fields. Catalogue metadata is routinely published wholesale because it is thought of as description rather than data.
+- Takeaway: Metadata is part of the API response and needs the same PII review as the primary data — strip or generalise contact fields before publication.
+
+### 2026-09-29 — Publicly accessible `.git` directory on a staging host (X / xAI) — n/a
+- Source: [HackerOne #218465](https://hackerone.com/reports/218465)
+- Type: Sensitive information disclosure — exposed version-control metadata
+- Summary: A staging engineering host served its repository metadata over the web; requesting `/.git/logs/refs/heads/master` returned commit history, and with the object store reachable the source tree and anything committed alongside it could be reconstructed.
+- Technique / pattern: Probe `/.git/HEAD` and `/.git/logs/refs/heads/<branch>` on every host, staging included — a valid response usually means the object store is fetchable and the working tree can be rebuilt offline from it.
+- Takeaway: Deploying by `git pull` leaves the metadata inside the web root by default, and staging hosts (less monitored, same codebase) are where that survives longest.
+
+### 2026-09-29 — Slack and Google API tokens recovered from an Electron app published on GitHub (Grab) — n/a
+- Source: [HackerOne #397527](https://hackerone.com/reports/397527)
+- Type: Sensitive information disclosure — secrets embedded in a distributed binary
+- Summary: A public GitHub repository's releases page hosted an Electron application; downloading and reverse-engineering the package revealed a Slack access token and a Google API token, the former reaching the organisation's Slack channels.
+- Technique / pattern: Do not stop at a repository's source tree — pull the release artefacts too. Electron apps bundle their application JavaScript in an `app.asar` archive that unpacks with standard tooling, and any secret compiled into a desktop build ships to everyone who installs it.
+- Takeaway: Anything embedded in a client users download is public by construction, so release assets deserve the same secret scanning as commits.
+
+### 2026-09-29 — LDAP credentials committed in a public repository's testing dotenv file (Acronis) — n/a
+- Source: [HackerOne #1004412](https://hackerone.com/reports/1004412)
+- Type: Sensitive information disclosure — credentials in version control
+- Summary: A `.env.testing` file in a public GitHub repository carried LDAP directory settings including the domain, base distinguished name and administrative credentials. The reporter advised confirming whether the credentials were live, removing the file and rotating the passwords; the submission was ultimately self-closed.
+- Technique / pattern: Search public code for dotenv variants beyond the plain `.env` — `.env.testing`, `.env.example`, `.env.local` — since they are excluded by `.gitignore` patterns far less often, and LDAP keys such as `LDAP_BASE_DN` or `LDAP_USERNAME` make distinctive search terms.
+- Takeaway: A committed credential is only a finding when it is both current and in scope; establish both before reporting or the report closes without impact.
+
+### 2026-09-29 — Directory listing exposing server contents (NASA VDP) — n/a
+- Source: [Bugcrowd #85c40ad7](https://bugcrowd.com/disclosures/85c40ad7-66f7-45c6-9ac8-79af052b7b19/information-exposure-through-directory-listing-vulnerability)
+- Type: Sensitive information disclosure — directory listing (P3, resolved)
+- Summary: A web server was configured to render directory indexes instead of an index page, exposing the file layout and the files themselves to unauthenticated visitors. The program accepted and resolved it.
+- Technique / pattern: Request the parent path of any asset URL already in hand — `/assets/`, `/uploads/`, `/backup/` — and repeat one level up; autoindex enabled on a single directory usually means the whole virtual host inherits the setting.
+- Takeaway: Directory listings turn every unlinked file on a host into a discoverable one, which is why they rate above the informational bucket when real files sit behind them.
+
+### 2026-09-29 — Directory listing exposing Drupal installation and development files (Department of the Interior) — n/a
+- Source: [Bugcrowd #df47543c](https://bugcrowd.com/disclosures/df47543c-b6e9-4e6d-a5b0-b1d5c94ab9c9/directory-listing-exposes-drupel-installation-and-development-files)
+- Type: Sensitive information disclosure — exposed installation and development files (P3, resolved)
+- Summary: Directory enumeration found publicly browsable Drupal installation and development files, revealing platform version detail and leftover artefacts that should never have shipped to production.
+- Technique / pattern: For a known CMS, request its standard install and metadata paths — `/CHANGELOG.txt`, `/install.php`, `/core/`, `/sites/default/files/` — since they pin the exact version and frequently sit in a directory that lists.
+- Takeaway: Leftover installer and development files are both a version oracle and a deployment-hygiene signal; where they survive, other pre-production artefacts usually do too.
+
+### 2026-09-29 — Sensitive NASA material surfaced through search-engine indexing (NASA VDP) — n/a
+- Source: [Bugcrowd #714c0fd7](https://bugcrowd.com/disclosures/714c0fd7-439e-4a1d-9729-7368f0a6b321/critical-information-disclosure-vulnerability-via-google-dorking-on-nasa-servers)
+- Type: Sensitive information disclosure — search-engine indexing (P5, accepted risk)
+- Summary: Search operators surfaced restricted-looking material indexed from NASA servers, but the program could not reproduce the access — triage received a `404` — and closed the report as an accepted business risk.
+- Technique / pattern: Targeted dorking with `site:` plus file-type and path operators finds content that was never linked yet remained crawlable; capture the live response at the moment of discovery, because an indexed copy outlives the file.
+- Takeaway: A cached search result is not proof of current exposure — evidence has to be captured against the live host or the report dies at triage.
+
+### 2026-09-28 — Unauthenticated disclosure of draft and private posts via Secure Custom Fields nopriv AJAX handlers (WordPress) — n/a
+- Source: [HackerOne #3893632](https://hackerone.com/reports/3893632)
+- Type: Exposed API / improper access control
+- Summary: Secure Custom Fields 6.9.2 registered `wp_ajax_nopriv_` AJAX query handlers for its `post_object`, `relationship` and `page_link` field types. Those handlers ran a `WP_Query` whose `post_status` defaulted to `any` with no capability or `perm` filtering, so they returned draft, pending, private and future posts. When such a field appeared on a public `acf_form()`, the required per-field nonce was printed into the page HTML, and because logged-out WordPress nonces are shared across all anonymous visitors, any unauthenticated caller could reuse it to enumerate non-public post titles and IDs, including by keyword search.
+- Technique / pattern: Grep a plugin for `wp_ajax_nopriv_` to list its unauthenticated entry points, then follow each handler to its query and check whether `post_status` and a capability test are actually set. The nonce is not an authorization boundary here: logged-out nonces are identical for every anonymous visitor, so harvesting one from public HTML satisfies the check.
+- Takeaway: A nonce proves intent, not identity — unauthenticated handlers still need an explicit capability check and an explicit public `post_status`, never the framework default.
+
+### 2026-09-28 — Desktop client leaks credentials to an attacker-chosen directDownloadUrl (Nextcloud) — $250
+- Source: [HackerOne #3400143](https://hackerone.com/reports/3400143)
+- Type: Sensitive information disclosure / insufficiently protected credentials
+- Summary: The Nextcloud desktop client honoured the server-supplied `directDownloadUrl` without validating its origin and without setting `DontAddCredentialsAttribute`, so `HttpCredentialsAccessManager` attached the user's HTTP Basic `Authorization` header to whatever host the server named. A malicious or compromised server could point that field at its own domain and collect the credentials.
+- Technique / pattern: In a client-server protocol, list every field where the server dictates a URL the client will fetch, then check whether credentials, cookies or tokens ride along cross-origin. The vulnerable shape is a credential-injecting HTTP stack combined with a URL or redirect field that was never origin-checked — the same pattern as a bearer token surviving a cross-host redirect.
+- Takeaway: Clients must treat server-supplied URLs as untrusted: compare the origin against the configured account host and suppress credentials for anything else.
+
+### 2026-09-28 — Public NLSP sidemenu API exposes internal usernames, roles and ACL metadata (NASA VDP) — n/a
+- Source: [Bugcrowd #b2c00b8c](https://bugcrowd.com/disclosures/b2c00b8c-2a5e-4d3c-87e6-41f153f3644c/public-api-exposes-internal-nasa-usernames-and-acl-metadata-on-nlsp-sidemenu-endpoint)
+- Type: Exposed API / sensitive information disclosure
+- Summary: A public endpoint used by the LSDA/NLSP web interface to build user context returned verbose metadata without authentication, including internal account identifiers, NASA staff usernames, access control lists and internal role mappings — enough to enumerate valid usernames and map the platform's role and group structure.
+- Technique / pattern: The API calls a single-page app makes on load are often assumed to be internal; read them out of the JavaScript bundle or the network tab and replay each one with no session cookie. Context and menu endpoints are especially productive because they exist to describe the user and their permissions, so they over-return by design.
+- Takeaway: A UI-bootstrapping endpoint should authenticate and return only what the current session needs — leaked usernames and role maps are the reconnaissance input for phishing and credential attacks.
+
+### 2026-09-28 — Exposed Next.js build artifacts disclose internal structure and configuration (NASA VDP) — n/a
+- Source: [Bugcrowd #62588ff6](https://bugcrowd.com/disclosures/62588ff6-5ae0-444c-9b3b-bd40339c2033/exposed-next-js-build-artifacts-sensitive-configuration-disclosure)
+- Type: Sensitive information disclosure / security misconfiguration
+- Summary: Build-related Next.js artifacts and configuration files were publicly reachable in a production deployment, revealing internal application structure and configuration details that are not meant to be served.
+- Technique / pattern: On a Next.js target, request the build manifests and route lists under `/_next/` — `build-manifest.json`, `routes-manifest.json` and the `_buildManifest.js` and `_ssgManifest.js` pair — to recover the full client route table, then pull the referenced chunks and any source maps for configuration and non-public endpoints. The inlined `__NEXT_DATA__` blob is worth reading on every page too.
+- Takeaway: Ship production builds without source maps and block build-metadata paths at the edge; a route manifest hands over the application map that would otherwise take a long crawl to assemble.
+
+### 2026-09-28 — Public Google Maps API key on www.globe.gov allows billable Geocoding API calls (NASA VDP) — n/a
+- Source: [Bugcrowd #88f21ab6](https://bugcrowd.com/disclosures/88f21ab6-d1e0-453c-992a-1661d1be50a9/public-google-maps-api-key-on-www-globe-gov-allows-geocoding-api-calls-billable-use)
+- Type: Exposed API key (unrestricted client-side key)
+- Summary: A Google Maps API key was present in the homepage source with no API or HTTP-referrer restrictions, so it could be used for Geocoding API calls from anywhere, risking unexpected billing, quota exhaustion and abuse. Accepted as informational (P5, accepted business risk).
+- Technique / pattern: Client-side Google, Algolia, Stripe and Firebase keys are *meant* to ship in the page, so the finding is never the exposure but the missing restriction. Confirm with a single benign request from an unrelated origin and check the key's API allow-list and referrer restriction rather than reporting the string itself.
+- Takeaway: Report a browser key only when you can show it is unrestricted and what it can actually do — and expect a low or informational rating when the only impact is billable quota; restrict such keys by referrer and by API.
+
+### 2026-09-28 — Cross-user PHI/PII leakage via prompt injection in ChatGPT (OpenAI) — $2,000
+- Source: [Bugcrowd #5d10a6d3](https://bugcrowd.com/disclosures/5d10a6d3-734e-401d-8871-b141de740a46/urgent-critical-data-breach-cross-user-phi-pii-leakage-via-prompt-injection-non-malicious-discovery)
+- Type: Sensitive information disclosure (cross-tenant context isolation failure in an LLM product)
+- Summary: A researcher reported health and personal data belonging to another user surfacing inside their own ChatGPT session — a context-isolation failure rather than a conventional API authorization bug. The submission was reopened, validated and awarded P1 ($2,000).
+- Technique / pattern: The write-up's real lesson is the triage problem it names: a model can *hallucinate* plausible personal data, so a genuine leak and a fabrication look identical from outside. The evidence that separates them is what to collect — verbatim structured artifacts (record numbers, timestamps, internal identifiers), reproducibility in fresh sessions, and details that could not have been inferred from the prompt.
+- Takeaway: When reporting an AI-product data-exposure bug the burden is proving the output came from real stored data; gather corroborating identifiers before filing, and never go hunting for a third party's records to strengthen the case.
+
+### 2026-09-28 — Mail contact autocomplete bypasses administrator-configured user-enumeration restrictions (Nextcloud) — $250
+- Source: [HackerOne #3617729](https://hackerone.com/reports/3617729)
+- Type: Information disclosure / user enumeration (privacy-setting bypass)
+- Summary: An authenticated user could enumerate other users' id, display name and email address through the mail app's contact autocomplete even where the instance restricted enumeration to same-group or exact-match, because the handler only checked `core.shareapi_allow_share_dialog_user_enumeration` and never applied the stricter share-enumeration settings.
+- Technique / pattern: Privacy and enumeration settings are enforced per code path, not globally. Inventory every surface that searches users — share dialog, mention picker, mail composer autocomplete, calendar attendee search, admin user list, mobile endpoints — and re-run the same partial-prefix query against each with the restriction enabled.
+- Takeaway: A setting is only as strong as its least-careful consumer: when an app exposes the same directory through several features each one needs the full policy check, and a secondary app's controller is where it is usually missing.
+
+### 2026-09-28 — Sensitive information exposed via an unauthenticated panelist export endpoint (Mars) — n/a
+- Source: [HackerOne #3376598](https://hackerone.com/reports/3376598)
+- Type: Exposed API / Sensitive information disclosure (missing authentication on an export route)
+- Summary: An `/export_panelists_to_xlsx` endpoint lacked authentication and authorization and returned panelist email addresses and telephone numbers. Classified CWE-312 with a CVSS of 6.1 (medium), reproduced, validated and remediated.
+- Technique / pattern: Export and report-generation routes (`/export*`, `/download*`, `*_to_xlsx`, `*_to_csv`, `/report/generate`) are built for internal or admin use and are frequently mounted outside the middleware guarding the main API. Harvest their paths from JS bundles and admin UI code, then request each one with credentials stripped.
+- Takeaway: Every route that serializes a whole table into a file deserves its own authorization check — a bulk export converts a minor gap into a complete dataset in one request.
+
+
+### 2026-09-27 — Leaked ServiceNow credentials usable because API logins skipped MFA (Tesla) — $5,000
+- Source: [Bugcrowd #41991d9c](https://bugcrowd.com/disclosures/41991d9c-3866-40e7-97c2-f33b812565d7/disclosed-servicenow-credentials-leading-to-data-leak)
+- Type: Exposed credentials / MFA enforced inconsistently between the UI and the API
+- Summary: Production ServiceNow credentials were found through GitHub reconnaissance; MFA was required for interactive sign-in but not for API authentication, so the credentials alone were enough to read all Incidents, Problems, Changes and Configuration Items from the instance. Tesla removed the credentials and extended MFA to production and development API environments.
+- Technique / pattern: Treat a found credential as unusable only after testing every authentication surface the product exposes — the REST or SOAP API, a mobile endpoint, a legacy basic-auth path. MFA is routinely attached to the web login while the API keeps password auth alive for integrations, and that gap is exactly where a leaked secret regains its full value.
+- Takeaway: Scan your own public repositories and their history for secrets, and make MFA — or key-based auth — a property of the identity rather than of one login surface, so no channel accepts a bare password.
+
+### 2026-09-27 — NASA-owned PDF shared publicly with editor rights (NASA VDP) — n/a
+- Source: [Bugcrowd #ed7b7d63](https://bugcrowd.com/disclosures/ed7b7d63-bec4-426f-8ea0-5222cf22be40/nasa-user-owned-pdf-publicly-exposed-with-full-edit-rights-risk-of-deletion-and-pii-disclosure)
+- Type: Exposed document / over-permissive sharing configuration
+- Summary: A NASA-owned PDF was reachable without authentication and shared at editor level, so anyone holding the link could read the personal data it contained, change the document's collaborator list, or delete the file permanently. The researcher found several further files carrying the same misconfiguration.
+- Technique / pattern: When a document link turns out to be public, check the *permission level* rather than stopping at read access — open the sharing dialog, look for edit or collaborator controls, and test whether the pattern repeats across neighbouring files from the same uploader or folder. "Anyone with the link" combined with editor rights converts disclosure into destruction.
+- Takeaway: Default document sharing to view-only and to named accounts, and audit link-shared files specifically for write permissions, since one wrong dropdown makes a document deletable by the internet.
+
+### 2026-09-27 — Unauthenticated PII leak through profile version history (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #1627962](https://hackerone.com/reports/1627962)
+- Type: Exposed API / unauthenticated information disclosure
+- Summary: Rendering different versions of a published profile triggered a background request to an unprotected API endpoint that returned user identifiers and names for every version — and, for verified profiles or those pending verification, their email addresses as well, all with no authentication required.
+- Technique / pattern: Watch the network panel while using a public feature, then replay each backing request on its own with cookies and auth headers stripped. Version-history, revision and audit endpoints are prime targets because they are written for internal review and tend to return the union of fields across all versions rather than the narrower projection the public view is allowed to show.
+- Takeaway: Authorize each API endpoint independently of the page that calls it, and make history endpoints return the same field projection as the public view.
+
+### 2026-09-27 — Unauthenticated access to a "For Official Use Only" NASA document (NASA VDP) — n/a
+- Source: [Bugcrowd #411165dd](https://bugcrowd.com/disclosures/411165dd-8c0a-4ae7-b731-6f685d862e9d/critical-identity-and-communication-data-exposed-in-unprotected-nasa-hangar-demolition-doc-vulnerability)
+- Type: Exposed document / missing access control on a sensitive internal file
+- Summary: An internal NASA hangar-demolition document marked "For Official Use Only – Not for Public Release" was retrievable with no authentication, exposing names, email addresses, phone numbers, postal addresses and agency affiliations of staff and external partners, along with internal correspondence and signatures. Rated P3 and resolved.
+- Technique / pattern: Search for the handling markings themselves — phrases like "For Official Use Only", "Not for Public Release" or "Internal Use Only" — across a target's document hosts and the search-engine index. A file that declares its own sensitivity supplies self-labelling evidence of impact, which makes the finding fast to triage and hard to dispute.
+- Takeaway: Sensitivity markings are labels, not access controls; files carrying them need authentication and an index exclusion, and the owner's own periodic search should be what finds them exposed.
+
 ### 2026-09-27 — Asana S3 attachments leaked via a server-signed arbitrary `s3_path` plus OSINT (Asana) — $2,500
 - Source: [Bugcrowd #5399313d](https://bugcrowd.com/disclosures/5399313d-b86d-4965-9c32-dbf77660d4ea/user-data-from-the-asana-s3-bucket-can-be-leaked-via-presigned-url-and-osint)
 - Type: Exposed API / server-side signing of a client-supplied storage path

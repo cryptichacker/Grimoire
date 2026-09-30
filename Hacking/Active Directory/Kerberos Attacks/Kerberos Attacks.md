@@ -14,6 +14,27 @@ Attacking the Kerberos ticket flow (see [[AD Fundamentals]] for the protocol). C
 
 ---
 
+## Attack map — which secret unlocks what
+
+```mermaid
+flowchart TD
+    subgraph NoCreds[No credentials]
+      A[AS-REP Roasting<br/>users without pre-auth]
+      SP[Password Spraying]
+    end
+    subgraph Creds[Any valid domain user]
+      K[Kerberoasting<br/>SPN service accounts]
+    end
+    SP -->|valid cred| Creds
+    A -->|crack offline| H[Password / NT hash / AES key]
+    K -->|crack offline| H
+    H --> OPtH[Overpass-the-Hash to TGT]
+    H --> PtT[Pass-the-Ticket]
+    OPtH --> DA[Domain Admin / DCSync]
+    DA --> G[Golden Ticket<br/>krbtgt hash]
+    K --> SV[Silver Ticket<br/>service account hash]
+```
+
 ## 1. AS-REP Roasting
 Accounts with **pre-auth disabled** (`DONT_REQ_PREAUTH`, UAC `0x400000`) let anyone request an AS-REP whose encrypted blob is derived from the user's password → **crack offline**.
 

@@ -12,6 +12,10 @@ Amazon Web Services — a catalogue of services, one note each. Currently 200 se
 
 ## Services
 
+> **Service landscape at a glance** (editable Excalidraw):
+
+![[AWS Service Map.excalidraw]]
+
 ### Compute (16)
 - [[App Runner]] — Fully managed service to build, deploy and run containerized web apps and APIs directly from source or an image.
 - [[Batch]] — Fully managed batch computing that dynamically provisions the optimal compute (EC2 or Fargate) to run large…

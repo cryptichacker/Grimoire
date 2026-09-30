@@ -1,6 +1,6 @@
 {
   "collapse-filter": false,
-  "search": "",
+  "search": "sortino",
   "showTags": false,
   "showAttachments": false,
   "hideUnresolved": false,
@@ -34,6 +34,13 @@
         "a": 1,
         "rgb": 393007
       }
+    },
+    {
+      "query": "path: Finance  ",
+      "color": {
+        "a": 1,
+        "rgb": 393491
+      }
     }
   ],
   "collapse-display": true,
@@ -46,6 +53,6 @@
   "repelStrength": 10,
   "linkStrength": 1,
   "linkDistance": 250,
-  "scale": 0.2305979917260315,
+  "scale": 1.070229060899807,
   "close": true
 }

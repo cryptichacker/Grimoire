@@ -16,6 +16,18 @@ Helm is the package manager for Kubernetes. It bundles a set of manifests into a
 
 ## Core Concepts
 
+```mermaid
+flowchart LR
+    Chart["Chart (templates/)"] --> R[helm install / template]
+    Values["values.yaml + --set"] --> R
+    R --> Man[Rendered K8s manifests]
+    Man --> Rel[Release: revision N]
+    Rel --> API[Kubernetes API]
+    API --> Obj[Deployments / Services / ...]
+    Rel -. helm upgrade .-> Rel2[revision N+1]
+    Rel2 -. helm rollback .-> Rel
+```
+
 | Term | Meaning |
 |---|---|
 | **Chart** | A package of pre-configured Kubernetes resources (templates + default values + metadata). |

@@ -12,6 +12,13 @@ Disclosed **Server-Side Template Injection** reports (often escalating to RCE). 
 
 ## Reports
 
+### 2026-09-30 — Template injection in the password reset form (Acronis) — n/a
+- Source: [HackerOne #1265344](https://hackerone.com/reports/1265344)
+- Type: Server-side template injection (assessed as self-DoS)
+- Summary: The password reset form on the Acronis access portal evaluated template syntax supplied by the user; the vendor assessed the behaviour as a self-inflicted denial of service and stated they saw no direct security implications from it.
+- Technique / pattern: Submit template probes such as `{{7*7}}`, `${7*7}` and `#{7*7}` into every field that is later rendered into an email or a page, then compare the rendered output with the literal input. A field echoed back into a templated notification is the standard second-order SSTI entry point.
+- Takeaway: Evaluation of user input by a template engine is worth reporting even when the first observed effect is only resource exhaustion — but triage weighs reachable impact, so fingerprint the engine and walk its object graph toward data access or execution before claiming severity.
+
 ### 2026-09-26 — Chain of ESI injection and reflected XSS leading to account takeover (U.S. Dept Of Defense) — n/a (High 8.2)
 - Source: [HackerOne #1073780](https://hackerone.com/reports/1073780)
 - Type: Edge Side Includes (ESI) injection chained to reflected XSS -> account takeover

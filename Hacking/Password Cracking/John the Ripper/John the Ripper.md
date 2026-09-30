@@ -16,6 +16,23 @@ John the Ripper ("John", JtR) is a veteran **offline** password cracker. The com
 
 ## Basic Usage
 
+```mermaid
+flowchart LR
+    F["File: zip / pdf / shadow ..."] --> X["*2john extractor"]
+    X --> H[Hash file]
+    H --> D[Detect format<br/>--list / hashid]
+    D --> M{Mode}
+    M --> S[single]
+    M --> W[wordlist + rules]
+    M --> I[incremental]
+    M --> K[mask]
+    S --> Cr[Crack]
+    W --> Cr
+    I --> Cr
+    K --> Cr
+    Cr --> Show[--show results]
+```
+
 ```bash
 john hashes.txt                       # autodetect format + default attacks
 john --wordlist=rockyou.txt hashes.txt

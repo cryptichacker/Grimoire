@@ -12,6 +12,79 @@ Disclosed **Cross-Site Scripting** reports — reflected, stored, and DOM-based.
 
 ## Reports
 
+### 2026-09-30 — Stored XSS in the Trix Editor 2.1.16 via a Sanitizer/Serializer Round-Trip (Basecamp) — $337
+- Source: [HackerOne #3581911](https://hackerone.com/reports/3581911)
+- Type: Stored XSS (library-level sanitizer bypass)
+- Summary: Trix `2.1.16` allowed stored XSS because its `DOMPurify` configuration and its HTML serializer disagreed: an attacker could smuggle event handlers such as `onerror` through the sanitizer and have the serializer write them into the exported HTML, giving XSS in any application rendering Trix output.
+- Technique / pattern: A `DOMPurify` hook in `src/trix/models/html_sanitizer.js` force-retains every attribute beginning with `data-trix-`, which is the initial bypass of DOMPurify's attribute filtering. The serializer in `src/trix/core/serialization.js` then reads the custom `data-trix-serialized-attributes` attribute, parses its JSON of name/value pairs and applies each one with `el.setAttribute(name, value)` with no second sanitisation pass. Nesting `data-trix-serialized-attributes` inside the `content` property of a `data-trix-attachment` payload therefore survived sanitising and re-emerged as live handlers when `editor.value` was read or the form submitted.
+- Takeaway: Sanitise after every transform, not only on input. An allow-list carve-out for a framework's own `data-*` attributes plus a serializer that replays attribute names from stored JSON is a reliable bypass shape — when reviewing a rich-text stack, look for the point where sanitised content is *rebuilt* rather than only where it is cleaned.
+
+
+### 2026-09-30 — Reflected XSS in NASA JPL Solar System Simulator (NASA VDP) — n/a
+- Source: [Bugcrowd #8c0c8259](https://bugcrowd.com/disclosures/8c0c8259-00ab-4b82-a995-e59dd9efa53c/reflected-xss-in-nasa-jpl-solar-system-simulator)
+- Type: Reflected XSS
+- Summary: Unsanitised query parameters on the JPL Solar System Simulator CGI script `/cgi-bin/LHscript.pl` were reflected into the generated page, allowing arbitrary JavaScript execution. NASA resolved it by retiring the vulnerable endpoint.
+- Technique / pattern: Legacy CGI scripts under `/cgi-bin/` that echo request parameters into hand-built HTML are a long-lived reflected-XSS surface because they predate the site's templating and output-encoding layer. The reporter escalated beyond a proof-of-concept alert by rendering a convincing fake NASA login form to harvest credentials and by silently redirecting visitors to an external site.
+- Takeaway: Enumerate `/cgi-bin/` and other server-rendered legacy handlers separately from the modern app. Demonstrating a credible phishing or redirect outcome on a trusted government or brand domain is what moves a reflected XSS out of the informational bucket.
+
+
+### 2026-09-30 — Confluence stored XSS via the Widget Connector Branding ID (Atlassian) — 20 points
+- Source: [Bugcrowd #44d90402](https://bugcrowd.com/disclosures/44d90402-9639-4181-9e2a-652521d40148/confluence-stored-xss-via-widget-connector)
+- Type: Stored XSS (path traversal inside a host-locked script URL, then a JSONP callback)
+- Summary: The Confluence Widget Connector macro for Ooyala videos validated `embedCode` with a regex but accepted arbitrary input for the branding identifier, which was concatenated into a remote script load written as `$.getScript("//player.ooyala.com/v3/" + brandingId, ...)`.
+- Technique / pattern: Traversal sequences in the branding value (`../../player.js?callback=...`) redirected the load to a different script on the same trusted host, and that script's JSONP-style `callback` parameter carried the attacker's JavaScript into the Confluence origin. Look for any parameter concatenated into a script `src`, even a host-locked one, then hunt that host for a callback/JSONP sink.
+- Takeaway: Validating one field of a macro is not enough — every value that reaches a script URL needs its own allow-list, and traversal inside a "fixed host" URL still changes which code executes.
+
+### 2026-09-30 — Stored XSS via the PDFTron renderer in the Dropbox editor (Dropbox) — n/a
+- Source: [Bugcrowd #9e4a30ed](https://bugcrowd.com/disclosures/9e4a30ed-41c6-4d85-83c7-3a4becbd5d88/stored-xss-via-pdftron-in-dropbox)
+- Type: Stored XSS via a third-party document renderer
+- Summary: The third-party PDFTron library used to render PDFs in the Dropbox editor let JavaScript embedded in a document execute when the file was viewed; Dropbox's Content Security Policy limited the impact and the finding was accepted as an informational business risk.
+- Technique / pattern: Upload documents in formats that support embedded scripting (PDF JavaScript, SVG, HTML inside office formats) and check whether the in-browser viewer runs it in the application's origin rather than a sandboxed one; then read the CSP to gauge what the injected script could actually reach.
+- Takeaway: A document viewer is an execution engine — render untrusted files in a sandboxed origin or iframe and treat CSP as damage limitation, not as the fix.
+
+### 2026-09-29 — Reflected XSS via a `path` redirect parameter on the login page (Opera — yoyogames) — 10 points
+- Source: [Bugcrowd #63a1d77c](https://bugcrowd.com/disclosures/63a1d77c-df3b-4a1a-95fe-d5aa474fb9b7/reflected-cross-site-scripting-in-login-page)
+- Type: Cross-Site Scripting — reflected, non-self (P3)
+- Summary: The staging login endpoint took a `path` parameter and used it without escaping, so a value of `javascript:alert(1)` executed script in the visitor's browser, putting session cookies within reach of the injected code. The program closed it as an accepted business risk.
+- Technique / pattern: Treat post-login redirect parameters — `path`, `next`, `returnTo`, `redirect` — as dual-purpose sinks and test them both for open redirect and for `javascript:` URI or raw HTML reflection, since a value destined for an `href` or a `location` assignment is frequently escaped for neither.
+- Takeaway: Login and redirect plumbing is authentication-adjacent by definition, so XSS there lands straight on the session — and an in-scope staging host is as reportable as production.
+
+### 2026-09-28 — Stored XSS via profile-picture upload using MIME-type masquerading (Genius) — n/a
+- Source: [Bugcrowd #9dd67e52](https://bugcrowd.com/disclosures/9dd67e52-baf8-4ba0-9fd5-40f11b7c858d/stored-xss-via-profile-picture-upload-on-genius-com)
+- Type: XSS (stored, via file upload)
+- Summary: Genius accepted profile-picture uploads whose declared MIME type did not match their actual content, so a file that satisfied the image check was later served in a way the browser treated as active content, yielding stored XSS on a user profile. Genius resolved it by applying a stricter sandbox to the uploaded-images subdomain.
+- Technique / pattern: Upload a file whose extension and `Content-Type` claim to be an image but whose bytes are markup, then inspect the `Content-Type` and `Content-Disposition` the server returns when it serves the file back — sniffing, rather than the upload filter, decides whether it executes.
+- Takeaway: Validate uploads by content rather than declared type, and serve user files from an isolated origin with `X-Content-Type-Options: nosniff` so a mislabelled file cannot run in the application's origin.
+
+### 2026-09-28 — Reflected XSS via Unquoted HTML Attribute (NASA VDP) — n/a
+- Source: [Bugcrowd #9bb2314b](https://bugcrowd.com/disclosures/9bb2314b-2408-47df-b6c8-f36529b44fa8/reflected-xss-via-unquoted-html-attribute)
+- Type: Cross-Site Scripting (reflected, attribute-context injection)
+- Summary: An `img` parameter was reflected unsanitized into an *unquoted* HTML attribute on a NASA domain, letting an attacker append an event handler and execute arbitrary JavaScript in the site's origin. Rated P3, resolved.
+- Technique / pattern: In an unquoted attribute no quote character is needed to break out — any whitespace terminates the value, and a tab (`%09`) works where spaces are stripped or encoded. Probe with a benign value plus `%09onerror=x` and read the rendered HTML to see whether a new attribute was created.
+- Takeaway: Check the *quoting* of the attribute a reflection lands in before concluding a filter blocks you: encoding `"` and `'` is no defense at all when the template never quoted the value.
+
+### 2026-09-28 — Pre-authentication Stored XSS in the customer-service pipeline via ContactApi (Essity) — n/a
+- Source: [HackerOne #3729501](https://hackerone.com/reports/3729501)
+- Type: Cross-Site Scripting (stored; unauthenticated entry point)
+- Summary: `POST /Umbraco/Api/ContactApi/SavePersonalContactExtended/` and its sibling route accepted anonymous ticket submissions carrying arbitrary HTML/JavaScript in a dozen-plus fields, bypassing reCAPTCHA validation, CSRF protection and rate limiting; the payload then executed in the authenticated session of a customer-service operator viewing the ticket in the Umbraco back office.
+- Technique / pattern: Stored XSS across a trust boundary: find an unauthenticated intake form (contact, support, careers, feedback), plant out-of-band blind-XSS beacons in every field, and reach the staff-side rendering surface. The reCAPTCHA bypass is what made it mass-exploitable, and the same endpoints were reachable on every locale path.
+- Takeaway: Rate an intake-form XSS by who reads the ticket, not by the public page — an anonymous submitter reaching an operator's authenticated back office is an unauthenticated-to-admin path, and a CAPTCHA the API never verifies is not a control.
+
+
+### 2026-09-27 — Account takeover via stored XSS in the AutoLinker/Markdown parser seam (Rocket.Chat) — n/a
+- Source: [HackerOne #735638](https://hackerone.com/reports/735638)
+- Type: XSS (stored) chained to auth-token theft and full account takeover
+- Summary: A crafted link abused the interaction between Rocket.Chat's AutoLinker and Markdown parsers to break out of the HTML attribute it was being written into and inject an event handler such as `onanimationiteration`; the payload then read `localStorage.getItem('Meteor.loginToken')` and authenticated to the WebSocket API as the victim to change passwords, emails or grant admin roles.
+- Technique / pattern: Attack the seam between two sanitizers rather than either one alone — output that is safe for the first parser gets re-interpreted by the second, so the escaping each stage performs is undone downstream. Then prefer rarely-enumerated event handlers (animation, transition and focus events) over `onerror` and `onload`, which filters almost always list.
+- Takeaway: Chained parsers must agree on a single escaping context, and a long-lived auth token readable from `localStorage` upgrades any XSS to account takeover — keep session material in a channel script cannot read.
+
+### 2026-09-27 — Stored XSS in the Indian Arts and Crafts Board violation-report form (Department of Interior VDP) — n/a
+- Source: [Bugcrowd #0a1cdffc](https://bugcrowd.com/disclosures/0a1cdffc-99e9-4474-9fdd-a6604e945230/stored-xss-doi-gov-iacb-indian-arts-and-crafts-board-potential-violation-report)
+- Type: XSS (stored, executing on the post-submission confirmation page)
+- Summary: A field on the public violation-report form at `doi.gov/iacb/indian-arts-and-crafts-board-potential-violation-report` accepted an attribute-breaking `">` sequence, and the confirmation page rendered the submitted value back into the document, where the injected script executed in the visitor's browser.
+- Technique / pattern: Do not stop testing at the input page — follow the value to every view that later renders it, especially confirmation screens, emailed copies and admin review queues, which are commonly built from a different template than the form and escape less carefully. Probing with a bare `">` first tells you whether you are inside an attribute before investing in a full payload.
+- Takeaway: Escape on output at every render site, confirmation and back-office views included; a form that safely redisplays its own input can still hand the payload to a page that does not.
+
 ### 2026-09-27 — CVE-2025-4123: Grafana open redirect chained to stored XSS and full-read SSRF (U.S. Dept Of Defense) — n/a
 - Source: [HackerOne #3286945](https://hackerone.com/reports/3286945)
 - Type: XSS / stored, via a client-side open redirect in a third-party dashboard

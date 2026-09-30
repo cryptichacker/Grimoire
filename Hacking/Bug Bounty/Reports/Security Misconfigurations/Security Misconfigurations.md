@@ -12,6 +12,177 @@ Disclosed **security misconfiguration** reports — permissive CORS, default/exp
 
 ## Reports
 
+### 2026-09-30 — Sandbox User Can Inject a Rogue CA into the OS Trust Store via a Sudo-Allowed Script (AWS VDP) — n/a
+- Source: [HackerOne #3633146](https://hackerone.com/reports/3633146)
+- Type: Security misconfiguration (over-broad passwordless sudo rule on a script reading a writable directory)
+- Summary: In the Bedrock AgentCore Code Interpreter sandbox, the unprivileged `genesis1ptools` user held passwordless sudo on `/opt/amazon/genesis1p-tools/bin/deploy-certificates.sh`, a script that reads certificates from the sandbox-writable `/tmp/certificates/` and installs them as root into the system trust anchors. Any authenticated user with Code Interpreter access could therefore have a rogue CA trusted system-wide and forge certificates for arbitrary domains, including internal services.
+- Technique / pattern: Enumerate `sudo -l` inside any sandbox or CI container and, for each permitted command, trace where that program reads its *inputs* from. A sudo rule is only as tight as the least-trusted path the target script touches, so a root helper reading a world-writable directory, a config file under the user's control or a `PATH`-resolved binary is a privilege boundary with a hole in it. The proof here was generating a CA, dropping it in `/tmp/certificates/`, invoking the allowed script, and confirming the anchor after `update-ca-trust`.
+- Takeaway: Audit sudoers entries by data flow, not by the command name. A script granted root must validate and own its input location; and in a sandbox, the OS trust store is a security control that unprivileged code must not be able to extend.
+
+
+### 2026-09-30 — Unauthenticated ClickHouse UI on an AWS a2z.com Host: Database Access and SSRF (AWS VDP) — n/a
+- Source: [HackerOne #3809407](https://hackerone.com/reports/3809407)
+- Type: Security misconfiguration — internet-exposed data-plane console with authentication disabled (triaged as Authentication Bypass)
+- Summary: A ClickHouse web interface running on an internal-style Amazon `a2z.com` subdomain was reachable from the internet with no authentication, giving database access and, per the report, a server-side request forgery primitive reachable from the query interface.
+- Technique / pattern: The path to it is subdomain enumeration across a large corporate apex followed by probing each discovered host for the default ports and paths of data-plane and analytics consoles — ClickHouse, Flink, Grafana, Kibana, Jupyter, Airflow — which ship with authentication off and are frequently published by a reverse proxy that forwards everything. A query console that can read remote URLs or table functions is also an SSRF sink, so enumerate what the console itself can reach, not just the data it holds.
+- Takeaway: A deployment whose only protection is an unguessable hostname fails the first time certificate-transparency logs are read. Authentication belongs on the service, and query consoles need their outbound capabilities restricted as well as their inbound access.
+
+### 2026-09-30 — Backdooring the Next Release of Codex Through GitHub Action Pipeline Exploit Chaining (OpenAI) — $1,000
+- Source: [Bugcrowd #3c0e5972](https://bugcrowd.com/disclosures/3c0e5972-74ad-46a3-ab56-169db3d4c66f/backdooring-the-next-release-of-codex-through-github-action-pipeline-exploit-chaining)
+- Type: CI/CD security misconfiguration chained into a supply-chain compromise (P1)
+- Summary: A full CI/CD compromise chain against the `openai/codex` repository began with a prompt injection in the `issue-labeler.yml` workflow — any user could embed attacker instructions in a GitHub issue and obtain command execution inside the Codex agent sandbox — and ended with a persistent backdoored workflow able to publish releases under OpenAI's identity, against a package seeing roughly 10M weekly npm downloads.
+- Technique / pattern: From the agent sandbox the researchers escaped `workspace-write` confinement by abusing .NET CLR debug pipes left exposed in `/tmp/`, read runner process memory to leak `ACTIONS_RUNTIME_TOKEN` and `GITHUB_TOKEN`, used those credentials to poison the GitHub Actions cache, pivoted execution into the more privileged `rust-ci.yml` workflow to gain `contents: write`, and planted a persistent workflow holding `id-token: write`.
+- Takeaway: A workflow that feeds untrusted issue or PR text to an LLM is an injection sink with the runner's privileges behind it. Keep untrusted-input workflows on least-privilege tokens and isolate them from build and release workflows, and treat the Actions cache as a writable trust boundary between jobs rather than as inert storage.
+
+### 2026-09-30 — HTTP Verb Tampering Leads to Authorization Bypass on a Protected Archive Directory (NASA VDP) — n/a
+- Source: [Bugcrowd #b5a435ec](https://bugcrowd.com/disclosures/b5a435ec-c13c-4208-81f7-64431b1b7a4e/http-verb-tampering-leads-to-authorization-bypass-on-archive-exist-team-directory)
+- Type: Security misconfiguration — method-scoped access control / broken access control (P2)
+- Summary: A protected directory `/archive/exist/team/` on a NASA web application returned `401 Unauthorized` to a `GET` request but served its restricted contents — RFI responses, internal team communications and technical data — when the identical path was requested with `POST`. Accepted and resolved.
+- Technique / pattern: Server-level authorization rules that name specific methods leave every other verb unprotected; the classic instance is an Apache `<Limit GET>` or `<Limit GET POST>` block, or an IIS/servlet security constraint listing `http-method` elements. Replaying a `401` or `403` response with `POST`, `HEAD`, `PUT` or an arbitrary verb is a one-request check that costs nothing.
+- Takeaway: Access control must deny by default across all HTTP methods rather than allow-listing the ones that were considered. Whenever a path answers `401` or `403`, re-send it with other verbs before concluding it is protected.
+
+
+### 2026-09-30 — Publicly accessible phpinfo() exposes detailed server configuration (NASA VDP) — n/a
+- Source: [Bugcrowd #41e4cef6](https://bugcrowd.com/disclosures/41e4cef6-b0bf-4a9c-9a5d-9a34747ad7c4/publicly-accessible-phpinfo-exposes-detailed-server-configuration)
+- Type: Security misconfiguration / information exposure
+- Summary: A PHP information page sat at an easily guessable URL and leaked the exact PHP version, internal file paths, internal IP addresses, loaded extensions such as `pdo_mysql` and `mongodb`, disabled-function settings and SSL certificate data naming internal JPL subdomains.
+- Technique / pattern: Probe every in-scope host for leftover diagnostic pages by name (`phpinfo.php`, `info.php`, `test.php`, `server-status`); they are absent from sitemaps and navigation but present in any reasonable wordlist.
+- Takeaway: Diagnostic pages belong to development only — ship them disabled and assert their absence in CI, because a version-plus-path leak turns generic public exploits into targeted ones.
+
+### 2026-09-30 — OAuth misconfiguration: third-party auth cookies not invalidated after logout (Opera) — $150
+- Source: [Bugcrowd #6ff09a42](https://bugcrowd.com/disclosures/6ff09a42-c27f-4d5d-9e7c-8eaafe8eee70/oauth-misconfiguration-found-on-https-wemedia-opera-com)
+- Type: OAuth / session misconfiguration
+- Summary: On the Opera Wemedia portal, third-party authentication cookies were not properly invalidated on logout from either the application or the authorisation server, so a later user of the same device could re-enter the victim's account.
+- Technique / pattern: Log out, then replay the retained third-party auth cookie and re-run the provider's `authorize` step; if the identity provider still holds a session it silently re-issues a token with no credential prompt, which is what makes the "account squatting" outcome possible.
+- Takeaway: Logout must clear the relying-party session and trigger provider-side logout, or at minimum force re-authentication — otherwise logging out is cosmetic on any shared device.
+
+### 2026-09-30 — Exposed credentials on the FCFOPS site allow access to a NASA facility portal (NASA VDP) — n/a
+- Source: [Bugcrowd #351f28d8](https://bugcrowd.com/disclosures/351f28d8-007f-4b51-9ce8-ca6ee9b84e2e/unauthorized-access-to-nasa-fluid-combustion-facility-portal-https-fcfops-grc-nasa-gov)
+- Type: Security misconfiguration / exposed credentials (rated P1)
+- Summary: Credentials published on the Fluid & Combustion Facility operations site permitted unauthorized access to the portal; the remediation was to remove the offending credentials from the site.
+- Technique / pattern: Read the target's own static content — help pages, onboarding guides, training PDFs, sample instructions — for working logins before attacking the login form. Published documentation is an under-searched credential store and needs no exploitation at all.
+- Takeaway: Treat anything published as public permanently: credentials exposed in documentation must be rotated, not merely deleted from the page.
+
+### 2026-09-30 — Admin panel exposed without authentication (Shopify) — n/a
+- Source: [HackerOne #1417288](https://hackerone.com/reports/1417288)
+- Type: Security misconfiguration / missing authentication for a critical function
+- Summary: An administrative panel was reachable at a public URL with no authentication at all, so anyone who located it could edit and destroy data.
+- Technique / pattern: Enumerate subdomains first, then sweep common admin paths on each one. Forgotten staging deployments and vendor-installed panels regularly leave authentication to a network control that was never actually applied.
+- Takeaway: Authentication belongs in the application, not in an assumption about who can reach the host — inventory every deployed panel and assert a login check on each.
+
+### 2026-09-29 — Internal debug page and unauthenticated gRPC service reachable from the Starlink network (SpaceX) — $4,800
+- Source: [Bugcrowd #35b94f7c](https://bugcrowd.com/disclosures/35b94f7c-75a6-469e-ab6c-7f9649c05595/spacex-debug-page-accessible-when-using-starlink)
+- Type: Security misconfiguration — internal service exposed to customers (P2, resolved)
+- Summary: While standing up new ground infrastructure, SpaceX exposed unauthenticated services externally; a subscriber could reach an internal debug page and, more seriously, an unauthenticated gRPC endpoint.
+- Technique / pattern: Enumerate from inside the provider's own network — `traceroute` from a subscriber connection reveals internal hop addresses, and probing those addresses from that same vantage point finds services firewalled from the public internet but not from customers.
+- Takeaway: "Internal" is a position on the network, not a property of a service, and newly deployed infrastructure is the likeliest place to find controls that have not been applied yet.
+
+### 2026-09-29 — Publicly listable Amazon S3 bucket (NASA VDP) — n/a
+- Source: [Bugcrowd #067b785f](https://bugcrowd.com/disclosures/067b785f-a7a3-41ef-9261-176b824f1d6b/amazon-s3-bucket-misconfiguration)
+- Type: Security misconfiguration — cloud storage ACL (P5, informational)
+- Summary: An S3 bucket permitted public listing and retrieval of `.tlf` files. The program judged the content intended to be public and closed the report as informational, while the reporter argued such files can still leak layout, metadata or configuration detail depending on their use.
+- Technique / pattern: Enumerate bucket names from page source, DNS records and JavaScript bundles, then issue a list request to test the ACL — but the impact has to be argued from the contents, not from listability alone.
+- Takeaway: An open bucket is only a finding when what sits inside it matters, so open and read a sample before writing up or expect an informational close.
+
+### 2026-09-29 — Anonymous FTP login exposing directory contents on a NASA subdomain (NASA VDP) — n/a
+- Source: [Bugcrowd #fb4e1846](https://bugcrowd.com/disclosures/fb4e1846-6f51-405f-a73e-8a6c83bc0c90/nasa-ftp-vulnerable-anonymous)
+- Type: Security misconfiguration — anonymous service access (P5, informational)
+- Summary: An `nmap` scan of the host backing a NASA science subdomain showed FTP open, and the anonymous account accepted a login, allowing directory browsing and file download with no authentication.
+- Technique / pattern: Resolve in-scope hostnames to addresses and scan beyond ports 80 and 443 — legacy protocols such as FTP, SMB and rsync are rarely covered by web-focused reviews, and anonymous credentials are the first thing to try against them.
+- Takeaway: Non-HTTP services on in-scope hosts are routinely under-tested, but as with open buckets the report stands or falls on whether the exposed files are actually sensitive.
+
+### 2026-09-29 — Tomcat manager reachable with default credentials (JetBlue) — n/a
+- Source: [HackerOne #1267174](https://hackerone.com/reports/1267174)
+- Type: Security misconfiguration — default credentials on an admin interface
+- Summary: A JetBlue host ran Apache Tomcat 6.0.35 with the manager application exposed, and the vendor default account pair `tomcat` / `tomcat` still worked, granting administrative access to the application server.
+- Technique / pattern: Fingerprint the server banner and version, then request the well-known admin paths such as `/manager/html` and `/host-manager/html` and try the vendor default pairs before anything else — an outdated version string is a strong signal the install was never hardened.
+- Takeaway: Tomcat manager access is a deploy-a-WAR primitive, so default credentials there are effectively remote code execution; confirm impact within scope rather than deploying anything.
+
+### 2026-09-28 — Retired GitHub username takeover from a link in a public AWS repository (AWS VDP) — n/a
+- Source: [HackerOne #3478646](https://hackerone.com/reports/3478646)
+- Type: Security misconfiguration / dangling reference takeover
+- Summary: A public AWS repository linked to a GitHub account whose username had been retired and left unclaimed. The researcher registered the username and published a repository at the same path, so the official link began serving attacker-controlled content.
+- Technique / pattern: Crawl a target's repositories, docs and READMEs for outbound links and check which return 404; a dead link pointing at a platform that allows re-registration of the identifier is a takeover. This is the same dangling-reference class as subdomain takeover, applied to usernames, package names and social handles.
+- Takeaway: Outbound links are part of the attack surface — audit them for dead destinations, because a trusted domain pointing at a re-registrable identifier lends the attacker its credibility.
+
+### 2026-09-28 — Kiro IDE writes authentication tokens world-readable at mode 0644 (AWS VDP) — n/a
+- Source: [HackerOne #3630605](https://hackerone.com/reports/3630605)
+- Type: Security misconfiguration / incorrect default permissions
+- Summary: Kiro IDE 0.11.107 wrote its access and refresh tokens to `~/.aws/sso/cache/kiro-auth-token.json` with mode `0644`, so any local user or process could read bearer tokens granting full CodeWhisperer and Q Developer API access (CVE-2026-11931). The AWS CLI stores its tokens in the same directory at `0600`, and Kiro itself used the macOS Keychain for other secrets.
+- Technique / pattern: For desktop and CLI tooling, enumerate where credentials land on disk and check the mode — `ls -l` across the application's cache and config directories, compared against a sibling tool that does it correctly. A same-vendor inconsistency is the strongest argument available in the report.
+- Takeaway: Token files need mode `0600` and, where the platform offers one, the system keystore; inconsistent handling inside a single product usually means one code path missed the umask or an explicit `chmod`.
+
+### 2026-09-28 — Unauthenticated Apache Flink dashboard exposes pipelines and allows job cancellation (NASA VDP) — n/a
+- Source: [Bugcrowd #caaf6992](https://bugcrowd.com/disclosures/caaf6992-f58f-46ce-8b34-cb256859804e/unauthenticated-apache-flink-dashboard-access)
+- Type: Security misconfiguration
+- Summary: An Apache Flink instance at `main.aws-ultra-swift.smce.nasa.gov` served its web dashboard with no authentication challenge. The Job Manager and Task Manager views exposed internal hostnames, software versions, library classpaths, configuration parameters and operational logs, and any visitor could cancel or stop live data streams.
+- Technique / pattern: Cluster and pipeline consoles — Flink, Spark, Airflow, Kubernetes dashboards, Jenkins — frequently ship with authentication off and then get published by a reverse proxy that forwards everything. Fingerprint the framework from its static assets, walk its documented admin routes, and record both the read exposure and the state-changing controls on offer.
+- Takeaway: Treat an unauthenticated admin console as more than information disclosure: it usually carries destructive actions, so report the reachable controls alongside the metadata leak.
+
+### 2026-09-28 — Default credentials give administrative access to Teamwork Cloud (NASA VDP) — n/a
+- Source: [Bugcrowd #6cea28c5](https://bugcrowd.com/disclosures/6cea28c5-b3a9-45a8-8617-826ba0649279/default-credentials-for-teamwork-cloud)
+- Type: Security misconfiguration / default credentials
+- Summary: An internal Teamwork Cloud deployment was reachable using the product's shipped default credentials, which granted administrative access. Bugcrowd rated it P1; the public disclosure is a short summary only.
+- Technique / pattern: For any identified commercial product, look up the vendor's documented default account and try that before anything else — deployment guides and container images name them, and installations that were never hardened keep them. Confirm the privilege level actually reached, since admin access is what moves this from a low finding to a critical one.
+- Takeaway: Default credentials remain a critical finding on internal applications; provisioning should force a credential change before the service accepts its first login.
+
+### 2026-09-28 — External SMTP submission allows unauthenticated email delivery to internal NASA recipients (NASA VDP) — n/a
+- Source: [Bugcrowd #350eedae](https://bugcrowd.com/disclosures/350eedae-27d6-4d94-a1aa-bec8fc480c69/external-smtp-submission-allows-unauthenticated-email-delivery-to-internal-nasa-domain-recipients-with-potential-for-spoofed-sender-identity-display)
+- Type: Security misconfiguration (mail infrastructure / SMTP submission)
+- Summary: An external SMTP service accepted unauthenticated submissions addressed to internal NASA domain recipients without validating sender identity at the submission layer, letting externally originated messages enter the internal mail flow with a potentially spoofed sender display. Rated P3, resolved.
+- Technique / pattern: Mail infrastructure belongs in the attack surface map — enumerate MX and submission hosts, then test whether the relay accepts a message for an internal recipient with no authentication and how much of the sender display name it will carry. Spoofed mail landing in an internal inbox bypasses the “external sender” banner staff are trained to look for.
+- Takeaway: Check the mail path as well as the web path: SPF, DKIM and DMARC on the domain do not help when a relay in front of the internal mail flow accepts unauthenticated submission for internal recipients.
+
+### 2026-09-28 — Broken Link Hijacking (impersonation) on ntrs.nasa.gov via an abandoned Facebook URL (NASA VDP) — n/a
+- Source: [Bugcrowd #cd65bae3](https://bugcrowd.com/disclosures/cd65bae3-c385-4964-af8f-a902da35051b/broken-link-hijacking-impersonation-on-ntrs-nasa-gov-via-abandoned-facebook-url)
+- Type: Security misconfiguration (broken link hijacking / impersonation)
+- Summary: A report published on `ntrs.nasa.gov` linked to a NASA Facebook page that no longer existed, so the handle could be claimed by anyone and used to impersonate NASA under the authority of the linking page. Rated P4, resolved.
+- Technique / pattern: Crawl the target's own pages for outbound links to social handles, app-store listings, community channels and short links, then check each destination's claim status. Unlike a dangling CNAME the DNS is perfectly healthy, so only link-level checking surfaces it.
+- Takeaway: Outbound links are an inventory item — one dead social link on a `.gov` research host hands an impersonator the domain's credibility for free.
+
+### 2026-09-28 — Unauthenticated file upload with CORS wildcard and no rate limiting (Essity) — n/a
+- Source: [HackerOne #3765476](https://hackerone.com/reports/3765476)
+- Type: Security misconfiguration (missing authentication plus permissive CORS on an upload route)
+- Summary: `POST /Umbraco/Api/ContactApi/SaveAttachment` on two production hosts accepted file uploads with no authentication, no CAPTCHA and no rate limiting, and answered with `access-control-allow-origin: *`, so any website on the internet could silently push files — including PDFs with embedded JavaScript — into the backend storage.
+- Technique / pattern: Three weak controls compose into one strong finding: missing auth makes the route reachable, wildcard CORS makes it drivable from any origin with no user interaction, and the missing rate limit turns it into storage/cost abuse and a malware-hosting primitive. Test upload endpoints for all three, then check the stored file's URL and served content type.
+- Takeaway: Report composed misconfigurations as a single chain with the combined impact — an anonymous upload that a third-party page can drive is materially worse than an anonymous upload alone.
+
+### 2026-09-28 — Bypass of an open-redirect fix on lovable.dev via path traversal in the redirect parameter (Lovable VDP) — n/a
+- Source: [HackerOne #3599248](https://hackerone.com/reports/3599248)
+- Type: Security misconfiguration / Open redirect (incomplete fix)
+- Summary: A previously patched open redirect remained exploitable: the fix blocked backslash payloads (`/\` and `/%5C`) but not `/..//google.com`, which the server normalized to `//google.com` and then treated as a protocol-relative URL, redirecting authenticated users off-site after login via `https://lovable.dev/auth/post-login?redirect=...`.
+- Technique / pattern: Always retest a patched redirect. Feed the validator values that *normalize* into a different URL than they appear to be — `/..//host`, `/%2f%2fhost`, `/\/host`, `https:/host`, `//host%2f@target` — because a denylist patch removes only the exact string that was reported.
+- Takeaway: Redirect validation must parse the final URL and compare its host against an allow-list; a denylist built from the last report's payload is an invitation to send the next variant.
+
+
+### 2026-09-27 — Subdomain takeover on `s3.shopify.com` via an unclaimed S3 bucket (Shopify) — $500
+- Source: [HackerOne #207576](https://hackerone.com/reports/207576)
+- Type: Security misconfiguration / dangling CNAME to an unregistered S3 bucket
+- Summary: `s3.shopify.com` pointed by CNAME at Amazon S3 while no bucket of that name existed, so anyone could register the bucket and serve arbitrary content — HTML for stored XSS, or a phishing page — from a trusted Shopify subdomain.
+- Technique / pattern: Enumerate subdomains, resolve each CNAME, and flag any whose provider answers with a "no such bucket" or "not found" fingerprint instead of a real site. The claim is first-come, so a defensive researcher registers the bucket themselves to hold the name while the vendor corrects DNS.
+- Takeaway: DNS records outlive the resources they point at — retire the CNAME together with the bucket, and audit for dangling delegations continuously rather than only at deprovisioning time.
+
+### 2026-09-27 — Subdomain takeover of a DoD host via an unclaimed Amazon S3 bucket (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #918946](https://hackerone.com/reports/918946)
+- Type: Security misconfiguration / dangling CNAME to an unregistered S3 bucket
+- Summary: A DoD subdomain still resolved through a CNAME to an S3 bucket in `us-east-1` that no longer existed; the researcher registered the same bucket name and served their own `index.html` plus an XSS proof of concept from the government domain.
+- Technique / pattern: The same dangling-delegation pattern as any cloud takeover, with one wrinkle worth remembering — bucket names are global while the endpoint host is regional, so match the region encoded in the original CNAME before concluding a name is unclaimable.
+- Takeaway: Content served from a trusted domain inherits that domain's trust for cookies, CSP allowlists and the user's own judgment, so a takeover on a government or brand subdomain is a phishing platform, not merely a defacement.
+
+### 2026-09-27 — Base tag hijacking via Host header injection (NASA VDP) — n/a
+- Source: [Bugcrowd #fd5b1c75](https://bugcrowd.com/disclosures/fd5b1c75-54a1-4db9-8618-a4e26c6b8147/base-tag-hijacking-via-host-header-injection)
+- Type: Security misconfiguration / Host header reflected into the `<base href>` tag
+- Summary: The server built the page's `<base>` tag from the incoming Host header, so an injected host produced `<base href="https://evil.com">` and every relative reference on the page — `/js/main.js`, `/img/logo.png` — resolved to the attacker's origin. The program rated it P5, since it requires Host header injection and affects only client-side loading.
+- Technique / pattern: Send a modified `Host` or `X-Forwarded-Host` and grep the whole response body, not just the `Location` header, for the value you supplied: absolute links, `<base>`, canonical tags, password-reset URLs and script `src` attributes are all built from it. `<base>` is the highest-leverage sink of the set because it silently repoints every relative reference at once.
+- Takeaway: Derive absolute URLs and `<base>` from server-side configuration, never from a client-controlled header, and validate Host against an allowlist at the edge.
+
+### 2026-09-27 — Open redirection through the `X-Forwarded-Host` header (NASA VDP) — n/a
+- Source: [Bugcrowd #b00f800d](https://bugcrowd.com/disclosures/b00f800d-63bf-4206-a2ea-83ff9563c571/host-header-injection-via-x-forwarded-host-lead-to-open-redirection)
+- Type: Security misconfiguration / Host header injection producing an open redirect
+- Summary: The application trusted `X-FORWARDED-HOST` when constructing redirect targets, so an attacker-supplied host sent users off-site — usable to front a phishing page or to sidestep controls keyed to the original domain. The program accepted it as an informational business risk.
+- Technique / pattern: Proxy-forwarding headers (`X-Forwarded-Host`, `X-Forwarded-Proto`, `X-Original-URL`, `X-Rewrite-URL`) are trusted by many frameworks on the assumption that a reverse proxy sets them; when the app is reachable without that proxy, or the proxy forwards what it received, the client sets them instead. Test each one against redirect handling, emailed links and absolute-URL generation.
+- Takeaway: Only the edge proxy may set forwarding headers, and it must overwrite rather than append the client's value; everything downstream should treat them as untrusted until that guarantee is actually enforced.
+
 ### 2026-09-27 — Takeover of hackerone.engineering during a GitHub Pages CNAME-hold release (HackerOne) — n/a
 - Source: [HackerOne #2085260](https://hackerone.com/reports/2085260)
 - Type: Security misconfiguration / subdomain takeover through a provider-side claim window

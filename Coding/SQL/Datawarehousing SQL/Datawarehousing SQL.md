@@ -28,6 +28,10 @@ Analytics/OLAP SQL as used in data warehouses (Snowflake, BigQuery, Redshift, Sy
 
 ## Dimensional Modelling
 
+> **Star schema** (editable Excalidraw):
+
+![[Star Schema.excalidraw]]
+
 - **Fact table** — measurable events/metrics (sales, clicks), one row per event, foreign keys to dimensions + numeric measures. Large and narrow.
 - **Dimension table** — descriptive context (customer, product, date, store). Smaller, wide, textual.
 - **Star schema** — one fact table joined directly to denormalised dimensions.
@@ -126,6 +130,15 @@ DATE_TRUNC('month', ts); EXTRACT(YEAR FROM ts); DATEADD(day, -7, ts);
 ---
 
 ## ELT & Warehouse Patterns
+
+```mermaid
+flowchart LR
+    Src[Sources<br/>apps, APIs, files] --> E[Extract]
+    E --> L[Load raw to warehouse]
+    L --> T[Transform in-warehouse<br/>dbt / SQL]
+    T --> Marts[Data marts<br/>star schemas]
+    Marts --> BI[BI / dashboards]
+```
 
 ```sql
 -- staging → transform → mart (ELT: load raw, transform in-warehouse)

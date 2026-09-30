@@ -11,6 +11,13 @@ last-verified: 2026-08-25
 - [[PortSwigger]]
 
 ## What it is
+
+```mermaid
+flowchart LR
+    A[Attacker input] --> P["App builds SQL by string concatenation"]
+    P --> DB[(Database runs<br/>attacker-controlled query)]
+    DB --> R[Data theft / auth bypass / RCE]
+```
 SQL injection (SQLi) is a vulnerability that lets an attacker interfere with the queries an application makes to its database. Because user input is concatenated directly into a SQL statement instead of being treated as pure data, the attacker can change the logic or structure of the query — reading, modifying, or deleting data the application never intended to expose, and in some cases compromising the underlying server or causing denial of service.
 
 ## Impact

@@ -72,6 +72,17 @@ ansible all -i inventory --list-hosts
 ```
 
 ## Running playbooks
+
+```mermaid
+flowchart LR
+    CN["Control node<br/>ansible-playbook"] --> INV[Inventory hosts]
+    CN --> PB[Playbook<br/>plays and tasks]
+    PB --> MOD[Modules]
+    MOD -->|SSH / WinRM| H1[Managed host 1]
+    MOD -->|SSH / WinRM| H2[Managed host 2]
+    H1 -->|result| CN
+    H2 -->|result| CN
+```
 ```bash
 ansible-playbook -i inventory site.yml
 ```

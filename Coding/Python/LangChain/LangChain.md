@@ -126,6 +126,18 @@ chain = prompt | llm | parser
 
 ## Retrieval-Augmented Generation (RAG)
 
+```mermaid
+flowchart LR
+    Q[User question] --> R[Retriever]
+    R --> V[(Vector store)]
+    V --> Ctx[Top-k chunks]
+    Q --> P[Prompt template]
+    Ctx --> P
+    P --> LLM[Chat model]
+    LLM --> OP[Output parser]
+    OP --> A[Answer]
+```
+
 ```python
 # 1. Load + split documents
 from langchain_community.document_loaders import TextLoader, PyPDFLoader, WebBaseLoader

@@ -16,6 +16,17 @@ last-verified: 2026-09-03
 
 ## Coroutines & Running
 
+```mermaid
+flowchart LR
+    L["Event loop (one thread)"] --> T1[Task A]
+    L --> T2[Task B]
+    L --> T3[Task C]
+    T1 -->|await I/O| L
+    T2 -->|await I/O| L
+    T3 -->|await I/O| L
+    L -->|resume when ready| T1
+```
+
 ```python
 import asyncio
 

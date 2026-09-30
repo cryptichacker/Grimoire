@@ -12,6 +12,177 @@ Disclosed **Insecure Direct Object Reference** reports. Core idea: an object ide
 
 ## Reports
 
+### 2026-09-30 — Cross-User Lock/Unlock via Absolute DAV Path (Nextcloud) — n/a
+- Source: [HackerOne #3301553](https://hackerone.com/reports/3301553)
+- Type: IDOR / broken object-level authorization (cross-user write)
+- Summary: In the Nextcloud `files_lock` app any authenticated user could lock or unlock files belonging to other users by addressing the victim's absolute WebDAV path, blocking the owner's writes; the response also handed the lock token back to the unauthorized caller, letting them remove other users' client locks.
+- Technique / pattern: The DAV plugin resolved the target with `getFileFromAbsoluteUri()` on the raw request URI and never compared the user-ID segment in that path against the authenticated session user, so swapping that segment in a `LOCK` / `UNLOCK` request carrying the `X-User-Lock` header reached another account's files. Reachable on default deployments with `files_lock` enabled.
+- Takeaway: A user-ID segment inside a path is an object reference and needs the same ownership check as a numeric `id`. Whenever a handler resolves an object from a full URI instead of from the session's own scope, every segment of that URI is attacker-controlled input.
+
+### 2026-09-30 — Delete any folder for any user within the organization (SingleStore) — n/a
+- Source: [HackerOne #3353035](https://hackerone.com/reports/3353035)
+- Type: IDOR (unauthorized delete, CWE-639)
+- Summary: A low-privileged SingleStore user could delete notebook folders owned by other users in the same organization by changing the folder identifier in a `DELETE` request to the notebooks contents API on `backend.singlestore.com`.
+- Technique / pattern: The route `DELETE /public/notebooks/api/contents/<id>/_internal-s2-stage/<folder_id>/<folder_name>/` acted on the supplied identifiers without verifying folder ownership. The report was rated CVSS Low (3.8) only because the attack needs knowledge of two UUIDs, i.e. the mitigating factor was guessability rather than any authorization check.
+- Takeaway: UUIDs raise attack complexity; they are not authorization. Destructive verbs deserve an explicit ownership check, and triage should keep "hard to guess" and "properly authorized" as separate findings.
+
+### 2026-09-30 — Unauthorized Access to Cross Tenant Data - 1 (Atlassian / Confluence Cloud) — $1,200
+- Source: [Bugcrowd #940fd364](https://bugcrowd.com/disclosures/940fd364-b42f-4c9a-9597-985cb2d83f2c/unauthorized-access-to-cross-tenant-data-1)
+- Type: IDOR / cross-tenant information disclosure
+- Summary: A cross-tenant information disclosure issue in Confluence Cloud allowed a user to reach data belonging to a different tenant. Atlassian's own summary classifies it as a cross-tenant information disclosure vulnerability; it was resolved at P3 with a $1,200 reward.
+- Technique / pattern: In multi-tenant SaaS the tenant boundary is enforced in application code rather than by separate datastores, so any request carrying a site, tenant, cloud-id or workspace identifier is worth replaying with a second organization's identifier to see whether the server re-derives the tenant from the session or simply trusts the request.
+- Takeaway: Cross-tenant authorization is a distinct layer from per-object authorization. Test it with two independent tenants you control, not with two users inside one tenant.
+
+### 2026-09-30 — Unlisted NASA Task Book Projects and PDFs Accessible via Predictable TASKID (NASA VDP) — n/a
+- Source: [Bugcrowd #6748232d](https://bugcrowd.com/disclosures/6748232d-3c95-4ed1-99b4-2470788558bd/unlisted-nasa-task-book-projects-pdfs-accessible-via-predictable-taskid-idor-style-enumeration-unauthenticated)
+- Type: IDOR-style enumeration (unauthenticated)
+- Summary: Incrementing the `TASKID` parameter on the NASA Task Book application returned project records and their PDFs that were not reachable through the public search interface, with no authentication required.
+- Technique / pattern: Sequential integer identifiers were walked across the full range and each response diffed against what the public search UI actually listed; the records that appeared only in the direct-fetch responses were "unlisted" rather than access-controlled.
+- Takeaway: Exclusion from a listing, a search index or a sitemap is a discoverability measure, not an access control. Unlisted, draft and embargoed states must be enforced at the record-fetch endpoint itself.
+
+
+### 2026-09-30 — Uncontrolled access to a sensitive Department of Defense dashboard (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #992618](https://hackerone.com/reports/992618)
+- Type: Improper access control (generic) — High severity
+- Summary: A sensitive Department of Defense dashboard was reachable without the access control that was meant to gate it, exposing its contents to users who should not have been able to load it.
+- Technique / pattern: Request a privileged view directly by URL from an unprivileged or unauthenticated session instead of navigating to it. Dashboards and reporting views are frequently wired up after the main application and inherit no authorization filter, because the only thing hiding them is the absence of a link.
+- Takeaway: Every view, not just every API, needs an explicit server-side authorization check; obscurity of the route is not a control.
+
+### 2026-09-30 — IDOR leading to leakage of usernames on a chat-linked DoD domain (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #1093908](https://hackerone.com/reports/1093908)
+- Type: IDOR / information disclosure
+- Summary: An IDOR on a domain connected to an encrypted chat application let the reporter, testing from their own account, retrieve usernames belonging to other accounts; the exposure was limited to usernames.
+- Technique / pattern: Chase the satellite domains around a primary application — the chat, support, directory and notification hosts that share its identity model — and test their object references separately. The reporter first had to establish that the domain was in scope, which is itself part of the workflow on large programs.
+- Takeaway: A username-only leak is still a finding: it is the enumeration input for credential stuffing and phishing, so report it rather than discarding it as low value, and rate it by what it enables downstream.
+
+
+### 2026-09-30 — IDOR in Content Outline Builder GraphQL request reveals other users' information (Semrush) — n/a
+- Source: [HackerOne #1770858](https://hackerone.com/reports/1770858)
+- Type: IDOR (GraphQL user-ID tampering)
+- Summary: In the Content Outline Builder product, changing the user ID inside a GraphQL request returned additional information about other users; the vendor's review found no evidence of unauthorized exploitation.
+- Technique / pattern: Intercept the request a single feature makes, swap only the user-ID variable for another valid ID and diff the response. Newer product surfaces bolted onto an existing GraphQL gateway inherit the schema but not always the authorization checks.
+- Takeaway: A user identifier in a request body is attacker-controlled — resolve the acting user from the session and ignore any ID the client supplies.
+
+### 2026-09-30 — Insecure Direct Object Reference allowing modification of content and database parameters (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #207099](https://hackerone.com/reports/207099)
+- Type: IDOR (write-side)
+- Summary: A DoD website exposed direct object references that could be manipulated to modify web content and certain database parameters rather than merely read them.
+- Technique / pattern: Classic object-reference tampering aimed at state-changing requests — identify the object handle a form or API submits, substitute a reference the account does not own, and check whether the write is accepted.
+- Takeaway: Cover write and delete paths when testing for IDOR; read-only enumeration understates impact, and write-side IDOR is consistently rated higher.
+
+### 2026-09-29 — CRITICAL Insecure Direct Object Reference in the rewards signup flow (Yelp) — n/a
+- Source: [HackerOne #358143](https://hackerone.com/reports/358143)
+- Type: IDOR
+- Summary: The `/rewards/signup` flow accepted an attacker-controlled reference to a payment-card object, letting the reporter associate a card that had been added and later deregistered with their own account. Primary account numbers stayed unreadable, so the impact was the unauthorised association itself.
+- Technique / pattern: Walk a multi-step enrolment wizard and record every identifier the client hands back to the server between steps, then replay the final step with an identifier belonging to a different object and see whether the server re-checks ownership there or only at step one.
+- Takeaway: Multi-step flows commonly validate ownership on the first request and trust the client's identifier afterwards — the last call in a wizard is usually the weakest link.
+
+### 2026-09-29 — Workspace member bypasses board-deletion restriction by moving boards via the API (Trello / Atlassian) — $1,200
+- Source: [Bugcrowd #36bcd5a4](https://bugcrowd.com/disclosures/36bcd5a4-4dfb-46f4-9675-f07910eefd2d/privilege-escalation-vulnerability-a-normal-workspace-member-can-bypass-the-restriction-of-board-deletetion-permision-set-by-workspace-admins-to-delete-any-board-in-the-workspace)
+- Type: IDOR / broken access control — privilege escalation (P3, CVSS 6.5)
+- Summary: Admins could forbid ordinary workspace members from deleting boards, but the restriction lived only in the UI; a direct `PUT /1/boards/<boardId>` naming the attacker's own organisation moved any board out of the workspace, after which that member could delete it outright.
+- Technique / pattern: When the interface greys out or hides an action, find the API call the enabled version of that action would make and issue it directly with the object IDs already visible to you — here only the board ID and the attacker's own workspace ID were needed.
+- Takeaway: A permission that exists only as a disabled button is not a permission; every restricted action needs the same check on the endpoint that performs it.
+
+### 2026-09-29 — Board members run owner-only Butler automation buttons via a direct API call (Trello / Atlassian) — $300
+- Source: [Bugcrowd #1418142b](https://bugcrowd.com/disclosures/1418142b-8b82-4ad6-9c9d-ce9ff1baf3ea/privilege-escalation-vulnerability-other-users-of-the-board-can-run-local-automation-buttons-for-owner-which-is-not-visible-to-them)
+- Type: IDOR / broken access control — hidden-function invocation (P4)
+- Summary: Butler automation buttons set to personal were hidden from other board members but remained executable: a request to the `powerup-run-command` API with the caller's own token plus the owner's `cmd_id`, `uid` and `board_id` ran the owner's automation.
+- Technique / pattern: Where an identifier is predictable — `cmd_id` was the owner ID plus an incrementing counter — and the remaining parameters are already visible to every member, enumerate it and replay the command endpoint under your own session.
+- Takeaway: Hiding a control from the interface is not authorisation, and sequential per-owner command IDs make the hidden objects trivially enumerable.
+
+### 2026-09-29 — Privilege escalation to any user group via an unverified group-change endpoint (NASA — GLOBE) — n/a
+- Source: [Bugcrowd #2fd3398f](https://bugcrowd.com/disclosures/2fd3398f-7b58-4f37-88a1-ba920c141a5f/critical-privilege-escalation-to-any-user-group-account-status-to-regional-office-representative)
+- Type: Broken access control — mass assignment / privilege escalation (P1)
+- Summary: A user-management endpoint on the GLOBE platform did no adequate server-side verification of group changes, so a low-privileged account could set itself to Regional Office Representative and other privileged groups, gaining create, modify and delete rights over events, news and resources.
+- Technique / pattern: Submit the profile or membership update request with the role or group field changed to a higher-privileged value, then check whether the server re-derives the caller's authority or simply persists whatever arrived.
+- Takeaway: Role and group fields must be server-derived; if a self-service profile update can carry them, self-service becomes self-promotion.
+
+### 2026-09-28 — IDOR in Circles getMembership() exposes any user's membership in any circle (Nextcloud) — $200
+- Source: [HackerOne #3484601](https://hackerone.com/reports/3484601)
+- Type: IDOR
+- Summary: `MembershipService::getMembership()` in the Nextcloud Circles app looked up membership records using only the supplied `circleId` and `singleId`, with no check that the caller was allowed to see that pair. Any authenticated user could read membership levels, inheritance paths and circle relationships for any user and any circle (CVE-2026-68493).
+- Technique / pattern: Trace a read endpoint (here the `link()` action in `LocalController`) down through the service layer to the repository call and look for the authorization check in between; when the service forwards caller-supplied identifiers straight into the query builder, the object reference is unprotected. Two opaque IDs are not a control, since `singleId` values leak in-band elsewhere in the app.
+- Takeaway: Authorization belongs beside the lookup in the service layer, not in whichever controller happens to call it, and a `detailed` flag that fans out to related objects widens the same missing check.
+
+### 2026-09-28 — Shared smart albums resolve the viewer's source-folder config against the owner's files (Nextcloud) — n/a
+- Source: [HackerOne #3506873](https://hackerone.com/reports/3506873)
+- Type: IDOR / broken access control
+- Summary: When a user opened a filter-based smart album shared by someone else, `FiltersManager` built the search conditions from the *viewer's* `photosSourceFolders` setting instead of the album owner's, so a viewer who configured broader paths had the album's filters run across folders the owner never intended to expose (CVE-2026-82985).
+- Technique / pattern: On any shared or delegated resource, ask whose configuration is read at evaluation time. Set your own preference to something deliberately wide, open the victim-owned shared object, and check whether the result set grows: a config value that is attacker-controlled but applied to another user's data is the bug.
+- Takeaway: Scope for a shared object must be resolved from the owner's stored settings at share time; reading the requester's preferences quietly promotes a user setting into an access-control parameter.
+
+### 2026-09-28 — Unauthenticated IDOR on a self-hosted GitLab users API leaks SSH key metadata and internal hostnames (NASA VDP) — n/a
+- Source: [Bugcrowd #713064c8](https://bugcrowd.com/disclosures/713064c8-35c7-41ac-b6b3-443c1c9daeaa/unauthenticated-idor-on-users-api-leading-to-information-disclosure-of-internal-hostnames-and-pii)
+- Type: IDOR
+- Summary: NASA's private self-hosted GitLab at `gitlab.smce.nasa.gov` correctly returned 403 on the bare users API, but a filter-parameter variant of the same endpoint answered unauthenticated requests and enumerated every account. Feeding the recovered user IDs into a second unauthenticated endpoint returned SSH key metadata whose key titles carried internal workstation hostnames, data-centre FQDNs and contractor email addresses.
+- Technique / pattern: A 403 on the collection route is not a verdict on the whole API: retry with filter, search and pagination parameters and with per-ID routes, because the check is often attached to one handler rather than to the resource. Then chain, letting the IDs from step one become the object references for step two.
+- Takeaway: Test every parameterised form of an endpoint that returned 403, and treat free-text fields such as SSH key titles as disclosure surfaces in their own right.
+
+### 2026-09-28 — Broken function-level authorization in a project funding API exposes internal staff PII (NASA VDP) — n/a
+- Source: [Bugcrowd #003aefd2](https://bugcrowd.com/disclosures/003aefd2-dd3a-41a2-9e3a-448ba90403d1/broken-function-level-authorization-allows-standard-users-to-access-internal-funding-manager-pii-via-project-funding-api)
+- Type: IDOR / broken function-level authorization
+- Summary: An API endpoint in NASA's Request Management System that supplied funding metadata during the project-creation workflow did not enforce function-level authorization, and its response was far more verbose than the interface displayed. Any standard authenticated user could read internal funding managers' personally identifiable information.
+- Technique / pattern: Compare what the front end renders against the raw JSON the backend returns for the same workflow step; the gap between the two is where over-fetching lives. Then replay that call from a low-privilege account to see whether the role check exists only in the UI.
+- Takeaway: Data minimisation and function-level authorization are separate controls and both were missing here — trimming the response is not a fix while the endpoint still answers unprivileged callers.
+
+### 2026-09-28 — Mass PII Disclosure (Emails/Phones) via IDOR on Headless API (NASA VDP) — n/a
+- Source: [Bugcrowd #ab0208c1](https://bugcrowd.com/disclosures/ab0208c1-df67-47ac-a671-990ce55996d8/mass-pii-disclosure-emails-phones-via-insecure-direct-object-reference-idor-on-headless-api)
+- Type: IDOR / Broken Object-Level Authorization
+- Summary: A headless (decoupled front end) API on a NASA asset served user records by direct object reference, so an unauthorized caller could pull email addresses and phone numbers at scale. Rated P3 and resolved.
+- Technique / pattern: Headless/JAMstack sites move data access to a separate content API that the browser calls directly — enumerate the object ids in those XHR calls rather than in the rendered page, because the delivery API is frequently deployed without the CMS's own permission model.
+- Takeaway: When a site is “headless”, treat its content/delivery API as a distinct authorization surface: the front end's access rules do not travel with it.
+
+### 2026-09-28 — Broken Access Control: Unauthenticated Mass Data Extraction and Arbitrary Item Deletion (NASA VDP — NASA Trek) — n/a
+- Source: [Bugcrowd #ba2df973](https://bugcrowd.com/disclosures/ba2df973-58fc-48be-9fb2-8205cca4e7c0/broken-access-control-unauthenticated-mass-data-extraction-and-arbitrary-item-deletion)
+- Type: IDOR / Broken Access Control (unauthenticated)
+- Summary: Internal API endpoints on the NASA Trek platform were missing authentication and authorization, so internal object identifiers could be enumerated and the underlying items both read in bulk and deleted. Rated P2, resolved.
+- Technique / pattern: Improper input handling combined with exposed HTTP methods on “internal” routes: enumerate the ids, then walk the verb set (`GET`, `POST`, `PUT`, `DELETE`) on each route — read access and destructive access are separate findings, and the delete path is usually the one nobody guarded.
+- Takeaway: “Internal” endpoints reachable from the internet more often have no authorization at all than weak authorization; test the destructive verbs too, carefully and only against records you created.
+
+### 2026-09-28 — API-only delegated admin can enumerate all Team Folders and grant access to arbitrary groups (Nextcloud) — n/a
+- Source: [HackerOne #3674940](https://hackerone.com/reports/3674940)
+- Type: IDOR / Privilege escalation (broken object-level authorization)
+- Summary: A delegated admin restricted to `API/REST only` could call `POST /index.php/apps/groupfolders/folders/<id>/groups` for any Team Folder id and add a group they controlled, because the handler never checked folder-level authorization.
+- Technique / pattern: Pair a *restricted* administrative role with a *grant-access* endpoint keyed on an auto-increment id: the ids are predictable, so the attack is enumerate-then-mass-assign rather than a single object tamper. Hunt routes that create a permission (`/groups`, `/shares`, `/members`, `/acl`) rather than routes that read data.
+- Takeaway: Authorization on a permission-granting route must be evaluated against the target object, not the caller's global admin flag — predictable ids turn one missed check into organization-wide access.
+
+### 2026-09-28 — Air Force candidate PII and recruitment chat logs accessible via BAC/IDOR on a DoD Salesforce asset (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #2968391](https://hackerone.com/reports/2968391)
+- Type: IDOR / Improper Access Control (Salesforce record-level)
+- Summary: Record-level configuration on the `Document` object of a DoD Salesforce instance let an attacker retrieve a very large number of Air Force recruiting records — full names, addresses, phone numbers, emails and recruiter chat transcripts containing medical, drug-use, criminal and academic detail. Rated critical.
+- Technique / pattern: Salesforce-backed portals expose record ids that are enumerable whenever object- and record-level permissions are misset; light id fuzzing plus a response-size oracle established the scale without needing to pull the data.
+- Takeaway: On Salesforce/Experience Cloud assets audit the standard objects (`Document`, `Attachment`, `ContentDocument`) separately — sharing rules, not application code, are the access control, and one misconfigured object can expose an entire program's records.
+
+
+### 2026-09-27 — IDOR leaking PII via the `VendorId` field of a save request (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #1690044](https://hackerone.com/reports/1690044)
+- Type: IDOR / object-level authorization missing on a write endpoint
+- Summary: A `POST` to `Vendor/Company/Contacts/SavePOC` carried a `VendorId` field that the server trusted without checking that the session owned that vendor, so swapping it to another id returned that vendor's point-of-contact personal data.
+- Technique / pattern: Intercept a save/update request that already contains an owning-entity id in its body, change only that id, and replay. Write endpoints get skipped in authorization testing because testers concentrate on `GET` reads, yet a `Save*` handler often echoes the target record back in its response — which turns a write primitive into a read oracle.
+- Takeaway: Any request naming an entity id in its body must re-derive ownership from the session; a body field is attacker-controlled input, never a trust boundary.
+
+### 2026-09-27 — Team object in GraphQL disclosed a private comment via a guessable node id (HackerOne) — $2,500
+- Source: [HackerOne #978143](https://hackerone.com/reports/978143)
+- Type: IDOR / broken object-level authorization through GraphQL global node ids
+- Summary: An unauthenticated `POST` to `/graphql` querying a `SurveyRatingItem` node — addressed as `gid://hackerone/SurveyRatingItem/<id>` — returned survey rating data including the `private_comment` field that should have been restricted to the team.
+- Technique / pattern: GraphQL global ids are usually plain `gid://<app>/<Type>/<numericId>` strings or their `base64` form, so once a type name is known the id space is enumerable. Query the node interface directly for every type you can name, unauthenticated first, and diff which fields come back against what the UI shows.
+- Takeaway: A global node id is an address, not a capability; the node resolver itself needs an authorization check for every type it can return.
+
+### 2026-09-27 — Invited admin re-enables a disabled input to demote the organization owner (Stripo Inc) — n/a
+- Source: [HackerOne #751299](https://hackerone.com/reports/751299)
+- Type: IDOR / broken function-level authorization behind a client-side-only control
+- Summary: An admin invited into an organization could edit the owner's role by using browser devtools to remove the `disabled` attribute from the role selector and sending the resulting `PUT` request, demoting the owner to admin and locking them out of their own organization permanently.
+- Technique / pattern: Treat every greyed-out control as a live endpoint — drop the attribute, submit, and see whether the server accepts it. Role-change handlers are a recurring blind spot precisely because the UI already prevents the illegal transition, so no server-side rule was ever written for it.
+- Takeaway: A `disabled` field is a hint to the user, not an authorization control; role transitions need an explicit server-side rule about who may change whom, including who may change the owner.
+
+### 2026-09-27 — IDOR lets an attacker create and verify accounts for addresses they do not own (WakaTime) — n/a
+- Source: [HackerOne #244636](https://hackerone.com/reports/244636)
+- Type: IDOR / verification request not bound to the requesting account
+- Summary: The email-confirmation request body `{"email":"<target>"}` was not tied to the session that sent it, so an attacker could request a verification link for an arbitrary address, receive the link themselves, and stand up a controlled account for an email they never owned.
+- Technique / pattern: Find the request that triggers a confirmation mail, swap the address in the body, and trace where the token lands. When the token is generated for the value in the request but delivered to the session's own inbox, the binding between "who asked" and "what got proved" is broken — the same check to run against invite, re-send and address-change flows.
+- Takeaway: A verification token must be bound to both the requesting session and the address being proved, and delivered only to that address.
+
 ### 2026-09-27 — Improper Authorization Leads to Vertical Privilege Escalation (Lovable VDP) — n/a
 - Source: [HackerOne #3371448](https://hackerone.com/reports/3371448)
 - Type: IDOR / broken function-level authorization (BFLA)

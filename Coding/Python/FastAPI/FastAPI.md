@@ -16,6 +16,18 @@ FastAPI is a modern, async, type-hint-driven web framework for building APIs. It
 
 ## Minimal App
 
+> **Request lifecycle:**
+
+```mermaid
+flowchart LR
+    C[Client request] --> MW[Middleware]
+    MW --> DEP[Dependencies<br/>Depends]
+    DEP --> VAL[Pydantic validation]
+    VAL --> EP[Path operation fn]
+    EP --> RM[Response model<br/>serialize]
+    RM --> C
+```
+
 ```python
 from fastapi import FastAPI
 

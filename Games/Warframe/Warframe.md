@@ -26,6 +26,18 @@ last-verified: 2026-08-25
 ---
 
 ## Core Damage Formula
+
+> **Damage pipeline (how one hit is computed):**
+
+```mermaid
+flowchart LR
+    Base[Base damage] --> Mods[+ base damage mods<br/>Serration etc]
+    Mods --> Crit[x critical multiplier]
+    Crit --> Ele[+ elemental mods<br/>combined in order]
+    Ele --> Fac[x faction bonus]
+    Fac --> Mit["- armor / resistance mitigation"]
+    Mit --> Final[Final damage to health]
+```
 Damage is a multiplicative chain. The "everything in one line" version:
 ```text
 Final Hit = Base Damage
@@ -93,6 +105,22 @@ Elements combine in mod-slot order (left→right, top→bottom). Two mods of the
 - **Electricity** — chains/stuns; AoE DoT.
 
 ### Combined elements
+
+```mermaid
+flowchart TD
+    H[Heat] --> B[Blast]
+    C[Cold] --> B
+    H --> G[Gas]
+    T[Toxin] --> G
+    H --> R[Radiation]
+    E[Electricity] --> R
+    C --> V[Viral]
+    T --> V
+    C --> Mg[Magnetic]
+    E --> Mg
+    T --> Co[Corrosive]
+    E --> Co
+```
 - **Viral** — multiplies damage *to Health*. 1st proc `+100%` (×2), then `+25%` per stack up to 10 → **+325% = ×4.25**. The single most important multiplier for killing health bars.
 - **Corrosive** — strips armor: **26% on the first proc, +6% per additional stack, capped at 80%** (10 stacks; each lasts 8s). Most Grineer are also Vulnerable to it.
 - **Magnetic** — multiplies damage to Shields (great vs Corpus).

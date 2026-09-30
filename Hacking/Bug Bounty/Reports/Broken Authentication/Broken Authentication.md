@@ -12,6 +12,183 @@ Disclosed **broken authentication & session management** reports — account tak
 
 ## Reports
 
+### 2026-09-30 — JWT Algorithm Confusion in the connect.8x8.com v1 API (8x8) — $1,337
+- Source: [HackerOne #3800870](https://hackerone.com/reports/3800870)
+- Type: Broken authentication — JWT algorithm confusion / improper signature verification
+- Summary: The `v1` API verifier on `connect.8x8.com` did not pin the JWT algorithm and accepted `HS256` tokens signed with the RSA public key used as the HMAC secret, so forged tokens were honoured by read endpoints returning account information.
+- Technique / pattern: Classic RS256-to-HS256 confusion: take the published RSA public key, re-sign a modified payload as `HS256` using that key material as the shared secret, and submit it. Exploitation still required the target's non-enumerable UUID and an active server-side session for that user, and every state-changing endpoint independently rejected the forged token, which kept impact read-only. Remediated by enforcing `RS256` algorithm pinning on the verifier.
+- Takeaway: Pin the expected algorithm on the verifying side instead of reading `alg` out of the token. Note also what contained the blast radius here — non-guessable identifiers and independent checks on write endpoints are what kept a signature bypass from becoming account takeover.
+
+### 2026-09-30 — PIN Bypass in PassCodeActivity via Back Button (Nextcloud Android) — $150
+- Source: [HackerOne #3625210](https://hackerone.com/reports/3625210)
+- Type: Broken authentication — local app-lock bypass
+- Summary: The Nextcloud Android app-lock screen implemented in `PassCodeActivity` could be bypassed by pressing the device back button, granting access to the application without entering the configured passcode.
+- Technique / pattern: Mobile lock screens are usually just another activity on the back stack, so pressing back, rotating the device, switching tasks and returning, or launching a protected activity directly by intent or deep link can dismiss the gate unless back navigation is overridden and the lock state is re-evaluated on every resume.
+- Takeaway: A client-side lock must fail closed on every navigation event, not only on cold start. Exercise it with back, task-switch, rotation, notification taps and direct activity or deep-link entry before accepting that it holds.
+
+### 2026-09-30 — Password Reset Token Exposed in Redirect URL on GLOBE.gov (NASA VDP) — n/a
+- Source: [Bugcrowd #6f62cabb](https://bugcrowd.com/disclosures/6f62cabb-4174-46e9-a92b-76d1878a3c3e/password-reset-token-exposed-in-redirect-url-globe-gov-sensitive-token-in-url-p4)
+- Type: Broken authentication — recovery secret carried in a URL and routed through a third party
+- Summary: Password-reset links emailed by `globe.gov` carried the reset parameters `ticketId` and `ticketKey` in the URL, and the link was additionally wrapped in a Google redirector of the form `www.google.com/url?q=`, so the reset secret transited a third-party domain. NASA closed it as informational, noting no validated exploit method.
+- Technique / pattern: Read the whole reset email rather than only the landing page: check whether the secret rides in the query string, and whether the delivered link is wrapped by a tracker, mail-security rewriter or redirector. A secret in a URL is recorded in browser history, proxy and server logs, and in `Referer` headers sent to every third-party resource the landing page loads.
+- Takeaway: Deliver recovery secrets so they leave as few copies as possible — a `POST` body, or a single-use short-lived token consumed immediately on landing — and never route a link containing one through an external redirector.
+
+### 2026-09-30 — Session ID Disclosure via Referer Header to Third-Party Domains (NASA VDP) — n/a
+- Source: [Bugcrowd #f5a55951](https://bugcrowd.com/disclosures/f5a55951-2b3d-4749-a02d-40b3e30b2347/session-id-disclosure-via-referer-header-to-third-party-domains-nspires-nasaprs-com)
+- Type: Broken session management — session identifier rewritten into the URL
+- Summary: The application on `nspires.nasaprs.com` appended `;jsessionid=` to its URLs, so whenever a page loaded a third-party resource the live session identifier was forwarded in the `Referer` header to external domains such as analytics providers. NASA accepted it as a business risk.
+- Technique / pattern: Look for URL-rewritten session identifiers — the Java `;jsessionid` path parameter is the canonical form, and ASP/PHP equivalents exist — then watch outbound requests for the value appearing in `Referer`. The same exposure also lands the identifier in browser history, bookmarks, bug reports and any link a user pastes.
+- Takeaway: Keep session identifiers in cookies marked `Secure`, `HttpOnly` and `SameSite`, disable URL-based session rewriting entirely, and set a restrictive `Referrer-Policy` as defence in depth.
+
+
+### 2026-09-30 — Reauthentication bypassed by dropping the login request (PostHog) — n/a
+- Source: [Bugcrowd #effab910](https://bugcrowd.com/disclosures/effab910-9481-4216-a384-88921af6cd36/reauthentication-can-be-bypassed-by-simply-dropping-the-request)
+- Type: Broken authentication — step-up reauthentication bypass (P3)
+- Summary: The reauthentication prompt guarding sensitive account settings was enforced only in the client: entering an arbitrary password, intercepting the call to `/api/login/` and dropping it left the user free to change sensitive settings anyway.
+- Technique / pattern: Wherever a "confirm your password" dialog appears, intercept the verification call and drop it rather than answering it — alongside the usual variants of sending it empty or calling the underlying update endpoint directly. If the UI advances, the gate was client-side.
+- Takeaway: Step-up authentication must mint a server-side proof that each protected action re-checks; a dialog that merely unlocks the front end protects nothing.
+
+### 2026-09-30 — Existing sessions not invalidated after enabling 2FA (StackPath) — 5 points
+- Source: [Bugcrowd #4147cfbb](https://bugcrowd.com/disclosures/4147cfbb-a808-4504-9b4f-2a8b68e17d62/old-session-does-not-expire-after-setup-2fa)
+- Type: Broken session management
+- Summary: Turning on two-factor authentication from one device left sessions already open on other devices fully valid — they continued to work after a refresh with no second-factor challenge.
+- Technique / pattern: Sign the same account in on two browsers, perform the security-state change (enable 2FA, change password, revoke a device) in one, then refresh the other. The second session surviving is the finding, and the same test applies to every posture change, not just password resets.
+- Takeaway: Any change to an account's authentication posture should revoke all other sessions; otherwise enabling 2FA does not evict an attacker who is already inside.
+
+### 2026-09-30 — Account takeover via insecure OAuth2 token storage on a shared device (Basecamp) — n/a
+- Source: [HackerOne #2516732](https://hackerone.com/reports/2516732)
+- Type: Broken authentication — insecure credential storage on the client
+- Summary: The Basecamp application stored the logged-in user's OAuth2 token such that another application installed on the same device could read it, letting a malicious app lift the token and take over the account.
+- Technique / pattern: On mobile and desktop targets, inspect where the client persists tokens — shared preferences, world-readable files, exported components, plain config — rather than attacking the server's auth flow. The local store is frequently the weakest link in an otherwise sound OAuth implementation.
+- Takeaway: Bearer tokens belong in the platform keystore or keychain with per-app protection, and should be bound to the device or app instance so that a copied token alone is not enough.
+
+### 2026-09-30 — Open redirect in the SAML login flow leading to token theft (GitLab) — n/a
+- Source: [HackerOne #1923672](https://hackerone.com/reports/1923672)
+- Type: Broken authentication — open redirect inside an SSO flow
+- Summary: An open redirect reachable while logging in via SAML could be driven by a POST request originating from a third-party domain, allowing access tokens — including Bitbucket and other third-party tokens — to be captured and the account taken over.
+- Technique / pattern: Trace every redirect parameter inside an SSO handshake (`RelayState`, `redirect_uri`, `return_to`) and test POST-initiated flows as well as GET-initiated ones, because validation is often written for only one method.
+- Takeaway: Redirect targets in authentication flows need a strict allow-list enforced on every method and at every stage — a redirect that fires after credentials are issued leaks them.
+
+### 2026-09-29 — Password change does not invalidate existing API tokens (Tesla) — $500
+- Source: [Bugcrowd #506a31b2](https://bugcrowd.com/disclosures/506a31b2-3f43-4d15-968f-b7a9afbbfca4/password-change-does-not-invalidate-api-keys)
+- Type: Broken authentication / session management — credential revocation gap (P3, resolved)
+- Summary: Resetting a Tesla account password left previously issued API tokens valid, so an attacker holding a leaked token kept access even after the victim took the standard remediation step.
+- Technique / pattern: Mint an API token or app session, change the account password, then replay the old token against an authenticated API route. Test the API surface separately from the browser session — the two are often revoked by different code paths, or only one of them is revoked at all.
+- Takeaway: Password reset is the user's containment action; if it does not revoke every issued credential, including API keys and mobile tokens, containment silently fails.
+
+### 2026-09-29 — Other sessions survive a password change (ISC2) — 1 point
+- Source: [Bugcrowd #05320b48](https://bugcrowd.com/disclosures/05320b48-18b0-4b69-a767-0c2079bad982/failure-to-invalid-session-after-password-change)
+- Type: Broken authentication / session management — session invalidation (P4)
+- Summary: With the same account open in two browsers, changing the password in one left the other session fully usable, so a session established under the old password persisted indefinitely.
+- Technique / pattern: The canonical two-browser test — authenticate twice, change the credential in one context, then refresh and exercise a privileged action in the other. A refresh alone can mislead if pages are cached, so always issue a real authenticated request.
+- Takeaway: Low severity on its own, but it is the control that decides whether a credential-theft incident is recoverable at all, which is how to frame it in the report.
+
+### 2026-09-29 — Session fixation on password-protected public talk rooms (Nextcloud) — n/a
+- Source: [HackerOne #1181962](https://hackerone.com/reports/1181962)
+- Type: Broken authentication — session fixation
+- Summary: A guest opening a password-protected Talk room link was issued a session identifier before entering the password, and that identifier was not regenerated once the password was accepted, so an attacker who obtained the pre-authentication cookie inherited the guest's authenticated access to the conversation.
+- Technique / pattern: Capture the session cookie on the unauthenticated page, complete authentication in that same session, and compare the cookie before and after. Guest and link-sharing flows are prime candidates because they hand a session to anonymous visitors by design.
+- Takeaway: Any transition that raises privilege — password entry, MFA, guest-to-member — must rotate the session identifier; issuing one before authentication is exactly what makes fixation possible.
+
+### 2026-09-29 — Authentication bypass by requesting an intermediate PHP file directly (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #2414707](https://hackerone.com/reports/2414707)
+- Type: Broken authentication — forced browsing / unprotected entry point
+- Summary: A protected page redirected unauthenticated visitors to the login screen, but an intermediate PHP file in the same application created a valid session when requested on its own, letting anyone reach the restricted area without credentials.
+- Technique / pattern: Enumerate every script in the application rather than only the linked pages, request each one directly, and inspect `Set-Cookie` and the resulting session state — files meant to be reached only partway through a login sequence often establish the session themselves.
+- Takeaway: Access control enforced at the page a user is redirected to is worthless if another reachable script hands out a session; the check belongs in shared middleware, not per page.
+
+### 2026-09-29 — Client-side login check bypassed by manipulating form values (U.S. General Services Administration) — n/a
+- Source: [HackerOne #1063298](https://hackerone.com/reports/1063298)
+- Type: Broken authentication — authentication decided in client-side code
+- Summary: The CARS application made its login decision inside a front-end `loginChk()` function, so altering the form values that function evaluated was enough to pass the check and reach the application without valid credentials.
+- Technique / pattern: Read the login page's JavaScript before testing any credentials — a function that compares input and then navigates or sets a flag, with no corresponding server request, means the whole check runs where the user controls it.
+- Takeaway: If the browser can be made to say "authenticated", the server must still disagree; any authentication decision visible in client code is not an authentication decision.
+
+### 2026-09-28 — Account takeover via unverified email change and missing session invalidation (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #3324823](https://hackerone.com/reports/3324823)
+- Type: Broken authentication / session management
+- Summary: The application accepted an email change to an address that was never verified and did not invalidate the existing session afterwards. When the genuine owner of that address later registered, the attacker's still-open session — and fresh logins with the attacker's own credentials — both resolved to the victim's new account.
+- Technique / pattern: Claim an unregistered address you do not own, keep the session open, and wait for the legitimate owner to sign up; the test is whether identity is re-resolved from the email string at request time instead of being bound to an immutable account ID. Re-check after logging out and back in, which is what proved the binding was persistent rather than a stale cookie.
+- Takeaway: Email changes must be confirmed out-of-band before taking effect, sessions must be invalidated on the change, and account lookup should key on an internal identifier rather than a mutable address.
+
+### 2026-09-28 — Locked email field silently editable through the account bio API (Yelp) — n/a
+- Source: [HackerOne #3766455](https://hackerone.com/reports/3766455)
+- Type: Broken authentication / client-side enforcement of server-side security
+- Summary: The Yelp Biz Android app rendered the email field read-only with a lock icon, but `POST /account/info/bio/v1` accepted and applied an attacker-supplied `email` with no current-password check, no confirmation of the existing address and no out-of-band verification. The change took effect immediately and was reflected by the independent `GetAccountInfo` GraphQL query, while the screen still showed a lock.
+- Technique / pattern: Treat a disabled or lock-iconed field as a hint that the value is interesting, then send it anyway on the save endpoint the screen already calls. Compare the endpoint's protections against a sibling route: `POST /account/password/v1` did require `old_password`, which showed the bio route was simply missing the control.
+- Takeaway: Read-only in the client is not a control, and the account recovery identifier needs re-authentication and confirmation server-side regardless of what the interface permits.
+
+### 2026-09-28 — Authentication bypass via a commented-out guest button in CSBF Aquila (NASA VDP) — n/a
+- Source: [Bugcrowd #6a0a39b7](https://bugcrowd.com/disclosures/6a0a39b7-30b8-466e-919d-f66c3e18d79a/authentication-bypass-via-commented-guest-button-in-csbf-aquila-system)
+- Type: Broken authentication
+- Summary: The ASP.NET login page for NASA's CSBF Aquila system still carried a server-side handler for a Guest button that had only been commented out of the markup. Setting the `__EVENTTARGET` form field to `btnGuest` and submitting the form invoked that handler and authenticated the caller with no credentials.
+- Technique / pattern: In ASP.NET WebForms the postback target lives in `__EVENTTARGET`, so any handler still registered server-side stays reachable even after its control is removed from the page. Read the HTML source and page script for commented-out or hidden controls and their event names, then drive them directly instead of looking for something to click.
+- Takeaway: Removing a control from the view does not remove the code path behind it — retire the handler server-side, because commenting out markup only hides the entry point.
+
+### 2026-09-28 — Race condition in ownership transfer bypasses the single-owner restriction (undisclosed program) — 5 points
+- Source: [Bugcrowd #7e1d92cf](https://bugcrowd.com/disclosures/7e1d92cf-a034-4ea1-a5df-e621c1192223/privilege-escalation-race-condition-allows-multiple-owners-despite-single-owner-restriction)
+- Type: Broken authentication / privilege escalation (race condition)
+- Summary: An account ownership-transfer workflow enforced its single-Owner rule with a check that was not atomic. Under concurrent requests the check could be bypassed, leaving an account with multiple Owners and unintended access-control behaviour. The report was published as a high-level summary only, at the researcher's request.
+- Technique / pattern: Any rule of the form "only one X may exist" is a candidate for a check-then-act race: capture the transfer or promotion request and replay it in parallel so several requests clear the uniqueness check before the first commits. Verify by reading the role list afterwards rather than trusting the individual responses.
+- Takeaway: Uniqueness and role-count invariants must be enforced atomically through a database constraint or row lock, never by an application-level read followed by a write.
+
+### 2026-09-28 — Password reset token exposed via unencrypted HTTP on edrn-labcas.jpl.nasa.gov (NASA VDP) — n/a
+- Source: [Bugcrowd #59c5a5c1](https://bugcrowd.com/disclosures/59c5a5c1-33e1-465b-9b20-6344d614dcbb/password-reset-token-exposed-via-unencrypted-http-edrn-labcas-jpl-nasa-gov)
+- Type: Broken authentication (recovery token exposed in transit)
+- Summary: Although the EDRN LabCAS platform served registration over HTTPS, its password-reset emails contained `http://` links, so the recovery token travelled in plaintext and could be intercepted on a shared network or a compromised router and replayed for account takeover. Rated P4, resolved.
+- Technique / pattern: Read the *scheme* of every absolute URL an application generates into email — reset, invite, magic-link, email-confirm and unsubscribe links are built from a configured base URL or from a request header, and a stale `http://` base routinely survives a site-wide TLS migration unnoticed.
+- Takeaway: A site being “HTTPS only” says nothing about the links it mails you; audit generated links and enforce HSTS so a downgrade cannot carry a live token.
+
+### 2026-09-28 — HackerOne Code sends live password-reset tokens to Segment in automatic page events (HackerOne) — $200
+- Source: [HackerOne #4000185](https://hackerone.com/reports/4000185)
+- Type: Broken authentication / Insufficiently protected credentials (third-party telemetry)
+- Summary: Opening a real HackerOne Code password-reset link caused the complete unused 64-character reset token to be sent to Segment as the page loaded — in `context.page.search`, `context.page.url`, `properties.search` and `properties.url` — before the reset form was ever submitted, with the same `anonymousId` tying those events to a known account.
+- Technique / pattern: Analytics SDKs auto-capture the full URL on every page view, so any secret carried in a query string is copied to a third party at load time. Open a token-bearing link with the network tab filtered to analytics hosts and look for the token in the outbound payload, then prove the token is still *live* by using it afterwards — that is what separates this from a routine “secret in URL” note.
+- Takeaway: Treat every credential that appears in a URL as disclosed to every script on the page: strip the token from the address bar on load and exchange it server-side, or deny-list URL capture in the analytics configuration.
+
+### 2026-09-28 — Unauthorized password reset allows account takeover across tenant boundaries (lemlist) — n/a
+- Source: [HackerOne #3378635](https://hackerone.com/reports/3378635)
+- Type: Broken authentication / Authorization (credential write by a tenant admin)
+- Summary: On `app.lemlist.com` a tenant admin could change another user's password — including invited agency accounts that had accepted their invitation — giving access to accounts outside the intended boundary. MFA, where enabled, still blocked the resulting login.
+- Technique / pattern: Enumerate what an administrative role may *write* on another member, not only what it may read. “Set password” is a different capability from “remove member” or “change role”, and in multi-tenant or agency models an invited outside account is usually not meant to be administrable by the inviting tenant at all.
+- Takeaway: Credential writes should not be an admin capability — force a reset email to the account's own verified address instead — and every cross-tenant relationship (agency, partner, reseller, guest) deserves testing as its own authorization boundary.
+
+### 2026-09-28 — Complete authentication bypass to admin permissions via NoSQL operator injection (Rocket.Chat) — n/a
+- Source: [HackerOne #3564655](https://hackerone.com/reports/3564655)
+- Type: Broken authentication via NoSQL injection
+- Summary: Passing a MongoDB operator as the `access_token` query parameter — `?access_token[$ne]=null` — made the token lookup match the first OAuth token in the database, letting an unauthenticated remote attacker take over that account, up to admin. It required at least one OAuth token to exist, and affected versions before 8.3.0, 8.2.1, 8.1.2, 8.0.3, 7.13.5, 7.12.6, 7.11.6 and 7.10.9.
+- Technique / pattern: Query-string and form parsers in Express- and PHP-style stacks turn `param[$ne]=null` into an *object*, and a Mongo query that interpolates it without casting to a string then matches on an operator instead of a value. Probe every authentication-adjacent parameter — token, id, email, password — with `[$ne]=null`, `[$gt]=` and `[$regex]=^a`, watching for a successful login or a timing or response difference.
+- Takeaway: Cast every value used in a database lookup to its expected scalar type before querying: “no SQL” does not mean “no injection”, and the authentication lookup is the highest-value sink for it.
+
+
+### 2026-09-27 — 2FA bypass on Dropbox Sign, Form and Fax when signing in with Google (Dropbox) — n/a
+- Source: [Bugcrowd #7ec47c57](https://bugcrowd.com/disclosures/7ec47c57-1f9c-4ec5-8ade-bda28901bb51/bypass-2fa-dropbox-sign-dropbox-form-dropbox-fax-using-google-as-login)
+- Type: Broken authentication / second factor not enforced on a federated login path
+- Summary: The researcher demonstrated that signing in through Google to Dropbox Sign, Dropbox Form and Dropbox Fax reached an authenticated session without the account's configured second factor being demanded. Dropbox shipped a fix and applied it automatically to existing users; the report deliberately keeps exploitation details limited.
+- Technique / pattern: Enrol a second factor, then re-authenticate through every alternative entry point the product offers — social or SSO login, a sibling product sharing the same identity, a mobile or legacy endpoint, a long-lived "remember me" cookie. 2FA is commonly enforced inside the password handler alone, so any other path that mints a session skips it entirely.
+- Takeaway: Enforce step-up authentication in the session-issuing layer rather than per login form, so every federated and secondary sign-in path inherits it by construction.
+
+### 2026-09-27 — Email verification bypass via a race condition, then 2FA on an unverified account (Pinterest) — n/a
+- Source: [Bugcrowd #03224a0c](https://bugcrowd.com/disclosures/03224a0c-6255-47a1-9b69-2cdb3f00e149/email-verification-bypass-using-race-condtion)
+- Type: Broken authentication / verification-state bypass (race condition)
+- Summary: The researcher bypassed the email-verification requirement — first by firing requests in parallel, then on further testing with a single request — and could subsequently enable two-factor authentication on an account whose address had never been validated. Rated P4 and since resolved.
+- Technique / pattern: Send the state-changing request concurrently with, or ahead of, the check meant to gate it; a check-then-act sequence without a transaction or lock lets the second request observe the pre-check state. Crucially, when a parallel attempt succeeds, retry with one request — a race that "works" often turns out to be a missing check rather than a genuine timing window, which is both a cleaner report and a different fix.
+- Takeaway: Enforce verification as a server-side invariant read inside the same transaction as the action it guards, and always retest single-request behaviour whenever a race appears to succeed.
+
+### 2026-09-27 — No rate limiting on the CERES ordering-tool login form (NASA VDP) — n/a
+- Source: [Bugcrowd #9505de7b](https://bugcrowd.com/disclosures/9505de7b-88a7-4c27-84c6-02c57c95959b/login-brute-norate-limit)
+- Type: Broken authentication / missing rate limiting and account lockout
+- Summary: The login endpoint at `ceres-tool.larc.nasa.gov/ord-tool/userEntry` accepted unlimited `POST` attempts shaped as `command=pass&email=<victim>&password=<attempt>` with no throttling, lockout or challenge, opening it to brute-force and credential stuffing against known addresses.
+- Technique / pattern: Replay the authentication request from an intercepting proxy's fuzzer and watch for three signals — a changing response length, a lockout message, or a challenge appearing. If none show after a few hundred attempts the control is absent; test the raw endpoint separately from the HTML form, since throttling is sometimes wired only into the UI flow and not the handler behind it.
+- Takeaway: Rate limit and lock out per account *and* per source at the endpoint itself, and prefer failure signals that do not reveal which half of the credential pair was wrong.
+
+### 2026-09-27 — Existing sessions survive a password change (Omise) — n/a
+- Source: [HackerOne #514577](https://hackerone.com/reports/514577)
+- Type: Broken authentication / insufficient session expiration
+- Summary: Changing an account password did not invalidate other active sessions, so a session established with the old password retained full access afterwards — meaning a user who rotated their password in response to a suspected compromise did not actually evict the attacker.
+- Technique / pattern: Sign in from two browsers, change the password in one, then replay an authenticated request from the other. Run the same test independently against logout, email change, MFA enrolment, role change and account deactivation, because each is usually a separate handler and fixing one rarely fixes the rest.
+- Takeaway: A password change is a revocation event — bump a server-side session epoch or token version so every other session dies at once, since password rotation is the one remedy users are always told to rely on.
+
 ### 2026-09-27 — Account takeover on app.withpersona.com via unverified email change plus a pre-staged reset link (Persona) — n/a
 - Source: [Bugcrowd #cfd286b4](https://bugcrowd.com/disclosures/cfd286b4-2f63-4746-90cd-7dfdb7b497e9/account-takeover-attackers-can-take-over-coming-accounts-from-app-withpersona-com)
 - Type: Broken authentication / pre-account takeover through reset-token persistence

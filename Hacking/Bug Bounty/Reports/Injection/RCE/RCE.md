@@ -12,6 +12,64 @@ Disclosed **Remote Code Execution** reports reached via injection chains — **O
 
 ## Reports
 
+### 2026-09-30 — Unauthenticated OS Command Injection (RCE) in NASA International Mass Loading Service CGI (NASA VDP) — n/a
+- Source: [Bugcrowd #9fd428e5](https://bugcrowd.com/disclosures/9fd428e5-c863-49d4-aea7-e91d2ba9199b/unauthenticated-os-command-injection-rce-in-nasa-international-mass-loading-service-cgi-massloading-smce-nasa-gov-cgi-bin-eop_series-py)
+- Type: OS command injection leading to RCE (unauthenticated, P1)
+- Summary: The CGI script `/cgi-bin/eop_series.py` on NASA's International Mass Loading Service host passed unvalidated request parameters into an operating-system command, giving any unauthenticated visitor arbitrary command execution on the server. Accepted at P1 and resolved.
+- Technique / pattern: Scientific data portals routinely wrap existing command-line tooling in thin CGI scripts, so the parameters that look like filenames, date ranges, product names or series identifiers are exactly the ones interpolated into a shell string. Test each of them with shell metacharacters and separators rather than only the obviously free-text fields.
+- Takeaway: Any `/cgi-bin/` script that appears to drive an external binary is a command-injection candidate. The fix is to build the argument vector with an array-based exec API (for example `subprocess.run([...], shell=False)`) instead of interpolating request data into a shell command.
+
+
+### 2026-09-30 — RCE in profile picture upload via ImageMagick MVG parsing (HackerOne) — n/a
+- Source: [HackerOne #135072](https://hackerone.com/reports/135072)
+- Type: File upload → RCE (ImageMagick "ImageTragick" class)
+- Summary: The profile picture upload at `/settings/profile/edit` passed the uploaded file to ImageMagick without confirming it was actually an image; ImageMagick interpreted ASCII text as MVG (Magic Vector Graphics), so a crafted text file reached a decoder that could execute commands on the server.
+- Technique / pattern: Upload a plain-text file whose contents are a vector-graphics directive rather than a real image and rely on the converter's own content sniffing to select the dangerous decoder. Test every image pipeline in the product — avatars, attachments, thumbnails, previews — since they usually share one conversion library.
+- Takeaway: Validate uploads by decoding them with an explicitly restricted decoder set (allow-list the coders and delegates), never by extension or declared MIME type, and keep the image library patched and policy-restricted.
+
+### 2026-09-29 — Missing TLS certificate validation chained with command injection in the Linux client (CyberGhost) — 40 points
+- Source: [Bugcrowd #98117b52](https://bugcrowd.com/disclosures/98117b52-679b-4745-8719-d8771be3d3f6/linux-client-lack-of-certificate-validation-leading-to-rce)
+- Type: RCE — MITM-assisted command injection (P1)
+- Summary: The Linux client did not validate TLS certificates when calling its WireGuard-related APIs, and separately passed API-supplied data into a command context, so an attacker positioned to intercept the connection could inject commands and execute code on the connecting machine.
+- Technique / pattern: For thick clients, pair a transport check — does it validate the chain against a proxy CA it should not trust? — with a data-flow check on where the API response ends up. Neither flaw is critical alone; an unvalidated channel feeding an injectable sink is.
+- Takeaway: Certificate validation is an authorisation control over the data a client's parser trusts, so audit client-side flaws as chains: the MITM is the delivery mechanism, the injection is the payload.
+
+### 2026-09-29 — World-readable Confluence config file chained to SYSTEM on Windows (Atlassian) — $800
+- Source: [Bugcrowd #a1086522](https://bugcrowd.com/disclosures/a1086522-37fd-4162-89b2-64dec3b05ab2/local-privilege-escalation-via-confluence-server)
+- Type: RCE / local privilege escalation — insecure file permissions chain (P3)
+- Summary: A default Confluence Server install on Windows left `confluence.cfg.xml` readable by the local Users group; the database credentials inside let a low-privileged user insert an administrator row into the Confluence database, sign in as that admin, run a Groovy reverse shell through the ScriptRunner plugin, and then abuse the service's `SeImpersonatePrivilege` to reach SYSTEM.
+- Technique / pattern: Start from the file ACLs on application config rather than the web surface, then follow the chain — credentials to database, database write to application admin, admin plus scripting plugin to code execution, process privileges to host takeover.
+- Takeaway: An application admin account is a code-execution primitive wherever a scripting plugin is installed, and a service holding `SeImpersonatePrivilege` converts that execution into full host compromise.
+
+### 2026-09-28 — Mercurial argument injection in HgRepository.get_file() gives command execution (Weblate) — n/a
+- Source: [HackerOne #3874004](https://hackerone.com/reports/3874004)
+- Type: RCE via argument injection (incomplete fix for CVE-2022-23915)
+- Summary: Weblate passed a component's configured template filename into `hg cat --rev <revision> <path>` with no option terminator, and `Component.template` accepted relative names beginning with `-`. Mercurial therefore read the option-shaped filename as command-line configuration, and `--config=alias.cat=!<command>` replaced `hg cat` with a shell alias that executed as the Weblate service account (CVE-2026-24126). The production Update RESX files add-on is what feeds `component.template` into the sink.
+- Technique / pattern: Argument injection needs no shell: a value placed in an `argv` array is still dangerous when the callee treats a leading `-` as an option. Look for subprocess calls missing `--`, then reach for the tool's own config-override or alias syntax — `hg --config`, `git -c`, `ssh -o`, `curl -K` — to turn a filename into code execution.
+- Takeaway: Always pass `--` before user-controlled positional arguments and reject values starting with `-`; and re-test old CVEs, because this was an incomplete fix for the 2022 issue.
+
+### 2026-09-28 — Data-Sculptor CSV expression evaluation leads to backend RCE and Kubernetes token disclosure (Atlassian Rovo) — 20 points
+- Source: [Bugcrowd #1b144af2](https://bugcrowd.com/disclosures/1b144af2-15cf-4fab-bb05-ff9a768b3a91/data-sculptor-csv-expression-evaluation-leads-to-backend-rce-kubernetes-serviceaccount-token-disclosure-and-authenticated-kubernetes-control-plane-access)
+- Type: RCE via server-side expression injection
+- Summary: An authenticated Atlassian Rovo user could have attacker-controlled code executed inside an Atlassian backend runtime through the Data-Sculptor feature's CSV expression evaluation. The same execution path reached a live Kubernetes serviceaccount token, which allowed authenticated access to the cluster control plane. Atlassian assessed it at CVSS 7.8 High and resolved it.
+- Technique / pattern: Any feature that evaluates spreadsheet-style formulas server-side is an injection sink: probe it as you would a template engine, with arithmetic first to confirm evaluation and then object or class traversal to reach a runtime. Once code runs inside a container, the standard next step is the mounted token at `/var/run/secrets/kubernetes.io/serviceaccount/token`, which converts execution into cluster access.
+- Takeaway: Expression evaluators need a sandbox with an allowlisted function set, and workloads should not mount a broadly-privileged serviceaccount token that lets a single RCE pivot to the control plane.
+
+### 2026-09-28 — Remote Code Execution via Insecure Deserialization in NASA GSFC hplc-precision-analysis (NASA VDP) — n/a
+- Source: [Bugcrowd #d9b460c2](https://bugcrowd.com/disclosures/d9b460c2-f9b1-4f8d-a0ec-3236f702dacf/remote-code-execution-rce-via-insecure-deserialization-in-nasa-gsfc-hplc-precision-analysis)
+- Type: RCE via insecure deserialization (Python `pickle`, CWE-502)
+- Summary: The NASA GSFC `hplc-precision-analysis` application deserialized cached report files with Python's `pickle` module, so a crafted cache file executed arbitrary commands in the analysis environment. Rated P1, resolved.
+- Technique / pattern: Audit caching layers specifically — `pickle`, `marshal`, `yaml.load`, Java `ObjectInputStream` and PHP `unserialize` are routinely used for “internal” cache, session and report artifacts on the assumption that only the application writes them. Any path that lets an attacker place or influence a cache file is code execution with no protocol parsing involved.
+- Takeaway: `pickle` is a code-execution format, not a serialization format: treat every deserialization sink whose input is a file on disk as attacker-reachable until the write path is proven closed, and prefer JSON with an explicit schema.
+
+
+### 2026-09-27 — RCE through `DNNPersonalization` cookie deserialization in DotNetNuke (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #876708](https://hackerone.com/reports/876708)
+- Type: RCE via insecure .NET deserialization (DotNetNuke before 9.3.0-RC)
+- Summary: DotNetNuke deserialized the attacker-supplied `DNNPersonalization` cookie as XML on any 404 page, so a payload chaining `System.Data.Services.Internal.ExpandedWrapper` with `ObjectDataProvider` could invoke arbitrary methods — demonstrated with `FileSystemUtils.WriteFile` and adaptable to command execution.
+- Technique / pattern: Fingerprint the CMS, then hunt for state the framework deserializes *before* authentication — cookies, view state and hidden form fields are all processed on error pages, which frequently skip the auth pipeline entirely. A gadget generator like `ysoserial.net` turns a known .NET deserialization sink into method invocation without writing a bespoke chain.
+- Takeaway: Never deserialize untrusted input into arbitrary types; unauthenticated code paths such as 404 handlers deserve the same review as the login-protected application, because that is exactly where pre-auth sinks hide.
+
 ### 2026-09-27 — CyberGhost VPN Linux client: command injection via a user-writable config reaches root (CyberGhost) — 40 points
 - Source: [Bugcrowd #93d4a008](https://bugcrowd.com/disclosures/93d4a008-31dc-441c-a160-ab81d217e288/linux-client-command-injection-local-privilege-escalation)
 - Type: RCE / OS command injection (local privilege escalation)

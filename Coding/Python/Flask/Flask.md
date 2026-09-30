@@ -16,6 +16,20 @@ Flask is a lightweight WSGI web micro-framework. Minimal core + extensions. Inst
 
 ## Minimal App
 
+> **Request lifecycle:**
+
+```mermaid
+flowchart LR
+    C[Client] --> WSGI[WSGI server]
+    WSGI --> APP[Flask app]
+    APP --> BR[before_request]
+    BR --> RT[Routing to view]
+    RT --> V[View function]
+    V --> AR[after_request]
+    AR --> R[Response]
+    R --> C
+```
+
 ```python
 from flask import Flask
 

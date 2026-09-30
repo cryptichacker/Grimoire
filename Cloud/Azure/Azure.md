@@ -12,6 +12,10 @@ Microsoft Azure — a catalogue of services, one note each. Currently 200 servic
 
 ## Services
 
+> **Service landscape at a glance** (editable Excalidraw):
+
+![[Azure Service Map.excalidraw]]
+
 ### Compute (21)
 - [[App Service]] — Fully managed platform (PaaS) to build, deploy and scale web apps, APIs and mobile backends.
 - [[Azure App Service Environment]] — A fully isolated, dedicated deployment of Azure App Service into your virtual network for high-scale, secure apps.

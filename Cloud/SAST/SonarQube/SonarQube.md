@@ -13,6 +13,16 @@ last-verified: 2026-08-25
 SonarQube is a code-quality and SAST platform that analyses source for bugs, vulnerabilities, security hotspots, and code smells across 30+ languages, and enforces a **Quality Gate** in CI. The analysis is run by a **SonarScanner**, which uploads results to a **SonarQube Server** or **SonarQube Cloud** instance.
 
 ## Product family
+
+```mermaid
+flowchart LR
+    Dev[Code / PR] --> CI[CI pipeline]
+    CI --> SC[SonarScanner]
+    SC --> SRV[SonarQube Server<br/>analysis]
+    SRV --> QG{Quality Gate}
+    QG -->|Pass| Mg[Merge]
+    QG -->|Fail| Bl[Block / fix]
+```
 | Product | Formerly | What it is |
 |---|---|---|
 | **SonarQube Server** | SonarQube | Self-managed server you host (Docker/zip/K8s) |

@@ -16,6 +16,20 @@ Python's `threading` module runs code concurrently within one process. Because o
 
 ## Creating & Starting Threads
 
+```mermaid
+stateDiagram-v2
+    [*] --> New: Thread()
+    New --> Runnable: .start()
+    Runnable --> Running: acquires GIL
+    Running --> Runnable: GIL released / preempted
+    Running --> Blocked: lock wait / I/O
+    Blocked --> Runnable: unblocked
+    Running --> Terminated: run() returns
+    Terminated --> [*]
+```
+
+> Only one thread runs Python bytecode at a time (the **GIL**) — great for I/O-bound work, not CPU-bound.
+
 ```python
 import threading, time
 

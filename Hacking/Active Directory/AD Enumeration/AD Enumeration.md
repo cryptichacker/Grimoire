@@ -16,6 +16,17 @@ Gather domain, user, group, computer, SPN, and ACL information — the first ste
 
 ## Network / DC Discovery
 
+```mermaid
+flowchart TD
+    S[Network access] --> D[Discover DCs<br/>88 / 389 / 445]
+    D --> AN{Have creds?}
+    AN -->|No| U[Unauth: SMB null session, RID cycling,<br/>anon LDAP, AS-REP roast]
+    AN -->|Yes| A[Auth: LDAP dump, Kerberoast,<br/>shares, BloodHound]
+    U --> BH[BloodHound / SharpHound]
+    A --> BH
+    BH --> P[Map attack paths]
+```
+
 ```bash
 # AD service sweep
 nmap -Pn -p 53,88,135,139,389,445,464,636,3268,3269,3389,5985 <target-ip>

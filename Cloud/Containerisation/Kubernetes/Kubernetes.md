@@ -64,6 +64,24 @@ Kubernetes (K8s) is an open-source container orchestration platform that automat
 ---
 ## 2. Kubernetes Architecture
 ### High-Level Overview
+
+> **Cluster architecture** (editable Excalidraw):
+
+![[Kubernetes Architecture.excalidraw]]
+
+**What happens on `kubectl apply`:**
+
+```mermaid
+flowchart LR
+    U[kubectl apply] --> API[API Server]
+    API <--> ETCD[(etcd<br/>cluster state)]
+    SCH[Scheduler] -->|assign node| API
+    CM[Controller Manager] -->|reconcile| API
+    API --> KUBELET[Kubelet on Node]
+    KUBELET --> CRI[Container Runtime]
+    CRI --> POD[Pod running]
+    KUBELET -->|status| API
+```
 Kubernetes uses a **master-worker architecture** (now called Control Plane and Nodes).
 ```javascript
 ┌─────────────────────────────────────┐

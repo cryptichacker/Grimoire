@@ -16,6 +16,18 @@ last-verified: 2026-08-27
 
 ## The Four Families
 
+```mermaid
+flowchart TD
+    N[NoSQL] --> KV[Key-Value<br/>Redis, DynamoDB]
+    N --> Doc[Document<br/>MongoDB, Couchbase]
+    N --> Col[Wide-Column<br/>Cassandra, HBase]
+    N --> Gr[Graph<br/>Neo4j, Neptune]
+    KV --- KVu[Cache, sessions, fast lookups]
+    Doc --- Docu[JSON docs, flexible schema]
+    Col --- Colu[Massive writes, time-series]
+    Gr --- Gru[Relationships, networks]
+```
+
 | Family | Data model | Examples | Best for |
 |---|---|---|---|
 | **Document** | JSON-like documents in collections | MongoDB, Couchbase, Firestore | Flexible/nested records, content, catalogs |

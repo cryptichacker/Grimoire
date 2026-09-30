@@ -42,6 +42,18 @@ nmap -n 10.0.0.1                   # never do DNS resolution (faster)
 
 ## Scan Types
 
+> **Scan workflow (phases):**
+
+```mermaid
+flowchart LR
+    T[Target spec] --> HD[Host discovery<br/>-sn ping sweep]
+    HD --> PS[Port scan<br/>-sS / -sT / -sU]
+    PS --> SV[Service + version<br/>-sV]
+    SV --> NSE[NSE scripts<br/>-sC / --script]
+    NSE --> OS[OS detection<br/>-O]
+    OS --> OUT[Output<br/>-oN / -oX / -oG]
+```
+
 | Flag | Scan | Notes |
 |---|---|---|
 | `-sS` | TCP SYN ("half-open") | Default when root; fast, stealthier |

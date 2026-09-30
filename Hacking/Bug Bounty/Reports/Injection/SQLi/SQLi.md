@@ -12,6 +12,57 @@ Disclosed **SQL injection** reports — error/boolean/time-based, UNION, blind, 
 
 ## Reports
 
+### 2026-09-30 — Error-Based and Time-Based SQL Injection in the keyword Parameter of admin-search.php (Revive Adserver) — n/a
+- Source: [HackerOne #3395221](https://hackerone.com/reports/3395221)
+- Type: SQL injection (error-based via `EXTRACTVALUE`, plus time-based blind)
+- Summary: Revive Adserver v6.0.0's administrative search page passed the `keyword` GET parameter into several data-access queries with no parameterisation or escaping, giving full database read access from the admin search box.
+- Technique / pattern: The value was registered with `phpAds_registerGlobalUnslashed('keyword', 'client', 'campaign', ...)` — a helper whose whole purpose is to skip escaping — and then handed to DAL methods including `getClientByKeyword()`, `getCampaignAndClientByKeyword()`, `getBannerByKeyword()`, `getAffiliateByKeyword()` and `getZoneByKeyword()`. Confirmation used an error-based payload nesting a `SELECT` inside MySQL's `EXTRACTVALUE()`, and a time-based variant, then sqlmap for extraction.
+- Takeaway: Grep a codebase for its own opt-out-of-escaping helpers — a function named like `registerGlobalUnslashed` is a map of every place sanitisation was deliberately skipped. One shared search parameter fanning out into five queries also means a single sink review misses most of the exposure.
+
+
+### 2026-09-30 — [CRITICAL] SQL injection in a ContactNow micro-service endpoint (8x8) — n/a
+- Source: [HackerOne #722145](https://hackerone.com/reports/722145)
+- Type: SQL injection (string-concatenated query, no prepared statement)
+- Summary: One of the micro-service endpoints behind the ContactNow application built a SQL query from user-provided parameters without using a proper prepared statement.
+- Technique / pattern: Map the internal micro-service endpoints a single-page app calls — from the JS bundle and the network tab — rather than only the documented front-door API, then fuzz each parameter with SQL metacharacters and watch for error or timing differences. Internal services are commonly written on the assumption that the gateway already sanitised the input.
+- Takeaway: Parameterisation must be enforced at every service in the chain; an "internal-only" service still receives attacker-controlled data once the gateway forwards it.
+
+### 2026-09-29 — Unauthenticated error-based SQL injection in an organizations API endpoint (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #1626226](https://hackerone.com/reports/1626226)
+- Type: SQL injection — error-based, unauthenticated
+- Summary: A path segment consumed by the `/api/organizations/*` endpoint was concatenated into a SQL query without validation or sanitisation, so appending a single quote followed by an injected expression made the database return query results inside an error message, with no authentication required.
+- Technique / pattern: Once a lone single quote produces a server error, escalate with an error-channel primitive such as MySQL's `extractvalue(rand(), concat(0x3a, (select user())))`, which forces the requested value into the XPath error text. Note the injection point here was a REST path segment rather than a query parameter.
+- Takeaway: Path segments are user input too — test every REST path component, and treat a verbose database error as a working read channel rather than merely a hint.
+
+### 2026-09-28 — Error-based SQL injection in login and password reset via the username parameter (Essity) — n/a
+- Source: [HackerOne #3809973](https://hackerone.com/reports/3809973)
+- Type: SQL injection (error-based)
+- Summary: The `username` parameter was concatenated into a SQL query without parameterisation on both the `POST /login` and `POST /doResetPassword` endpoints, so injected MySQL expressions were evaluated. Injecting `updatexml()` made the server return database error messages containing attacker-chosen output, giving reliable in-band extraction.
+- Technique / pattern: Unauthenticated authentication endpoints are still query sinks, so test `username` on the reset flow as well as on login — the two paths often share a hand-written query but not the same hardening. `updatexml()` and `extractvalue()` turn a verbose MySQL error into an in-band read channel, which is far quicker than a blind boolean or timing oracle.
+- Takeaway: Every pre-auth parameter that reaches a datastore needs parameterisation, and production error handling should never return database exception text to the client.
+
+### 2026-09-28 — Blind Boolean-Based SQL Injection in label Parameter Allows Unauthenticated Database Enumeration (NASA VDP) — n/a
+- Source: [Bugcrowd #d854e13a](https://bugcrowd.com/disclosures/d854e13a-f8fb-47a1-bd86-93538c60f1c6/blind-boolean-based-sql-injection-in-label-parameter-allows-unauthenticated-database-enumeration)
+- Type: SQL injection (blind, boolean-based, Oracle)
+- Summary: The `label` parameter of an unauthenticated REST endpoint concatenated input into an Oracle query; injecting boolean expressions changed whether the response body contained content, giving a reliable true/false oracle that yielded the database username and more. Rated P1, resolved.
+- Technique / pattern: Confirm the oracle with a matched pair (`' AND 1=1--` versus `' AND 1=2--`), then extract character by character with a binary search over ASCII values using the dialect's own functions (`SUBSTR()`, `ASCII()`); binary search cuts roughly 95 requests per character down to about 7.
+- Takeaway: “No error and no data returned” is not “not injectable” — any consistent difference in the response (content present/absent, length, status) is enough to enumerate a database, and fingerprinting the dialect first is what makes the payloads work.
+
+### 2026-09-28 — Critical unauthenticated SQL Injection in the WDM API (Essity) — n/a
+- Source: [HackerOne #3778282](https://hackerone.com/reports/3778282)
+- Type: SQL injection (unauthenticated; boolean- and time-based blind; MSSQL with stacked queries)
+- Summary: The `searchText` query parameter of `GET /api/WDMProduct` — the backend powering an in-scope Angular single-page app — was injectable without authentication, with stacked queries enabled, allowing arbitrary read and write against the Microsoft SQL Server and, depending on the SQL principal's privileges, escalation to OS command execution via `xp_cmdshell`.
+- Technique / pattern: The vulnerable host was not the in-scope page but the API it loads over XHR (reachable cross-origin because of `Access-Control-Allow-Origin: *`); map an SPA's backends from its network traffic and JS bundle, then attack those parameters.
+- Takeaway: An in-scope single-page front end is a pointer to the real attack surface — enumerate the XHR backends it calls, and once injection is confirmed check whether stacked queries plus DB-native OS procedures turn it into host compromise.
+
+
+### 2026-09-27 — Blind SQL injection in `report_xml.php` via `countryFilter[]`, with a WAF bypass (Valve) — $25,000
+- Source: [HackerOne #383127](https://hackerone.com/reports/383127)
+- Type: SQL injection (blind, array-style parameter) chained with a WAF bypass
+- Summary: An unvalidated `countryFilter[]` parameter on Valve's partner reporting page `report_xml.php` reached a SQL query directly, letting a partner-level user read data from the backing database; the researcher also defeated the Akamai WAF sitting in front of the endpoint.
+- Technique / pattern: Array-style parameters such as `name[]` are a strong injection surface because frameworks unpack them into loops or `IN (...)` clauses built by string concatenation, while the scalar form of the very same parameter is parameterized. Pair that with evasion — case and inline-comment variation, alternate whitespace, splitting one payload across several array elements — and confirm blind via boolean or time differentials.
+- Takeaway: Parameterize every path into the query builder, filter and array parameters included, and never let a WAF stand in for the fix — it only raises the cost of reaching a query that is still injectable.
+
 ### 2026-09-27 — SQL injection on a redacted DoD host allowing full database exfiltration (U.S. Dept Of Defense) — n/a
 - Source: [HackerOne #1489744](https://hackerone.com/reports/1489744)
 - Type: SQLi / error-based
