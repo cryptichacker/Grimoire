@@ -12,6 +12,20 @@ Disclosed **Cross-Site Scripting** reports — reflected, stored, and DOM-based.
 
 ## Reports
 
+### 2026-10-01 — Stored XSS in NASA ASRS Maintenance Form – Payload Executes on Print Page (NASA VDP) — n/a
+- Source: [Bugcrowd disclosure 617e4b8f](https://bugcrowd.com/disclosures/617e4b8f-a8fc-4f93-bb9f-82c84d292d02/stored-xss-in-nasa-asrs-maintenance-form-payload-executes-on-print-page)
+- Type: Stored XSS (unauthenticated injection, cross-user execution)
+- Summary: Several input fields of NASA's Aviation Safety Reporting System maintenance form stored arbitrary JavaScript that was not escaped by the separate print view, so the payload executed for any analyst or reviewer who opened the printed report.
+- Technique / pattern: When a payload is stored but looks inert on the normal view, follow the record into its secondary renderers — print, export, PDF, email digest, admin review — which usually use a different template with weaker escaping.
+- Takeaway: "Self-XSS" is often only self-XSS on the page you happened to look at; proving cross-user execution on a print or review surface is what turns it into a real finding.
+
+### 2026-10-01 — A Stored XSS in Jira Service Desk "Reports" Via "Requests resolved" (Atlassian) — 10 points (P3)
+- Source: [Bugcrowd disclosure e28105a0](https://bugcrowd.com/disclosures/e28105a0-67f9-40af-9da4-0ec1ff553bb3/a-stored-xss-in-jira-service-desk-reports-via-requests-resolved)
+- Type: Stored XSS (unauthenticated submitter to privileged viewer)
+- Summary: An unauthenticated visitor could submit a payload such as `norwin"><img src="x" onerror="alert(document.domain)"></img>` through the public Jira Service Management chat widget's question field; once an admin resolved the request, the payload executed in the "Requests resolved" area of the Reports view.
+- Technique / pattern: Inject through the lowest-privilege public intake (embedded widget, contact form, portal request), then drive the record through its workflow — resolve, close, aggregate — because reporting and analytics views often render stored text as raw HTML inside chart labels and tooltips.
+- Takeaway: Unauthenticated-to-admin stored XSS is a privilege-crossing bug, so test the dashboards and reports that aggregate user-submitted text rather than only the ticket detail page.
+
 ### 2026-09-30 — Stored XSS in the Trix Editor 2.1.16 via a Sanitizer/Serializer Round-Trip (Basecamp) — $337
 - Source: [HackerOne #3581911](https://hackerone.com/reports/3581911)
 - Type: Stored XSS (library-level sanitizer bypass)

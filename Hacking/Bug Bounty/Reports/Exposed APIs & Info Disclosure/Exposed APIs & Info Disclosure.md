@@ -12,6 +12,34 @@ Disclosed **exposed API / sensitive information disclosure** reports — leaked 
 
 ## Reports
 
+### 2026-10-01 — Akismet API keys are exposed by authentication method (Automattic) — n/a (bounty awarded, amount not disclosed)
+- Source: [HackerOne #1736846](https://hackerone.com/reports/1736846)
+- Type: Sensitive credential exposure through transport placement
+- Summary: Akismet clients authenticated by putting the API key into the request hostname in the form `api-key.rest.akismet.com`, so the key travelled in plaintext DNS queries and could be logged by any resolver or network observer; Automattic changed the default to send the key in the request body.
+- Technique / pattern: Trace where a secret appears in every layer of a request — hostname, path, query string, `Referer`, server logs — rather than only the body; a key placed in a subdomain label is resolvable metadata that TLS does not protect.
+- Takeaway: Credentials must never sit in a DNS-visible position; when reviewing an integration, check the transport placement of the secret, because "it is HTTPS" only covers what is inside the TLS tunnel.
+
+### 2026-10-01 — Git repository found (Grab) — n/a (bounty awarded, amount not disclosed)
+- Source: [HackerOne #248693](https://hackerone.com/reports/248693)
+- Type: Exposed `.git` directory leading to source and credential disclosure
+- Summary: A WordPress theme directory on a Grab host served its Git metadata at `/wp-content/themes/.git/config`, revealing the private GitHub remote and allowing retrieval of tracked files including Ansible inventories, `host_vars` for development and production, and an SSH private key at `ansible/roles/common/files/id_rsa`.
+- Technique / pattern: Request `.git/config` on each web root and on theme and plugin paths; when it resolves, read the tracked-file list and pull the high-value paths directly (`host_vars`, `provision.yml`, key material) instead of only noting that the directory is exposed.
+- Takeaway: Deploy by export rather than by checking out a working copy — and escalate an exposed `.git` finding by enumerating what it actually contains, because infrastructure-as-code trees routinely carry keys and production variables.
+
+### 2026-10-01 — Exposed NASA/JPL Credentials and Emails via Public Pastebin Leak (NASA VDP) — n/a
+- Source: [Bugcrowd disclosure e4c2e5e0](https://bugcrowd.com/disclosures/e4c2e5e0-b90e-4d60-ae82-bc6c3d88b34e/exposed-nasa-jpl-credentials-and-emails-via-public-pastebin-leak)
+- Type: Credential exposure on a third-party paste service
+- Summary: Internal NASA and JPL email addresses, hashed passwords and internal environment markers — consistent with a misconfigured MediaWiki instance or its backups — were published on Pastebin and discoverable through search engines without authentication; the paste was removed after verification.
+- Technique / pattern: Search public paste and gist services for organization-specific markers (mail domains, internal hostnames, configuration key names) rather than scanning only the target's own infrastructure, because the leak often sits on a platform the organization does not monitor.
+- Takeaway: The attack surface includes places the organization does not own — periodic paste-site and code-sharing sweeps belong in a recon routine, and what turns up there is in scope as credential exposure.
+
+### 2026-10-01 — Systemic PII Disclosure (Personal Emails) via CKAN API Endpoints (NASA VDP) — n/a (P5)
+- Source: [Bugcrowd disclosure 67d9b0ae](https://bugcrowd.com/disclosures/67d9b0ae-995c-4cf1-a548-b9ef6310709c/systemic-pii-disclosure-personal-emails-via-ckan-api-endpoints)
+- Type: Information disclosure via an over-returning catalog API
+- Summary: NASA's open-data portal exposed the `maintainer_email` field through its CKAN API across many datasets, returning individual employee and contractor addresses instead of a generic support contact; NASA accepted it as a data-redaction improvement.
+- Technique / pattern: Query the platform's package or dataset listing API and aggregate a single field across every record (`maintainer_email`, `author_email`, nested contact objects) — a value that looks harmless per record becomes a harvestable directory at scale, and documenting that breadth is what establishes impact.
+- Takeaway: Open-data and catalog APIs leak people as a side effect of metadata; read the full field set the API returns rather than what the web UI chooses to display.
+
 ### 2026-09-30 — Alert Subscribers API Returns Subscriber Emails to Low-Privileged Users (SingleStore) — n/a
 - Source: [HackerOne #3353000](https://hackerone.com/reports/3353000)
 - Type: Exposed API / information disclosure through missing role check (triaged as privilege escalation)

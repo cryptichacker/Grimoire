@@ -12,6 +12,13 @@ Disclosed **Remote Code Execution** reports reached via injection chains — **O
 
 ## Reports
 
+### 2026-10-01 — CVE-2017-9822 DotNetNuke Cookie Deserialization Vulnerability (MTN Group) — n/a
+- Source: [HackerOne #2762119](https://hackerone.com/reports/2762119)
+- Type: RCE via insecure deserialization (known CVE on an exposed asset)
+- Summary: A DotNetNuke instance in MTN Group's scope ran an affected version (DNN 5.0.0 to 9.3.0) in which the `DNNPersonalization` cookie — which holds personalization state for anonymous users — is deserialized without validation, giving unauthenticated remote code execution when a crafted cookie is processed by the custom 404 handler.
+- Technique / pattern: Fingerprint the CMS and version from asset paths and headers, then prove the vulnerable code path is actually reachable — here by requesting a non-existent page so the custom error handler runs and deserializes the attacker-controlled `DNNPersonalization` cookie.
+- Takeaway: Deserialization sinks hide in "harmless" state carriers such as personalization cookies and view state; on a known-CVE finding the value of the report is demonstrating the reachable path (anonymous request, error page), not matching a version banner.
+
 ### 2026-09-30 — Unauthenticated OS Command Injection (RCE) in NASA International Mass Loading Service CGI (NASA VDP) — n/a
 - Source: [Bugcrowd #9fd428e5](https://bugcrowd.com/disclosures/9fd428e5-c863-49d4-aea7-e91d2ba9199b/unauthenticated-os-command-injection-rce-in-nasa-international-mass-loading-service-cgi-massloading-smce-nasa-gov-cgi-bin-eop_series-py)
 - Type: OS command injection leading to RCE (unauthenticated, P1)

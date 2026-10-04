@@ -12,6 +12,34 @@ Disclosed **broken authentication & session management** reports — account tak
 
 ## Reports
 
+### 2026-10-01 — OAuth 2 Authorization Bypass via CSRF and Cross Site Flashing (Vimeo) — n/a
+- Source: [HackerOne #136582](https://hackerone.com/reports/136582)
+- Type: OAuth authorization bypass via permissive cross-domain policy
+- Summary: `api.vimeo.com/oauth/crossdomain.xml` allowed access from any domain, and because a Flash URL policy covers the directory it is loaded from and all of its child directories, an attacker `.swf` that first called `Security.loadPolicyFile` on that file could then read `https://api.vimeo.com/oauth/authorize` cross-origin, lift the authorization token and grant itself full app access to a logged-in victim's account with no user approval.
+- Technique / pattern: Map cross-domain trust files (`crossdomain.xml`, `clientaccesspolicy.xml`, CORS headers) against the directory tree and look for a permissive policy sitting at a parent of a security-sensitive child path; loading the parent policy explicitly can suppress the stricter per-directory check the runtime would otherwise perform.
+- Takeaway: An authorization endpoint must not live under a directory covered by a permissive cross-domain policy — move it to its own host or path and redirect, so no inherited policy can expose the token-bearing response.
+
+### 2026-10-01 — Full account takeover (Reverb.com) — n/a
+- Source: [HackerOne #314808](https://hackerone.com/reports/314808)
+- Type: Broken authentication / unvalidated third-party access token
+- Summary: The Reverb iOS application's social-login API did not validate the Facebook `access_token` server-side, so a token that was not issued for Reverb could be presented to the login endpoint to authenticate as the matching user.
+- Technique / pattern: Intercept the mobile social-login call and substitute an access token minted for a different application id; if the server trusts the token, or the email inside it, without calling the provider's verification endpoint and checking the audience, any account with that email can be taken over.
+- Takeaway: Social login must verify a token's issuer and audience with the provider rather than merely confirming a token is present — and mobile endpoints deserve explicit testing even when a program rates apps as lower priority.
+
+### 2026-10-01 — Authentication Bypass - Public access to protected directory (NASA VDP) — n/a
+- Source: [Bugcrowd disclosure 9781748f](https://bugcrowd.com/disclosures/9781748f-8ea0-466e-a0a7-23e541ea1910/authentication-bypass-public-access-to-protected-directory)
+- Type: Authentication bypass / missing access control on a protected path
+- Summary: Endpoints under a directory on a NASA host that was supposed to require authentication could be reached by unauthenticated users; the finding was accepted and remediated.
+- Technique / pattern: Enumerate the paths that sit behind a login and request them directly with no session — protection applied by a front-end redirect or by a single index page frequently leaves sibling files and sub-paths unauthenticated.
+- Takeaway: Authentication belongs on every resource in a protected tree; a login gate on the entry point says nothing about what is underneath it.
+
+### 2026-10-01 — Privilege escalation allows an admin to take over the org by inviting a user as owner (Dropbox) — $300
+- Source: [Bugcrowd disclosure 4464c9ad](https://bugcrowd.com/disclosures/4464c9ad-db92-4db3-b6b3-8f5192fcfac6/privilege-escalation-allow-the-admin-to-takeover-the-org-by-invite-the-user-as-owner)
+- Type: Privilege escalation / broken role enforcement in an invitation flow
+- Summary: A user who already held the ability to invite members to a Dropbox team could modify the invitation so the invited account received owner-level permissions, replacing the existing team owner and taking control of the organization.
+- Technique / pattern: Capture an invite request and tamper with the role field, including role values the UI only renders for higher tiers, then accept the invitation with a second account to see whether the server re-derives the maximum grantable role from the inviter's own privileges.
+- Takeaway: Invitation and role-assignment endpoints must cap the granted role at the inviter's own level server-side; hiding a higher role from the UI is presentation, not enforcement.
+
 ### 2026-09-30 — JWT Algorithm Confusion in the connect.8x8.com v1 API (8x8) — $1,337
 - Source: [HackerOne #3800870](https://hackerone.com/reports/3800870)
 - Type: Broken authentication — JWT algorithm confusion / improper signature verification

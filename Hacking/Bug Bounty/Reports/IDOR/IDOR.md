@@ -12,6 +12,34 @@ Disclosed **Insecure Direct Object Reference** reports. Core idea: an object ide
 
 ## Reports
 
+### 2026-10-01 — IDOR on ads.tiktok.com Allows Arbitrary Product Addition (TikTok) — n/a
+- Source: [HackerOne #2848610](https://hackerone.com/reports/2848610)
+- Type: IDOR / broken object-level authorization
+- Summary: An API endpoint on TikTok's advertising platform did not verify that the caller owned the target product catalog, so an attacker could add arbitrary products into another advertiser's catalog.
+- Technique / pattern: Exercise the advertiser-facing catalog API as a normal user, capture the request, then swap the owning catalog or account identifier in the body for another tenant's value and confirm the write lands on the victim's object.
+- Takeaway: Write endpoints in multi-tenant advertising and commerce consoles need the same object-ownership check as read endpoints — "may this account write to this catalog" must be re-derived server-side from the session, never taken from the request.
+
+### 2026-10-01 — India - An Insecure Direct Object Reference (IDOR) (Starbucks) — n/a
+- Source: [HackerOne #701160](https://hackerone.com/reports/701160)
+- Type: IDOR / horizontal privilege escalation
+- Summary: The Starbucks India card service endpoint `https://card.starbucks.in/StarbucksMSRModule/starbucksGetCardData.do` accepted a `cardId` parameter without checking that the card belonged to the authenticated user, exposing other customers' card records and balances.
+- Technique / pattern: Log in as a legitimate customer, capture the card-details call, and iterate the `cardId` value; a `200` carrying a different cardholder's balance confirms the missing authorization check.
+- Takeaway: Legacy regional sub-applications (`.do` servlets, country-specific portals) often sit outside the main platform's authorization layer — enumerate them separately instead of assuming the flagship app's controls apply.
+
+### 2026-10-01 — [IDOR] Modify other users' reminders (Lark Technologies) — n/a
+- Source: [HackerOne #946323](https://hackerone.com/reports/946323)
+- Type: IDOR / unauthorized write
+- Summary: Larksuite's reminder feature accepted a `reminderId` in a POST body without verifying ownership, letting any authenticated user modify reminders belonging to other users.
+- Technique / pattern: Create your own object first to learn the request shape, then replay the update call with a second account's object id; a successful mutation rather than a `403` shows the write path skips the ownership check even when the read path enforces it.
+- Takeaway: Audit each verb separately — collaboration suites frequently guard `GET` on an object while leaving the `POST`/`PATCH` handler for the same id unprotected.
+
+### 2026-10-01 — Secret Board Name Exposure (Pinterest) — 40 points (P1)
+- Source: [Bugcrowd disclosure 0849f218](https://bugcrowd.com/disclosures/0849f218-4132-4396-ba93-943861f07955/secret-board-name-exposure)
+- Type: IDOR / private-object metadata leak
+- Summary: A researcher recovered the name of a confidential ("secret") Pinterest board belonging to a test account by addressing the board object directly, during a 2018 Pinterest challenge that invited hackers to find the hidden board.
+- Technique / pattern: Treat a "private" flag as display-layer state — request the object by its identifier through a secondary surface (API, embed, share or preview route) and check whether metadata such as a name or title comes back even when the object body is withheld.
+- Takeaway: Privacy has to be enforced field by field, not just on the main payload; a leaked title is still an access-control failure, so secret-object handling is worth retesting on every route that can reference the object.
+
 ### 2026-09-30 — Cross-User Lock/Unlock via Absolute DAV Path (Nextcloud) — n/a
 - Source: [HackerOne #3301553](https://hackerone.com/reports/3301553)
 - Type: IDOR / broken object-level authorization (cross-user write)

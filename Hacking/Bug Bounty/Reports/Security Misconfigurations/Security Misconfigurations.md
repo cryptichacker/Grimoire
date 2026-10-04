@@ -12,6 +12,34 @@ Disclosed **security misconfiguration** reports — permissive CORS, default/exp
 
 ## Reports
 
+### 2026-10-01 — CORS Misconfiguration on trust.yelp.com (Yelp) — n/a
+- Source: [HackerOne #1716286](https://hackerone.com/reports/1716286)
+- Type: CORS misconfiguration
+- Summary: `trust.yelp.com` served a permissive cross-origin policy together with `Access-Control-Allow-Credentials: true`, so content on an attacker-controlled origin could make credentialed two-way requests to the host and read the responses.
+- Technique / pattern: Replay requests with an `Origin` header you control and watch whether it is reflected into `Access-Control-Allow-Origin` while `Access-Control-Allow-Credentials` stays `true`; also test the `null` origin and prefix, suffix and subdomain matches before claiming impact.
+- Takeaway: `Access-Control-Allow-Credentials: true` is only safe behind a strict allow-list — reflecting the request `Origin` turns every authenticated endpoint on the host into a cross-origin read primitive.
+
+### 2026-10-01 — 403 Bypass Leading to Exposed WordPress Authentication Endpoint on NASA Science Domain (NASA VDP) — n/a (P5)
+- Source: [Bugcrowd disclosure add0c75e](https://bugcrowd.com/disclosures/add0c75e-8e55-4bf7-bcfc-991b482742ef/403-bypass-leading-to-exposed-wordpress-authentication-endpoint-on-nasa-science-domain)
+- Type: WAF / access-control bypass exposing an administrative login surface
+- Summary: A WAF rule meant to block the WordPress administration area of a NASA science domain could be bypassed, leaving the WordPress authentication endpoint reachable from the internet.
+- Technique / pattern: When a path returns `403`, retry it with path and encoding variants — a trailing slash, an added `;` segment, case changes, double-encoded characters, doubled `//`, a differently placed query string — because edge rules often match the literal string rather than the normalized path the origin resolves.
+- Takeaway: A blocking rule at the edge is not an access control; a login surface should be restricted at the origin with a network allow-list or an authentication gateway, since edge pattern matches are routinely bypassable.
+
+### 2026-10-01 — Publicly Accessible Version Control Log For NASA's Vulcan CFD (NASA VDP) — n/a
+- Source: [Bugcrowd disclosure b0fe6ea0](https://bugcrowd.com/disclosures/b0fe6ea0-aac0-4d04-9e6f-b4b923626c50/publicly-accessible-version-control-log-for-nasa-s-vulcan-cfd)
+- Type: Security misconfiguration / development metadata exposure
+- Summary: An unauthenticated repository log for NASA's Vulcan CFD project exposed commit messages, internal development notes, usernames and software change descriptions; it was later placed behind authentication, with permissions corrected and the history sanitized.
+- Technique / pattern: Hunt for version-control byproducts that are not the repository itself — exported commit logs, `ChangeLog` files, build manifests and CI job output — which are often published as plain static files and missed by scanners that only look for `.git/`.
+- Takeaway: Commit metadata is reconnaissance material: it names developers, internal hosts and the shape of the codebase, so treat exported history as sensitive even where no source is served.
+
+### 2026-10-01 — Improper Access Control: Authenticated Resource Exposed via Wayback Machine Archive (NASA VDP) — n/a (P5)
+- Source: [Bugcrowd disclosure b4233894](https://bugcrowd.com/disclosures/b4233894-756a-43cf-a4ef-8ce484278b90/improper-access-control-authenticated-resource-exposed-via-wayback-machine-archive-nasa-sheets-docs)
+- Type: Security misconfiguration / third-party document sharing
+- Summary: NASA Google Docs and Sheets that were meant to require authentication were reachable without it, with the links recoverable from Internet Archive snapshots of NASA pages; the documents were subsequently locked down.
+- Technique / pattern: Mine archive sources — the Wayback Machine, its CDX index, search-engine caches — for links that have since been removed from the live site, then open each one anonymously, because link-sharing permissions on third-party document platforms usually outlive the page that referenced them.
+- Takeaway: Removing a link does not revoke access; "secret URL" sharing on SaaS document platforms has to be re-permissioned, and archive mining is a cheap way to find what a site used to publish.
+
 ### 2026-09-30 — Sandbox User Can Inject a Rogue CA into the OS Trust Store via a Sudo-Allowed Script (AWS VDP) — n/a
 - Source: [HackerOne #3633146](https://hackerone.com/reports/3633146)
 - Type: Security misconfiguration (over-broad passwordless sudo rule on a script reading a writable directory)

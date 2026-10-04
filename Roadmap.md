@@ -57,7 +57,7 @@ Running to-do list of tools/concepts to add to the knowledge base. Check off as 
 - [ ] **Go** (highest priority — cloud-native language)
 - [ ] Rust
 - [ ] JavaScript / TypeScript
-- [ ] PowerShell
+- [x] PowerShell → `Coding/PowerShell` ✅ (2026-09-30)
 - [ ] Git
 - [ ] Regex
 - [ ] YAML / JSON

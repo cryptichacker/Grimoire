@@ -12,6 +12,13 @@ Disclosed **SQL injection** reports — error/boolean/time-based, UNION, blind, 
 
 ## Reports
 
+### 2026-10-01 — Two Error-Based SQLi in courses.aspx (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #227102](https://hackerone.com/reports/227102)
+- Type: Error-based SQL injection (source and schema disclosure)
+- Summary: A DoD online course catalog concatenated the `crs_id` query parameter into inline SQL in `courses.aspx`; values of `%0a` and `0` raised unhandled exceptions that printed seven lines of C# source including the live `SELECT` over `Career_CORE_PLUS` and `Career_Field`, plus table and column names and the .NET/IIS version strings.
+- Technique / pattern: Fuzz one numeric parameter across classes of input and classify the responses — a valid value returns `200`, a WAF-blocked token such as `ORDER BY` draws a TCP reset, an unhandled exception returns a stack trace with source, and an invalid character returns a terse `Invalid name parameter` — then use those four distinct behaviours as an oracle even where weaponized SQL is filtered.
+- Takeaway: Verbose error pages are a finding in their own right: leaked inline SQL hands over the schema and the exact query shape, so report the information disclosure even when the WAF blocks exploitation.
+
 ### 2026-09-30 — Error-Based and Time-Based SQL Injection in the keyword Parameter of admin-search.php (Revive Adserver) — n/a
 - Source: [HackerOne #3395221](https://hackerone.com/reports/3395221)
 - Type: SQL injection (error-based via `EXTRACTVALUE`, plus time-based blind)
