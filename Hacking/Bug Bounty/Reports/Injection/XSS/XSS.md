@@ -12,6 +12,20 @@ Disclosed **Cross-Site Scripting** reports — reflected, stored, and DOM-based.
 
 ## Reports
 
+### 2026-10-05 — Stored XSS on Portfolio (Atlassian / Jira Cloud) — n/a
+- Source: [Bugcrowd #6408df19](https://bugcrowd.com/disclosures/6408df19-6148-420e-8ce6-91aca9e14b7b/stored-xss-on-portfolio)
+- Type: Stored XSS in a plan-name field
+- Summary: Jira's Portfolio plan creation stored the plan Name field without output encoding, so a payload like `"><script>alert(document.domain)</script>` placed in the name executed whenever the plan was later opened, affecting every user who viewed it. Rated P3, resolved.
+- Technique / pattern: Name and title fields that are entered once and rendered on many downstream views (list pages, dashboards, reports) are the recurring stored-XSS sink. Inject a context-breaking probe at creation time, then check each surface that re-renders the value rather than only the form that accepted it.
+- Takeaway: Encode on output at every render site, not on input. A value that looked inert where it was entered still executes wherever it is echoed into HTML without encoding.
+
+### 2026-10-05 — Reflected XSS on gamemaker.io/account/dashboard via GET parameters (Opera / GameMaker) — 10 points
+- Source: [Bugcrowd #c381c301](https://bugcrowd.com/disclosures/c381c301-1393-4294-8bf8-23775b8f03f2/reflected-cross-site-scripting-xss-on-https-gamemaker-io-account-dashboard)
+- Type: Reflected XSS through URL query parameters
+- Summary: On gamemaker.io the `error` and `notice` GET parameters were reflected into several dashboard pages without sanitisation, so a crafted link ran attacker JavaScript in the victim's authenticated session. Rated P3, resolved.
+- Technique / pattern: Status/message parameters (`error`, `notice`, `msg`, `return`, `redirect`) exist to echo text straight back onto the page and are a reliable reflected-XSS hunting ground. Spray a probe across every such parameter on authenticated pages and watch the response context to tailor the break-out.
+- Takeaway: Any parameter whose whole purpose is to be displayed back to the user must be HTML-encoded for its output context; convenience message parameters are reflected-XSS sinks by default.
+
 ### 2026-10-01 — Stored XSS in NASA ASRS Maintenance Form – Payload Executes on Print Page (NASA VDP) — n/a
 - Source: [Bugcrowd disclosure 617e4b8f](https://bugcrowd.com/disclosures/617e4b8f-a8fc-4f93-bb9f-82c84d292d02/stored-xss-in-nasa-asrs-maintenance-form-payload-executes-on-print-page)
 - Type: Stored XSS (unauthenticated injection, cross-user execution)

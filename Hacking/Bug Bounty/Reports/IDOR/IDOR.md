@@ -12,6 +12,34 @@ Disclosed **Insecure Direct Object Reference** reports. Core idea: an object ide
 
 ## Reports
 
+### 2026-10-05 — IDOR lets a malicious user reveal the unpinned achievement badges of any Reddit user (Reddit) — n/a
+- Source: [HackerOne #2618486](https://hackerone.com/reports/2618486)
+- Type: IDOR / horizontal access control on a preview route
+- Summary: Reddit's badge share-preview route returned a badge image for any username plus badge id, so achievements a user had deliberately unpinned in order to hide them stayed enumerable by anyone. Rated low, no bounty.
+- Technique / pattern: The route `https://share.redd.it/preview/user/<username>/achievement/<badge-id>` took both the target identity and a small incrementing badge id, and a valid image versus a `Not Found` response is a boolean oracle — walking the badge id range for a username rebuilds the hidden badge set from a throwaway account.
+- Takeaway: A privacy toggle that only removes an object from a profile listing is not authorization. Every route that can resolve the object, preview and image endpoints on a separate share domain included, must re-check the visibility flag, and a `404`-versus-`200` difference is itself a disclosure channel.
+
+### 2026-10-05 — Insecure Direct Object Reference - unauthorized access to videos of a channel whose privacy is set to Private (Vimeo) — bounty awarded (amount undisclosed)
+- Source: [HackerOne #45960](https://hackerone.com/reports/45960)
+- Type: IDOR / private-content exposure through a secondary renderer
+- Summary: Vimeo's embeddable montage widget builder rendered the videos of whatever channel identifier it was handed without consulting that channel's privacy setting, so videos in channels limited to moderators and invited people were viewable by anyone. Older (2015) but canonical.
+- Technique / pattern: The builder at `/tools/widget/montage` accepted a `badge_channel` parameter; the channel page itself returned an access-denied message, yet the same id in the widget preview returned the private video list. The general move is to inventory the other surfaces that render a resource — embed builders, oEmbed, RSS, print views, OG-tag scrapers, export renderers — and replay the identifier at each.
+- Takeaway: Authorization implemented in the primary view does not travel to auxiliary renderers of the same object; treat every feature that accepts a resource id as its own endpoint with its own check.
+
+### 2026-10-05 — Mass account takeover at app.taxjar.com with no user interaction (Stripe / TaxJar) — bounty awarded (amount undisclosed)
+- Source: [HackerOne #1581240](https://hackerone.com/reports/1581240)
+- Type: IDOR on an invitation flow leading to account takeover
+- Summary: TaxJar's delete-invitation request resolved a pending invite by its secret invitation token rather than by an identifier scoped to the caller's organization, and the flow exposed that token, so pending invitations belonging to other organizations could be claimed without any user interaction. The fix was to look the invite up by its invitation id and validate that the id belongs to the requesting user's organization.
+- Technique / pattern: Treat an invitation as an object with a full lifecycle — create, list, resend, accept, revoke, delete — and record for each step what it uses as its lookup key and what it returns. Where a one-time secret doubles as the primary key, any route that accepts or echoes it becomes a credential-disclosure route, and the recovered token grants exactly the privileges the invite was meant to confer.
+- Takeaway: Never key an object lookup on the secret that authorizes it. Resolve by a non-sensitive identifier, scope that identifier to the caller's tenant, and keep one-time tokens out of response bodies.
+
+### 2026-10-05 — Embedded submission form UUIDs enumerable through the GraphQL node interface, exposing private program details (HackerOne) — n/a
+- Source: [HackerOne #447930](https://hackerone.com/reports/447930)
+- Type: IDOR via a GraphQL global-node resolver (opaque id decoding)
+- Summary: Embedded submission forms were addressed by unguessable UUIDs, but the GraphQL `node` interface accepted base64 global ids that wrapped an auto-incrementing primary key, so an unauthenticated user could walk the integer keys, read each form's UUID and use it to pull private programs' policy, handle, resolved-bug count and bounty table. Older (2019) classic.
+- Technique / pattern: Base64-decode a global node id to expose its `Type:123` structure, increment the integer, re-encode, and query the type-agnostic resolver; then feed each recovered UUID into the public parameter that consumes it, here `embedded_submission_form_uuid`. Always check whether a schema exposes a global `node` lookup beside its authorized per-type queries.
+- Takeaway: A random UUID is a lookup key, not an access control. A global node resolver re-exposes every object by sequential primary key, so authorization has to live in the type's own resolver rather than in identifier entropy.
+
 ### 2026-10-01 — IDOR on ads.tiktok.com Allows Arbitrary Product Addition (TikTok) — n/a
 - Source: [HackerOne #2848610](https://hackerone.com/reports/2848610)
 - Type: IDOR / broken object-level authorization

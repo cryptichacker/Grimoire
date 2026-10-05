@@ -12,6 +12,34 @@ Disclosed **security misconfiguration** reports — permissive CORS, default/exp
 
 ## Reports
 
+### 2026-10-05 — Security misconfiguration: weak passwords accepted (Semrush) — n/a
+- Source: [HackerOne #285482](https://hackerone.com/reports/285482)
+- Type: Security misconfiguration / weak password policy
+- Summary: Semrush's registration accepted trivial passwords such as `123`, `12345` and `abc12345`, leaving accounts exposed to credential stuffing and brute force. Classified under violation of secure design principles and closed as informative. Older but a clean teaching case.
+- Technique / pattern: Test the password policy as its own check — submit a single digit, a short dictionary word and a common password at signup and at change-password — and separately verify whether login is rate-limited, since a weak policy plus no throttling is what turns the finding into practical account compromise.
+- Takeaway: Minimum-strength enforcement, a breached-password check and login rate limiting are three independent controls; the absence of any one is a real weakness even when each alone is rated low.
+
+### 2026-10-05 — Exposed debug.log file at a NASA WordPress subdomain reveals internal data (NASA) — n/a
+- Source: [Bugcrowd #b3138422](https://bugcrowd.com/disclosures/b3138422-f649-4b97-9b2e-7fa572cb0b84/high-exposed-debug-log-file-at-nasa-wordpress-subdomain-reveals-sensitive-internal-data)
+- Type: Security misconfiguration / debug artifact left world-readable
+- Summary: A WordPress subdomain left its `debug.log` publicly fetchable, exposing internal paths and operational detail useful for further attacks. NASA corrected the exposure and recorded it as an accepted business risk.
+- Technique / pattern: WordPress writes `WP_DEBUG` output to `wp-content/debug.log`, a predictable path, so request it directly across hosts; generalise to other convention-named artifacts (`error_log`, `.env`, `phpinfo.php`, backup and dated log variants) at the web root and one level up.
+- Takeaway: Debug logging belongs off in production and, where kept, outside the document root. Error output is an uncontrolled copy of stack traces, paths and sometimes credentials, so a readable log at a guessable path is a reconnaissance gift.
+
+### 2026-10-05 — Authorized drivers can disable remote monitoring (Tesla) — n/a
+- Source: [Bugcrowd #391e1551](https://bugcrowd.com/disclosures/391e1551-2bdb-4d0d-8333-188b2a7344a1/authorized-drivers-can-disable-remote-monitoring)
+- Type: Security misconfiguration / over-privileged guest role
+- Summary: A guest granted Mobile Access to a Tesla vehicle held permissions beyond their role: they could revoke access for all users including the owner and override security features such as Valet Mode, PIN to Drive and Glovebox PIN. Rated P3; Tesla fixed it with server-side checks restricting these operations to the owner. 
+- Technique / pattern: When a product has owner, delegate and guest tiers, enumerate every state-changing action a lower tier can reach and confirm each is re-checked server-side against the acting role. Interfaces that merely hide a control leave the underlying operation callable, so exercise the API directly from the low-privilege account.
+- Takeaway: Each sensitive operation needs its own server-side role check; a shared permission surface that only the UI differentiates lets a delegated role perform owner-only actions.
+
+### 2026-10-05 — Multiple privilege escalations using a low-privileged user (Pinterest) — n/a
+- Source: [Bugcrowd #e0e71bd1](https://bugcrowd.com/disclosures/e0e71bd1-789b-4304-be0e-a9bb4e23338e/multiple-privilege-escalations-using-a-low-privileged-user)
+- Type: Security misconfiguration / broken access control (vertical privilege escalation)
+- Summary: A low-privileged account could bypass restrictions and view data it was not authorised to see on a Pinterest domain. Accepted and remediated.
+- Technique / pattern: From a deliberately minimal account, walk the admin and elevated-role routes the UI hides and replay them with the low-privilege session. Where several such routes fall through, the application is checking authentication but not role, so collect the whole set rather than reporting a single instance.
+- Takeaway: Authorization must be enforced per action against the caller's actual role; hiding privileged routes in the interface is not a control when the endpoints still answer a basic account.
+
 ### 2026-10-01 — CORS Misconfiguration on trust.yelp.com (Yelp) — n/a
 - Source: [HackerOne #1716286](https://hackerone.com/reports/1716286)
 - Type: CORS misconfiguration

@@ -12,6 +12,13 @@ Disclosed **SQL injection** reports — error/boolean/time-based, UNION, blind, 
 
 ## Reports
 
+### 2026-10-05 — SQL injection in access control panel and broken access in admin panel (IBM) — n/a
+- Source: [HackerOne #1355817](https://hackerone.com/reports/1355817)
+- Type: SQLi via an unsanitised `client_id` parameter, chained with broken access control on an admin panel
+- Summary: An IBM access-control endpoint built its query from the `client_id` parameter with no sanitisation, so the parameter was injectable and could be used to read or alter database records and reach administrative operations. Rated critical, resolved, no bounty.
+- Technique / pattern: Identifier-shaped parameters such as `client_id`, `account`, `tenant` read as opaque keys and are easy to overlook, yet they land directly in a `WHERE` clause. Probe each with a single quote and a boolean pair, then confirm with a UNION or time-based payload; pair the injection with the fact that the panel's own authorization was weak, so the finding is database read/write and not just data disclosure.
+- Takeaway: Every request parameter that reaches the database is an injection candidate regardless of how innocuous its name looks. Parametrize the query and, independently, enforce authorization on the admin surface so one weakness does not amplify the other.
+
 ### 2026-10-01 — Two Error-Based SQLi in courses.aspx (U.S. Dept Of Defense) — n/a
 - Source: [HackerOne #227102](https://hackerone.com/reports/227102)
 - Type: Error-based SQL injection (source and schema disclosure)

@@ -12,6 +12,34 @@ Disclosed **broken authentication & session management** reports — account tak
 
 ## Reports
 
+### 2026-10-05 — 2FA bypass via leaked cookies (HackerOne) — n/a
+- Source: [HackerOne #2479622](https://hackerone.com/reports/2479622)
+- Type: Broken authentication / session binding (2FA bypass through cookie reuse)
+- Summary: After a user completed 2FA login, their session cookies could be exported and imported into a different browser to gain full account access without the second factor, for example using phishing proxies such as Evilginx2. Rated medium, closed as informative; the suggested fix was step-up verification from new or unrecognised devices.
+- Technique / pattern: Capture the full post-2FA cookie jar, replay it from a clean browser or IP, and see whether the session is honoured. A session that resolves anywhere it is presented shows the cookie, not the second factor, is the real credential.
+- Takeaway: 2FA protects the login event, not the session that follows. Bind sessions to device and context and re-challenge on anomalous reuse, otherwise a stolen cookie is a complete 2FA bypass.
+
+### 2026-10-05 — Two-factor authentication bypass via account-merge flow (LinkedIn) — bounty awarded (amount undisclosed)
+- Source: [HackerOne #1842183](https://hackerone.com/reports/1842183)
+- Type: Broken authentication / 2FA enforcement gap on an alternate flow
+- Summary: LinkedIn's account-merge feature let an attacker who held a victim's credentials complete login through the merge path, which did not enforce the 2FA step the normal login path required. Rated medium, resolved.
+- Technique / pattern: Inventory every route that establishes a session — standard login, account merge, SSO link, mobile API, OAuth, reactivation — and drive each to the point a session is issued to see which skip the second factor. Enforcement is usually wired to the primary login only.
+- Takeaway: A second factor has to gate the authenticated state, not one login screen; any alternate path that mints a session must apply the same 2FA check.
+
+### 2026-10-05 — Website does not expire the user's session immediately after logout (ISC2) — n/a
+- Source: [Bugcrowd #dcd704d5](https://bugcrowd.com/disclosures/dcd704d5-97e2-4d56-b8a4-a86bb8f9918e/website-is-not-expiring-the-user-s-session-immediately-after-logout)
+- Type: Broken session management / improper session expiration
+- Summary: The ISC2 site did not terminate the server-side session when the user logged out, so a captured session token kept working afterward — a risk on shared or public machines. Rated P4.
+- Technique / pattern: Capture an authenticated request, click logout, then replay the captured token. If it still returns authenticated content, logout is clearing only the client cookie and not invalidating the session server-side.
+- Takeaway: Logout must destroy the session on the server, not just drop the browser cookie; token lifetime has to end when the user ends the session.
+
+### 2026-10-05 — Failure to validate session after password change (Bugcrowd disclosure) — n/a
+- Source: [Bugcrowd #4b25a57a](https://bugcrowd.com/disclosures/4b25a57a-15c8-42cd-bb0a-f0aec41bcef9/failed-to-validate-session-after-password-change)
+- Type: Broken session management / sessions not revoked on credential change
+- Summary: A password change did not invalidate existing sessions, so a session established before the change stayed authenticated afterward. Rated P4.
+- Technique / pattern: Log in on two browsers, change the password in one, then issue an authenticated request from the other. If it still succeeds, the application is not revoking other sessions on credential change — the exact gap that lets a stolen session survive the victim's remediation.
+- Takeaway: Changing or resetting a password must revoke every other active session for that account across devices; otherwise the remediation a compromised user performs does not actually lock the attacker out.
+
 ### 2026-10-01 — OAuth 2 Authorization Bypass via CSRF and Cross Site Flashing (Vimeo) — n/a
 - Source: [HackerOne #136582](https://hackerone.com/reports/136582)
 - Type: OAuth authorization bypass via permissive cross-domain policy

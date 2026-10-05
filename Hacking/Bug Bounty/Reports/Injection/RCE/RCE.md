@@ -12,6 +12,20 @@ Disclosed **Remote Code Execution** reports reached via injection chains — **O
 
 ## Reports
 
+### 2026-10-05 — Store Development Resource Center vulnerable to unauthenticated RCE via SharePoint deserialization CVE-2019-0604 (Starbucks) — bounty awarded (amount undisclosed)
+- Source: [HackerOne #536134](https://hackerone.com/reports/536134)
+- Type: RCE via insecure deserialization in a known-vulnerable product (CVE-2019-0604)
+- Summary: An endpoint at `https://sdrc.starbucks.com/_layouts/15/picker.aspx` ran a Microsoft SharePoint build vulnerable to CVE-2019-0604, letting an unauthenticated attacker execute arbitrary OS commands over the network. Rated critical (CVSS 10.0), resolved.
+- Technique / pattern: Fingerprint internet-facing enterprise products (SharePoint, Confluence, WebLogic, Citrix) from telltale handler paths such as `/_layouts/15/picker.aspx`, map the build to published deserialization CVEs, and confirm reachability with an out-of-band callback before weaponising. Patch-gap hunting on COTS software often beats searching for novel bugs.
+- Takeaway: A reachable unpatched enterprise app is frequently a straight line to unauthenticated RCE; inventory versions and match them to vendor advisories rather than treating these services as black boxes.
+
+### 2026-10-05 — Public Jenkins instance with /script enabled (Ubiquiti) — bounty awarded (amount undisclosed)
+- Source: [HackerOne #403402](https://hackerone.com/reports/403402)
+- Type: Unauthenticated RCE via an exposed Jenkins Groovy script console
+- Summary: A Ubiquiti Jenkins server was reachable on the internet with no authentication and its `/script` Groovy console enabled, so an anonymous visitor could run arbitrary code on the build host and reach the cloud instance metadata service. Rated critical; fixed and rewarded within 30 minutes. Older but a textbook case.
+- Technique / pattern: CI/CD and automation consoles (Jenkins `/script`, Spark/Flink UIs, Airflow) ship powerful execution features and are routinely left anonymous behind a permissive reverse proxy. Confirm code execution with a benign command like ``"ls /".execute().text`` in the console, then pivot to the instance metadata endpoint for cloud credentials.
+- Takeaway: An exposed build server is remote code execution, not merely an information leak. Keep automation consoles off the public internet, require authentication, and disable the script console where it is not needed.
+
 ### 2026-10-01 — CVE-2017-9822 DotNetNuke Cookie Deserialization Vulnerability (MTN Group) — n/a
 - Source: [HackerOne #2762119](https://hackerone.com/reports/2762119)
 - Type: RCE via insecure deserialization (known CVE on an exposed asset)

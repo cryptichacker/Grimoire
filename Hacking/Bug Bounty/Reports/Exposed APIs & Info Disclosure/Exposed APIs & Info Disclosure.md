@@ -12,6 +12,27 @@ Disclosed **exposed API / sensitive information disclosure** reports — leaked 
 
 ## Reports
 
+### 2026-10-05 — 1.7M password hashes and no-auth-required access tokens exposed (Wemo) — n/a
+- Source: [Bugcrowd #01e09745](https://bugcrowd.com/disclosures/01e09745-59b7-4aea-a7ce-8a0b39837e6b/1-7m-password-hashes-no-auth-required-access-tokens)
+- Type: Exposed API / mass sensitive data disclosure through unauthenticated endpoints
+- Summary: Several Wemo API endpoints required no authentication and returned, variously, every user's username and unsalted SHA256 password hash (base64-encoded), authentication tokens for all users, and live Salesforce backend tokens — enough for direct account and device takeover. Rated P1; recorded as accepted business risk.
+- Technique / pattern: On IoT and mobile backends, enumerate API routes from the app's own traffic and strip the auth header from each to find the ones that answer anonymously; then read the response schema for credential material (hashes, tokens, keys) rather than only obvious PII. Unsalted hashes and long-lived tokens turn a single leaky endpoint into full compromise.
+- Takeaway: Every API route needs its own authentication and authorization; one unauthenticated endpoint returning credential material is catastrophic, and salting plus short-lived tokens limit the blast radius when one does leak.
+
+### 2026-10-05 — Sensitive data exposure: restricted NASA document publicly accessible (NASA) — n/a
+- Source: [Bugcrowd #b564c052](https://bugcrowd.com/disclosures/b564c052-0e21-448e-9c38-0da86e3b9810/sensitive-data-exposure-restricted-nasa-document-publicly-accessible)
+- Type: Sensitive information disclosure / missing access control on a document
+- Summary: A restricted NASA document — International Space Station Heat Rejection Subsystem specifications meant only for contractors and authorised US-government personnel — was reachable publicly with no authentication. Rated P1; NASA removed public access.
+- Technique / pattern: Documents carrying distribution markings ("restricted", "ITAR", "for official use only") are high-value even when found through passive means such as search-engine indexing or directory guessing; the finding's severity comes from the content's classification, not from exploit complexity. Search for marking strings and predictable document paths on government and contractor hosts.
+- Takeaway: Access control has to be enforced at the object itself; a sensitive file placed at a web-reachable path with no auth check is disclosed to anyone who finds the URL, and marked content makes that a serious exposure.
+
+### 2026-10-05 — Leak of usernames from a private website via browser local storage (NASA) — n/a
+- Source: [Bugcrowd #0bfcbdb2](https://bugcrowd.com/disclosures/0bfcbdb2-1faf-4714-97cf-597d17d58ca2/leak-of-usernames-from-a-private-website)
+- Type: Information disclosure through client-side storage and client-reachable endpoints
+- Summary: A site stored data in browser local storage and exposed endpoints from which the usernames of private, non-public users could be read. Rated P3, accepted and fixed.
+- Technique / pattern: Read the application's client-side JavaScript and inspect `localStorage`/`sessionStorage` and the endpoints the front end calls; data placed there is fully attacker-readable, and front-end code often references internal or private-user routes the server does not actually restrict.
+- Takeaway: The client is an untrusted environment — anything in local storage or referenced in front-end code is visible to the user. Keep private identifiers out of the client and enforce authorization on every endpoint the JavaScript can reach.
+
 ### 2026-10-01 — Akismet API keys are exposed by authentication method (Automattic) — n/a (bounty awarded, amount not disclosed)
 - Source: [HackerOne #1736846](https://hackerone.com/reports/1736846)
 - Type: Sensitive credential exposure through transport placement
