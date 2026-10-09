@@ -12,6 +12,139 @@ Disclosed **Insecure Direct Object Reference** reports. Core idea: an object ide
 
 ## Reports
 
+### 2026-10-09 — Add labels to arbitrary issues and PRs via project column permission gap (GitHub) — bounty awarded (amount not public)
+- Source: [HackerOne #3527771](https://hackerone.com/reports/3527771)
+- Type: IDOR / improper authorization
+- Summary: An improper authorization flaw in GitHub Enterprise Server (tracked as CVE-2026-3306, severity Medium) let a user with only read access to a repository but write access to a project change issue and pull request metadata through that project. Disclosed 2026-03-19.
+- Technique / pattern: The researcher chained two different permission scopes: project write plus repository read. When an item already present in a project was added to it again, the handler applied the column-value update without re-checking that the actor held repository write permission, so project-scoped writes became a side channel for editing repository-scoped metadata such as labels.
+- Takeaway: Where one object (a project) can write fields that belong to another object (a repo issue), authorization must be re-evaluated against the target object on every write path, including the idempotent "add an item that already exists" branch that developers assume is a no-op.
+
+### 2026-10-09 — IDOR on the www.acronis.com API leaks private business user information (Acronis) — $100
+- Source: [HackerOne #1182465](https://hackerone.com/reports/1182465)
+- Type: IDOR (read) / predictable identifier
+- Summary: A lead-record API endpoint on `www.acronis.com` did not verify that the requester was authorized to read the record it was asked for, exposing other users' company name, name and phone number. Rated Medium; submitted 2021-05-02 and disclosed 2021-08-31.
+- Technique / pattern: The request carried an identifier plus a token, which at a glance looked like adequate entropy. The researcher fetched their own record first, then compared the token across accounts and found that only its last five digits varied and that they were a sequential integer — so the token was guessable despite its length, and the endpoint had no server-side ownership check behind it.
+- Takeaway: Diff a "random" token across two of your own accounts before trusting it. Partial entropy is the trap: a long opaque string whose varying substring is a counter is enumerable, and the fix is both a real authorization check and a fully random identifier.
+
+### 2026-10-09 — IDOR deletes skill assessment results and earned badges of any user (LinkedIn) — bounty awarded (amount not public)
+- Source: [HackerOne #1592587](https://hackerone.com/reports/1592587)
+- Type: IDOR (horizontal, destructive)
+- Summary: The skill-assessment API's `DELETE` endpoint for attempt reports identified the target by a profile identifier plus a numeric skill ID and never confirmed the requester owned that data, so an authenticated user could wipe any member's assessment results and badges. Rated Medium (CVSS 5.3); submitted 2022-06-06 and disclosed 2022-10-05.
+- Technique / pattern: The researcher completed an assessment to reach the legitimate results page where a delete control exists, intercepted that delete request, swapped in a victim's profile identifier (exposed in the page source of public profiles), then used Burp Intruder to enumerate the small numeric skill ID space. Replaying the request removed the victim's badge for the chosen skill.
+- Takeaway: Reaching a feature's happy path first is what reveals the authenticated request worth tampering with. Mixed identifier strength is a classic tell: one component is a long public identifier and the other a short enumerable integer, and the endpoint checks neither.
+
+### 2026-10-09 — IDOR in locid parameter exposes other accounts' profile locations (Yelp) — n/a
+- Source: [HackerOne #966949](https://hackerone.com/reports/966949)
+- Type: IDOR (read) / business logic
+- Summary: The `locid` parameter on `GET /profile_location/add_or_edit` was not checked for ownership, so substituting another account's location ID returned that profile location. Yelp closed it as Informative (Low) on the grounds that a returned location was not tied back to a specific user; submitted 2020-08-25 and disclosed 2020-09-02.
+- Technique / pattern: The researcher logged into their own account, opened the profile-location edit flow, intercepted the request in Burp and replaced `locid` with other values, confirming the server returned the record without an ownership check. They argued the random-looking IDs were still brute-forceable because no rate limiting or anti-enumeration control was present, and that relying on their unpredictability is security by obscurity.
+- Takeaway: A missing ownership check is only half the report; triage weighs whether the leaked object can actually be attributed to a person. Pair the access-control finding with evidence of identifiability or enumerability, or expect an informative close.
+
+### 2026-10-09 — Notes can be created on another user's private personal snippet (GitLab) — n/a
+- Source: [HackerOne #1751258](https://hackerone.com/reports/1751258)
+- Type: IDOR / broken object-level authorization
+- Summary: An attacker could post a note (comment) on a victim's **private** personal snippet. Creating the note leaked the private snippet's title onto the attacker's own activity feed, and because the attacker owned the note they could then edit or delete it using the `id` the server returned in the create response.
+- Technique / pattern: Create your own snippet to learn the note-creation request shape, then replay it substituting the victim's private snippet identifier. The create response is itself an oracle: it returns the new object's `id` plus parent metadata (here the snippet title), so a write primitive doubles as a read primitive.
+- Takeaway: Authorization must be checked on the *parent* object, not just the child being created. Also treat the response body of a successful write as leaked data — echoed parent fields such as titles and names are a common side channel.
+
+### 2026-10-09 — Unprivileged user can enumerate private group names via the subgroup parent_id (GitLab) — n/a
+- Source: [HackerOne #215384](https://hackerone.com/reports/215384)
+- Type: IDOR / information disclosure via object reference
+- Summary: In GitLab 9.0's Subgroups feature, an unprivileged user could change the `parent_id` value when creating or inspecting a subgroup and the application would reveal the **name** of private groups the user had no access to.
+- Technique / pattern: The researcher stood up a clean GitLab 9.0 CE instance, created a private group as root, then drove the new Subgroups UI as a low-privilege user while mutating `parent_id`. Running your own instance of the target software lets you diff privileged vs. unprivileged responses with known ground truth.
+- Takeaway: Every new relational feature adds new foreign-key parameters (`parent_id`, `group_id`, `namespace_id`) and each one is a fresh authorization boundary. Error messages and validation responses that name the referenced object are still disclosure.
+
+### 2026-10-09 — IDOR in Stocky app lets a merchant change another merchant's Low Stock settings (Shopify) — n/a
+- Source: [HackerOne #853130](https://hackerone.com/reports/853130)
+- Type: IDOR (write) / cross-tenant broken access control
+- Summary: The Stocky app's Low Stock report stored each user's visible-column preferences against an identifier that was not bound to the session. A malicious merchant could modify the column settings of a different merchant's Stocky Low Stock variant settings. Rated Low severity.
+- Technique / pattern: Classic two-account cross-tenant test: set up accounts A and B, each with its own store and Stocky installed, capture the settings-save request as A, then replay it with B's object reference. Preference and personalization endpoints are frequently missed because they look non-sensitive.
+- Takeaway: Test third-party/embedded apps as their own trust boundary — a tenancy check enforced by the host platform is not automatically enforced by an app bolted onto it. Low-impact-looking write IDORs on settings are still the cheapest way to prove a missing tenancy check.
+
+### 2026-10-09 — IDOR in Shop app exposes checkout details and shipping addresses by iterating checkout IDs (Shopify) — n/a
+- Source: [HackerOne #1064869](https://hackerone.com/reports/1064869)
+- Type: IDOR / sensitive data exposure
+- Summary: An IDOR in Shopify's Shop app let an attacker iterate over checkout identifiers and read checkout details including shipping addresses. Shopify scoped the impact to checkouts created through the Shop app for shops owned by Shopify staff, and shipped a fix.
+- Technique / pattern: Enumerate sequential or weakly-random order/checkout identifiers against the mobile app's API rather than the web storefront — companion mobile apps often talk to a separate API surface whose authorization rules lag the primary one. Proxy the app, capture one legitimate checkout read, then walk the identifier.
+- Takeaway: A resource identifier that is guessable *and* an endpoint that only checks authentication gives you full-table read. Checkout, order and invoice objects should be addressed by unguessable tokens AND gated per-session.
+
+### 2026-10-07 — Insecure Direct Object References allowing unauthorized comment access (Vimeo) — n/a
+- Source: [HackerOne #52181](https://hackerone.com/reports/52181)
+- Type: IDOR — information disclosure
+- Summary: Comments attached to private Vimeo videos could be retrieved by anyone who knew the comment's numeric identifier. The comment-fetch endpoint resolved a `comment_id` without re-checking the privacy of the parent video.
+- Technique / pattern: Classic sequential-ID probe on a *child* object. The researcher noted the parent video's privacy was enforced, but the comment resource hung off its own predictable integer (`comment_id=1301116`), so incrementing or guessing that value returned content the video ACL was supposed to protect. Built on a previously reported access-control gap in the same area.
+- Takeaway: Authorization has to be re-evaluated on every nested resource, not just the top-level one. When auditing, enumerate the child objects (comments, attachments, revisions, thumbnails) that reference a protected parent — they frequently carry their own ID space and their own missing check.
+
+### 2026-10-07 — Delete anyone's Spotlight content (Snapchat) — n/a
+- Source: [HackerOne #1819832](https://hackerone.com/reports/1819832)
+- Type: IDOR — unauthorized state change (delete)
+- Summary: The Spotlight post-deletion flow accepted a post identifier belonging to another user, letting an attacker remove arbitrary users' Spotlight videos.
+- Technique / pattern: The researcher opened their own post list at `my.snapchat.com/myposts`, intercepted the delete request in a proxy, and substituted another account's post identifier. The server performed the delete without verifying that the requesting session owned the referenced post.
+- Takeaway: Destructive IDORs are easy to miss because testers tend to probe read endpoints. Always replay the delete/archive/unpublish call with a foreign object ID — and treat a 200 on someone else's object as critical, since it is unrecoverable for the victim.
+
+### 2026-10-07 — IDOR to update folder name of other user (Trint Ltd) — n/a
+- Source: [HackerOne #587687](https://hackerone.com/reports/587687)
+- Type: IDOR — unauthorized state change (write) via GraphQL
+- Summary: An authenticated user could rename folders owned by other accounts by supplying the victim's project identifier to the GraphQL API.
+- Technique / pattern: The mutation at `graphql2.trint.com` took a `projectId` argument and applied the rename without checking ownership. The researcher logged in as user B and replayed user A's mutation with A's `projectId`, which succeeded.
+- Takeaway: GraphQL concentrates many operations behind one POST endpoint, so a single missing ownership check is easy to overlook in review. When testing GraphQL, enumerate mutations separately from queries and replay each one cross-account with only the ID argument swapped.
+
+### 2026-10-07 — IDOR on the NASA Technical Reports Server (NTRS) file download API (NASA VDP) — n/a (P3, accepted risk)
+- Source: [Bugcrowd #becb15bd](https://bugcrowd.com/disclosures/becb15bd-039e-4403-b585-1b8ab536d8c5/expose)
+- Type: IDOR — unauthenticated document access
+- Summary: The NTRS download API served PDF documents to unauthenticated callers based on a predictable citation identifier, with no access validation on the file-download path. NASA confirmed the affected documents had in fact been declassified and approved for public release, and accepted the finding as business risk.
+- Technique / pattern: The download route follows the shape `https://ntrs.nasa.gov/api/citations/<citationID>/downloads/<fileID>.pdf`. Because both identifiers are sequential and the API performed no authorization check, walking the `<citationID>` range returned documents that the site's own UI did not link — a pure enumeration of a document store through its API rather than its front end.
+- Takeaway: A document portal's API surface and its web UI often enforce different rules; the UI hiding a record is not an access control. Also note the disposition here: predictable-ID enumeration is a real finding, but impact depends entirely on whether the enumerated data was actually meant to be restricted — verify that before claiming severity.
+
+### 2026-10-07 — Horizontal privilege escalation via the phone number in an offers URL (MTN Group) — n/a
+- Source: [HackerOne #2319586](https://hackerone.com/reports/2319586)
+- Type: IDOR / broken access control after an OTP-gated login
+- Summary: After completing the OTP login, the offers dashboard was served from `https://mtn.ng/offers/list?phone=<number>`, and substituting any other subscriber's number into the `phone` parameter returned that subscriber's dashboard with no further authentication.
+- Technique / pattern: Complete the intended OTP flow once, then examine what the post-authentication URL actually keys on — when identity lives in a query parameter rather than in the session, the OTP only proved ownership of *a* number, not of the one being read; a nationally enumerable identifier such as a phone number makes the id space free.
+- Takeaway: Derive the subject of every request from the session, and treat phone numbers, emails and account numbers as public input rather than as proof of identity.
+
+### 2026-10-07 — Unauthorized deletion of any pending system-access request (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #1493007](https://hackerone.com/reports/1493007)
+- Type: IDOR / missing authorization on a destructive workflow endpoint
+- Summary: Users requesting access to a DoD information system received an identifier for their submitted request, and the endpoint that deletes access requests honored that identifier from an unauthorized caller, letting anyone destroy legitimate pending requests and disrupt the approval workflow.
+- Technique / pattern: Enumerate a workflow object's whole lifecycle — submit, review, approve, reject, delete — and call the delete handler directly instead of through the administrator interface that normally invokes it; the identifier handed back to the submitter at creation time is usually sufficient, and this was the third finding in a chain against the same application, so re-testing a previously patched area paid off.
+- Takeaway: Destructive workflow endpoints need their own check tied to the reviewer role, and an id disclosed to the requester must never double as the authority to act on it.
+
+### 2026-10-07 — Critical IDOR: delete any rule of any organization remotely (Veris) — n/a
+- Source: [HackerOne #120126](https://hackerone.com/reports/120126)
+- Type: IDOR / missing ownership check on a DELETE route
+- Summary: A tenant-scoped rule object could be destroyed from any account by changing the rule id in the `DELETE` request, with no check that the caller's organization owned it; the same reporter found the identical flaw on members, groups, venues and terminals in the same product.
+- Technique / pattern: Once one object type in a multi-tenant product falls to an id swap on `DELETE`, treat it as a product-wide authorization gap and sweep every sibling object type the same way — a fix applied to one controller rarely reaches routes that merely share the pattern.
+- Takeaway: Report the pattern, not the instance: enumerate sibling object types after the first IDOR, and enforce tenant ownership in a shared authorization layer instead of per controller.
+
+### 2026-10-06 — IDOR allows a user to access report details via the reference endpoint (HackerOne) — n/a
+- Source: [HackerOne #3862641](https://hackerone.com/reports/3862641)
+- Type: IDOR / information disclosure in an authorization-failure response
+- Summary: The `/reports/<id>/reference.json` endpoint correctly answered HTTP 422 with "You do not have the appropriate access", yet the error envelope still carried report information in its `context.subject` field, letting VDP-signup accounts read details of reports they had no access to.
+- Technique / pattern: Request a non-owned object id on a sub-resource of the report route from a low-privilege account type, then read the *error body* field by field instead of stopping at the status code — the guard rejected the request, but the serializer had already populated the object into the error context.
+- Takeaway: An authorization failure must not describe what it refused; build error payloads before the object is loaded, and diff error bodies across object ids when testing access control.
+
+### 2026-10-06 — Attacker can create malicious child epics in a victim's epic hierarchy (GitLab) — n/a
+- Source: [HackerOne #1892200](https://hackerone.com/reports/1892200)
+- Type: IDOR / broken object-level authorization on a create route
+- Summary: Through GitLab's REST epics API a user could create epics inside their *own* group that referenced another group's epic as `parent_id`, attaching attacker-controlled children into a victim's epic tree without holding any membership of the victim's group.
+- Technique / pattern: On any creation endpoint, test each foreign-key field in the body (`parent_id`, `source_id`, `target_id`) separately from the container named in the path — authorization commonly covers only the group or project you POST to, while the referenced object is accepted on trust; the victim identifiers here were obtainable without membership.
+- Takeaway: Authorize every object referenced in a request body, not only the container it is created in; forming a relationship needs a permission check on both ends.
+
+### 2026-10-06 — Boards leak private label names and descriptions (GitLab) — n/a
+- Source: [HackerOne #162147](https://hackerone.com/reports/162147)
+- Type: IDOR / cross-project information disclosure via a relationship object
+- Summary: In GitLab's then-new issue boards feature a user could create a board list bound to a label id belonging to a private project, and the rendered list returned that label's name and description.
+- Technique / pattern: Freshly shipped features lag the platform's authorization conventions — create a relationship object (board list, pin, link, attachment) using an identifier from a resource you cannot read, then harvest the attributes the response renders back for the linked object.
+- Takeaway: New features need their own authorization audit, and the response of a "link these two objects" action is a read channel for the object being linked.
+
+### 2026-10-06 — Add and access labels of any private project or group via the boards API (GitLab) — n/a
+- Source: [HackerOne #439729](https://hackerone.com/reports/439729)
+- Type: IDOR / missing authorization on a write route
+- Summary: A non-member could send a `PUT` to `/<namespace>/<project>/boards/<board_id>.json` to add private group or project labels to a board and then read them back, even though the private project blocked non-member access throughout the interface.
+- Technique / pattern: Replay the interface's own JSON write request directly instead of driving the rendered page — the board-update route authorized the board but not the label ids supplied alongside it, so a write primitive became a cross-project read.
+- Takeaway: Routes exposing the same capability need identical checks; after a read endpoint is confirmed hardened, test its write variant.
+
 ### 2026-10-05 — IDOR lets a malicious user reveal the unpinned achievement badges of any Reddit user (Reddit) — n/a
 - Source: [HackerOne #2618486](https://hackerone.com/reports/2618486)
 - Type: IDOR / horizontal access control on a preview route

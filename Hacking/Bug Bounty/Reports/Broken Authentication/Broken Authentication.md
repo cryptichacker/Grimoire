@@ -12,6 +12,139 @@ Disclosed **broken authentication & session management** reports — account tak
 
 ## Reports
 
+### 2026-10-09 — Two-factor authentication bypass in Android apps and web (TikTok) — bounty awarded (amount not public)
+- Source: [HackerOne #1747978](https://hackerone.com/reports/1747978)
+- Type: Broken authentication (2FA/2SV bypass)
+- Summary: A random timeout condition on a two-step verification endpoint allowed authentication to be bypassed when several incorrect codes were submitted in quick succession. Rated Medium; submitted 2022-10-24 and disclosed 2023-01-09. Exploitation required already holding the victim's email and password, or phone number and code, plus repeated attempts.
+- Technique / pattern: Rather than attacking the code's entropy, the researcher attacked the verification endpoint's behaviour under rapid repeated failures — a race or state-handling defect in which the server's timeout path returned a success-equivalent state instead of a rejection. The finding is probabilistic, so it took multiple bursts to reproduce, and a video PoC was supplied.
+- Takeaway: Test the failure handling of a 2FA endpoint, not only the code space: submit wrong codes concurrently and in bursts and watch for responses that diverge from the normal reject. A bypass that needs valid first-factor credentials is still a real second-factor bypass, and is still rewarded.
+
+### 2026-10-09 — Sessions not invalidated after password change (Liberapay) — n/a
+- Source: [HackerOne #678050](https://hackerone.com/reports/678050)
+- Type: Broken session management (Violation of Secure Design Principles)
+- Summary: Changing an account's password did not terminate existing sessions, so a session established under the old password stayed authenticated. Rated Low with no bounty; submitted 2019-08-21 and disclosed 2019-11-05.
+- Technique / pattern: A two-browser test: sign into the same account in two browsers, change the password in the first, then refresh the second. The second session remained logged in, and signing in again with the new password still did not revoke it, so two sessions created under different passwords coexisted. Evidence was a screencast; the recommendation cited OWASP guidance to end all active sessions on password change and force re-login.
+- Takeaway: The two-browser check is a thirty-second test that belongs in every authentication review. Password rotation is the user's remedy after a compromise, so a reset that leaves old sessions alive silently removes the only recovery step they have.
+
+### 2026-10-09 — Password reset link grants a logged-in session without setting a new password (Weblate) — n/a
+- Source: [HackerOne #223637](https://hackerone.com/reports/223637)
+- Type: Broken authentication (password reset flow design)
+- Summary: On `hosted.weblate.org` the password reset flow authenticated the visitor as soon as the emailed reset link was followed, without requiring a new password to be set, and without properly invalidating sessions. Rated Low with no bounty; submitted 2017-04-25 and disclosed 2017-05-17.
+- Technique / pattern: The researcher walked the reset flow end to end — request a reset, solve the captcha, open the link from the mailbox — and observed that the landing page was an authenticated session rather than a set-password form. The attack scenario is anyone with transient access to the victim's mailbox, such as a session left open on a shared or public machine, who converts mailbox access into account access without ever learning or changing the password.
+- Takeaway: A reset link is a bearer credential; treat "what state am I in after clicking it?" as the test. Logging the user in before the new password is committed means the reset token alone is a silent login, and the victim gets no signal because their password still works.
+
+### 2026-10-09 — Authorisation bypass on identity.yoyogames.com (Opera Public Bug Bounty) — $250
+- Source: [Bugcrowd #7c3fc2d0](https://bugcrowd.com/disclosures/7c3fc2d0-45f7-4478-89b4-d3cd9b49dc87/bypassing-security-controls-for-authorisation-bypass-on-identity-yoyogames-com)
+- Type: Broken authentication (missing re-authentication, email verification bypass)
+- Summary: On `identity.yoyogames.com` a user could change account state without supplying the current password even where the interface asked for it, and could set an email address they did not own — an email verification bypass. Rated P3 and resolved; disclosed 2021-08-20.
+- Technique / pattern: The researcher targeted the gap between a control shown in the UI and the one enforced server-side: the form collected the current password, but the backend did not require it, so sensitive state changes went through without re-authentication. Combined with unverified email assignment, that converts a weaker foothold into a path toward account takeover.
+- Takeaway: A password prompt on a sensitive-action form is a client-side ritual until the server rejects the request without it. Replay such requests with the current-password field removed, emptied or wrong, and separately check whether a newly set email is verified before it becomes authoritative for recovery.
+
+### 2026-10-09 — Password reset token leaked to third parties via the Referer header (Semrush) — n/a
+- Source: [HackerOne #342693](https://hackerone.com/reports/342693)
+- Type: Broken authentication — reset-token leakage via Referer
+- Summary: Opening a password-reset link and then clicking any external link on the reset page — for example a "follow us" social icon — sent the full reset URL, token included, to the third-party site in the `Referer` header. Whoever controls or can read that third party's logs can complete the reset.
+- Technique / pattern: Load the sensitive URL in a browser proxied through Burp, then click every outbound link, image, script and tracking pixel on the page and inspect the `Referer` on each outgoing request. Check reset, invite, magic-link, email-confirmation and share URLs — anywhere a secret lives in the query string.
+- Takeaway: Secrets do not belong in URLs. Where they must be, set `Referrer-Policy: no-referrer` on those pages, strip the token from the URL immediately after it is consumed (redirect to a clean path and hold it server-side), and keep third-party assets off the reset page entirely.
+
+### 2026-10-09 — Password reset possible without a valid token on a Twitter Flight School site (X / xAI) — n/a
+- Source: [HackerOne #806055](https://hackerone.com/reports/806055)
+- Type: Broken authentication — password reset flow bypass
+- Summary: The password-recovery flow on a Twitter Flight School property allowed a password to be reset without presenting a valid reset token and without knowing the current password, giving account takeover from the recovery endpoint alone.
+- Technique / pattern: Walk the reset flow and attack the final submit directly: drop or blank the token parameter, send a token belonging to your own account while naming another user, replace the user identifier in the body, remove the current-password field, and resend with the token's signature stripped. Many implementations validate the token only when it is present.
+- Takeaway: Marketing, education and acquired sub-brand sites run on separate stacks from the main product and are where takeover-grade auth bugs survive. The reset endpoint must bind token → user → new password server-side and reject the request when any of the three is missing.
+
+### 2026-10-09 — Email verification bypass enables organization invites from a spoofed address (Engagement undisclosed (Bugcrowd)) — n/a (P5, informational)
+- Source: [Bugcrowd #dedd5987](https://bugcrowd.com/disclosures/dedd5987-2e44-4f48-b6bd-006e816b1d13/bypass-email-verification)
+- Type: Broken authentication — email verification bypass
+- Summary: Researcher `psych012` reported a way past email verification that let an attacker invite a user to join an organization on `app.withpersona.com` from a spoofed email address. Triaged P5 / accepted business risk; disclosed 2024-07-12.
+- Technique / pattern: Test whether verification is actually *enforced* rather than merely *requested*: register, skip the email link, and try the privileged actions anyway (invite a teammate, create an org, change a billing or display address). Also try changing the address after verification to see whether verified status carries over to the new value.
+- Takeaway: An unverified-but-functional account turns the product's own transactional email into a phishing channel, because the invite arrives from the vendor's trusted domain. Gate every outbound-messaging and org-membership action on a verified address, and reset verified status whenever the address changes.
+
+### 2026-10-09 — Email verification bypass when adding a new service (StackPath (Bugcrowd)) — 5 points (P4)
+- Source: [Bugcrowd #3b906245](https://bugcrowd.com/disclosures/3b906245-373f-4c20-8929-767a3bbd7b97/email-verification-bypass-when-adding-a-new-service)
+- Type: Broken authentication — email verification bypass
+- Summary: A verification step that should have been required when adding a new service to a StackPath account could be skipped. Accepted and fixed, rated P4; disclosed 2020-04-29. The public page carries only the title and status, no reproduction detail.
+- Technique / pattern: Provisioning and "add resource" wizards often enforce verification in the UI step only. Capture the final create request, then replay it directly from an unverified or partially-onboarded account, and separately try completing the wizard out of order by jumping straight to the last step's endpoint.
+- Takeaway: Multi-step flows must re-check every precondition at the final server-side action. Client-side step ordering is not an authorization control.
+
+### 2026-10-07 — Bypassing password authentication when two-factor authentication was enabled (GitLab) — n/a
+- Source: [HackerOne #128085](https://hackerone.com/reports/128085)
+- Type: Authentication bypass in the 2FA flow
+- Summary: On accounts with two-factor authentication enabled, the password check in the login flow could be circumvented — the second factor's presence changed the code path in a way that let the first factor be skipped. GitLab patched it within two days (fixed in 8.6.5).
+- Technique / pattern: A two-step login splits authentication across requests and has to carry trusted state between them. The researcher attacked that seam: reaching or replaying the second-stage request without having satisfied the first. This is the canonical 2FA-flow bug class — the second stage trusting a pre-auth identifier instead of a server-side proof that the password stage passed.
+- Takeaway: Enabling 2FA adds a state machine, and state machines add bypasses. Test the multi-step login out of order every time: skip stage one, replay stage two with another user's identifier, and re-send a stage-two request after the stage-one session has been abandoned.
+
+### 2026-10-07 — Session fixation in password-protected public downloads (Nextcloud) — n/a
+- Source: [HackerOne #237184](https://hackerone.com/reports/237184)
+- Type: Session fixation
+- Summary: In Nextcloud 10.0.2.7, password-protected public share links were vulnerable to session fixation: an attacker could pre-set a victim's session cookie, then reuse that known session value after the victim authenticated to the share.
+- Technique / pattern: The application did not issue a fresh session identifier at the point the share password was accepted. The attack is to plant a known cookie value in the victim's browser first and let their successful authentication upgrade that attacker-known session's privileges — the inverse of session hijacking, and it needs no theft of the victim's credentials or cookies.
+- Takeaway: Any step that raises a session's privilege level — login, share-password entry, step-up MFA, role switch — must rotate the session identifier. When testing, note the pre-auth cookie, authenticate, and check whether the identifier changed; if it did not, the flow is fixable only server-side.
+
+### 2026-10-07 — No 2FA confirmation on 2FA disable (Atlassian (Bitbucket Cloud)) — n/a (P5, accepted risk)
+- Source: [Bugcrowd #ed92a500](https://bugcrowd.com/disclosures/ed92a500-0839-44e1-ae42-094fdc31f320/no-2fa-confirmation-on-2fa-disable)
+- Type: Missing re-authentication on a security-critical action
+- Summary: A Bitbucket Cloud user could turn off two-factor authentication without supplying a fresh 2FA code, so an attacker holding only a hijacked session could strip the account's second factor. Atlassian accepted it as business risk.
+- Technique / pattern: Inventory the actions that weaken an account's security posture and check each for a step-up challenge: disabling MFA, removing a recovery method, changing the recovery email, revoking device trust, rotating API tokens. The test is simply performing the action from an authenticated session and seeing whether anything beyond the session cookie is demanded.
+- Takeaway: Session possession should not be sufficient to dismantle the controls that protect the account — otherwise one stolen cookie converts into durable takeover. Absence of a step-up prompt on an MFA-disable or recovery-change flow is worth reporting even when triaged low, because it is the pivot that turns a short-lived session into persistent access.
+
+### 2026-10-07 — Improper session invalidation: automatic sign-in without credentials after logout (Dust) — n/a
+- Source: [HackerOne #3101207](https://hackerone.com/reports/3101207)
+- Type: Insufficient session expiration — logout that does not invalidate server-side state
+- Summary: After clicking logout, revisiting the login page in the same browser signed the user straight back in with no email or password, consistently on Chrome and Firefox, indicating the session or a refresh token was never invalidated server-side and was being silently restored.
+- Technique / pattern: Test logout as a security control rather than a UI action — log out, then re-request the login page, a protected page and the back/forward cache, and replay the pre-logout session cookie or bearer token from a clean client; silent re-authentication usually means an identity provider's refresh token survived a client-only logout.
+- Takeaway: Logout must revoke server-side session state and refresh tokens and set cache-control headers, otherwise brief access to the browser is enough to regain the account.
+
+### 2026-10-07 — CVE-2023-40273: session fixation in the Apache Airflow web interface (Internet Bug Bounty) — $540
+- Source: [HackerOne #2121960](https://hackerone.com/reports/2121960)
+- Type: Session fixation — sessions not invalidated on credential change
+- Summary: Resetting a user's password through Airflow's Reset Password control did not terminate that user's existing sessions, so anyone already authenticated as the account kept full access to the web UI and the API until the old session expired on its own.
+- Technique / pattern: Test credential-change flows from the *other* session — sign in as the account in browser A, change or admin-reset the password in browser B, then keep using browser A against both the interface and the API; the administrative reset path is the case most often missed, because revocation code tends to live only in the self-service change flow.
+- Takeaway: A password reset is a revocation event: invalidate every session and token for that user, and verify it on the API as well as in the browser.
+
+### 2026-10-07 — Rate-limit bypass via X-Forwarded-For manipulation on the registration page (YNAB) — $150
+- Source: [Bugcrowd #cbfab16a](https://bugcrowd.com/disclosures/cbfab16a-2b3e-4a65-bf64-0e003c7c6ea7/rate-limit-bypass-via-x-forwarded-for-header-manipulation-on-registration-page)
+- Type: Broken authentication control — throttling keyed on a client-controlled header (P4)
+- Summary: Registration throttling was applied per client IP, but the IP was taken from the `X-Forwarded-For` request header, so varying that header on each request made every attempt look like a new client and defeated the limit entirely.
+- Technique / pattern: Whenever a limit appears to be per-IP, replay the blocked request with `X-Forwarded-For`, `X-Real-IP`, `X-Client-IP`, `Forwarded` and `X-Originating-IP` set to rotating values, including the list form `X-Forwarded-For: 1.2.3.4, <original>`; the bug is an edge-versus-application mismatch — the proxy appends, the application trusts the leftmost value, and nothing overwrites it.
+- Takeaway: Derive the client IP only from the hop your own infrastructure controls, and apply throttling to the account and the action as well as to the address.
+
+### 2026-10-07 — CSRF account deletion on a NASA subscription service (NASA VDP) — n/a (P4)
+- Source: [Bugcrowd #e97add76](https://bugcrowd.com/disclosures/e97add76-3838-4d24-a86a-ae850003ad15/critical-csrf-vulnerability-exploiting-account-deletion-on-nasa-subscription-service)
+- Type: CSRF on a destructive endpoint with no re-authentication
+- Summary: The unsubscribe and delete endpoint at `https://pds.nasa.gov/datasearch/subscription-service/nu_unsubscribe_response.cfm` accepted a cross-site `POST` with no CSRF token and no password confirmation, so an auto-submitting form on an attacker-hosted page deleted the account of any logged-in visitor.
+- Technique / pattern: Inventory the destructive endpoints first — delete account, unsubscribe, revoke, rotate, change email — then replay each as a plain auto-submitting HTML form from an unrelated origin with cookies attached; the absence of both a token and a password prompt is what turns a one-click annoyance into account destruction.
+- Takeaway: Destructive actions need a CSRF token *and* a re-authentication step, and legacy server-rendered handlers inherited from older stacks are the usual place where neither was ever added.
+
+### 2026-10-06 — Authentication bypass on GitHub Enterprise Server via SSH certificate authority (GitHub) — n/a
+- Source: [HackerOne #1901040](https://hackerone.com/reports/1901040)
+- Type: Broken authentication / improper authentication on an alternate credential path
+- Summary: An unauthorized actor who knew a secret gist's URL could modify another user's secret gists by authenticating through an SSH certificate authority; all versions of GitHub Enterprise Server before 3.9 were affected, with fixes in 3.4.18, 3.5.15, 3.6.11 and later.
+- Technique / pattern: Enumerate every credential type that reaches the same objects — web session, personal access token, OAuth app, deploy key, SSH certificate authority, SCIM/SAML identity — and re-test each object class through each one. Alternate authentication backends are separate code paths and frequently resolve an identity without applying the web path's authorization.
+- Takeaway: Enforce authorization below the credential layer so every authentication mechanism converges on the same check, and never treat a secret URL as an access control.
+
+### 2026-10-06 — Email verification bypass via the account-settings update flow (Malwarebytes) — n/a
+- Source: [HackerOne #3020733](https://hackerone.com/reports/3020733)
+- Type: Broken authentication (email verification bypass)
+- Summary: On `my.malwarebytes.com` a researcher registered and verified one address, then changed the account email in settings while intercepting the request, reaching a state where the new address was in place without having been verified.
+- Technique / pattern: Treat the email-change flow as an auth surface distinct from signup — verify an address you control, intercept the update request, and check whether the account keeps its verified status, its entitlements and its session while the new address is unproved. Compare the state machine for "verified at signup" against "changed later".
+- Takeaway: An email change must return the account to unverified and bind every entitlement to the proved address; re-verification cannot be a client-side step.
+
+### 2026-10-06 — No rate limiting on the resend-email option at signup (FCC VDP) — n/a
+- Source: [Bugcrowd #9a942fa0](https://bugcrowd.com/disclosures/9a942fa0-4adc-4f27-877f-ca4e22c05dd5/no-rate-limiting-on-resend-email-option-when-signing-up-for-an-account)
+- Type: Broken authentication (missing rate limiting, P4)
+- Summary: The "resend verification email" action during account signup carried no rate limit, so the endpoint could be called repeatedly to generate unbounded outbound mail to an address chosen by the requester.
+- Technique / pattern: Enumerate the unauthenticated mail-sending actions across the auth lifecycle — signup verification, resend, forgot-password, magic link, invitation — and replay each in a short burst, counting the messages that actually arrive rather than only reading response codes. The impact to argue is mail-bombing a third party and damaging the sender's domain reputation, not brute force.
+- Takeaway: Rate-limit per address and per IP on every endpoint that triggers mail, and cap resends per registration attempt.
+
+### 2026-10-06 — Email enumeration via the password-recovery response (NASA VDP) — n/a
+- Source: [Bugcrowd #5245d544](https://bugcrowd.com/disclosures/5245d544-ebcc-4754-b5df-90389119b0af/email-enumeration-enabled-leading-to-unauthorized-login-attempts-and-account-lockout)
+- Type: Broken authentication (user enumeration, P5 — disputed, accepted business risk)
+- Summary: The forgot-password flow responded differently depending on whether the submitted address had an account, allowing registered users to be enumerated; the program disputed the claimed escalation to account lockout, stating the function does not work that way.
+- Technique / pattern: Diff responses for a known-good and a known-bad address across body text, status code, redirect target and response time. The lesson here is triage — enumeration was real, but the asserted lockout chain was never demonstrated, so the report closed informational.
+- Takeaway: Return an identical response for every address, and when reporting enumeration, prove the follow-on attack instead of asserting it.
+
 ### 2026-10-05 — 2FA bypass via leaked cookies (HackerOne) — n/a
 - Source: [HackerOne #2479622](https://hackerone.com/reports/2479622)
 - Type: Broken authentication / session binding (2FA bypass through cookie reuse)

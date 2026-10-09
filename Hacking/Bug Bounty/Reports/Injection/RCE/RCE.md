@@ -12,6 +12,55 @@ Disclosed **Remote Code Execution** reports reached via injection chains — **O
 
 ## Reports
 
+### 2026-10-09 — Deserialization via POST parameter 0 leads to RCE on a NASA host, CVE-2025-55182 (NASA VDP) — n/a
+- Source: [Bugcrowd #41e70d21](https://bugcrowd.com/disclosures/41e70d21-db93-463c-a80e-4ee03942a481/cve-2025-55182-deserialization-on-vizss-czdt-smce-nasa-gov-through-via-post-parameter-0-leads-to-remote-code-execution-rce)
+- Type: RCE via insecure deserialization
+- Summary: The host `vizss.czdt.smce.nasa.gov` deserialized attacker-controlled data submitted as the `POST` parameter named `0` on a wildcard route, yielding remote code execution (CVE-2025-55182). Rated P1 and marked accepted and fixed; disclosed 2025-12-23.
+- Technique / pattern: The locator is in the title rather than the body — the disclosure publishes no payload or steps. Two details are worth carrying forward: the sink was reachable through a catch-all route (`/*`) rather than a documented endpoint, and the vulnerable parameter was the numeric name `0`, the kind of key a framework generates for positional or array-style arguments and which a parameter wordlist built from documentation never contains.
+- Takeaway: Test numerically and positionally named parameters (`0`, `1`, `arg`, `data[]`) against catch-all routes, not just the named fields a form submits. A deserialization sink behind a wildcard handler is a P1 that no amount of validating the documented inputs would have caught.
+
+### 2026-10-09 — Log4Shell (CVE-2021-44228) on datainventory.doi.gov (Dept. of the Interior VDP) — n/a
+- Source: [Bugcrowd #a9d9ae86](https://bugcrowd.com/disclosures/a9d9ae86-2000-4ac4-b30d-385ef82d238f/log4shell-cve-2021-44228)
+- Type: RCE via JNDI lookup injection (Log4j, server-side injection)
+- Summary: `datainventory.doi.gov` ran TopBraid EDG 7.0.3, vulnerable to Log4Shell when a security filter is disabled. Rated P1 with a CVSS 3.1 base score of 10 (`AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H`); submitted 2022-01-16 and disclosed 2022-02-15.
+- Technique / pattern: The researcher noticed the explorer area allowed login under an explorer role with no special credentials, stood up a listener on infrastructure they controlled, and sent a crafted `POST` to the explorer endpoint with a JNDI lookup string in a parameter pointing at that listener. The server issued an outbound LDAP query to the listener, proving the injected string reached the vulnerable Log4j call. They stopped at that confirmation rather than pursuing a shell.
+- Takeaway: An out-of-band DNS or LDAP callback is sufficient and proportionate proof for a blind injection class. A self-registration or guest role that reaches logged code paths is the real attack surface; "authentication required" does not mean "attacker cannot get in".
+
+### 2026-10-09 — Atlassian Companion 1.2.2 remote code execution via incomplete extension blocklist (Atlassian (Bugcrowd)) — 10 points (P3)
+- Source: [Bugcrowd #871221df](https://bugcrowd.com/disclosures/871221df-2de0-4fb4-a901-1a014a97bbd6/atlassian-companion-1-2-2-remote-code-execution)
+- Type: RCE via file-type handling / blocklist bypass
+- Summary: Atlassian Companion is a desktop helper that opens Confluence attachments in local applications and re-uploads them, exposing a local websocket server that the Confluence site tells which app should handle a file. Its Windows blocklist stopped the obvious executable extensions, but researcher `matt` found other command-capable file types were not blocked, and forcing Companion to open one of those produced code execution on the user's machine. Resolved, disclosed 2023-07-19.
+- Technique / pattern: Attack the desktop-agent + browser bridge: enumerate the local websocket/HTTP listener a companion app opens, then enumerate which file extensions it refuses. Blocklists fail against the long tail of Windows handlers (script hosts, shortcut and registry-style formats, installer and help formats). Compare the blocklist in the shipped binary against the OS's registered handler list rather than guessing.
+- Takeaway: Deny-lists of dangerous file extensions are never complete — allow-list the handful of document types the feature actually needs. Any locally-bound websocket server reachable from a web page is a remote attack surface, so it must authenticate and authorize its instructions.
+
+### 2026-10-09 — Local File Inclusion on a NASA Xamin server, assessed as reaching possible RCE (NASA VDP (Bugcrowd)) — n/a (P1)
+- Source: [Bugcrowd #3bee2718](https://bugcrowd.com/disclosures/3bee2718-c643-4c6d-8699-af5ea27a8e2a/local-file-inclusion-lfi-in-nasa-possible-rce-in-xamin-server)
+- Type: Local File Inclusion escalating toward RCE
+- Summary: Researcher `N0t0d4y` reported a Local File Inclusion vulnerability in a NASA Xamin server that was triaged as potentially reaching remote code execution. Rated P1 and accepted/fixed; disclosed 2025-02-28. The public page withholds technical specifics (the researcher said a redacted writeup would not name the server).
+- Technique / pattern: LFI-to-RCE escalation paths worth testing once arbitrary local read is proven: log poisoning (inject a payload into a log file the include then evaluates), session-file inclusion (write the payload into your own server-side session file), PHP wrappers and filter chains, and uploaded-file inclusion where the upload directory is reachable. The read primitive is also used first to pull config files and locate those writable paths.
+- Takeaway: Report LFI with the escalation path demonstrated, not just the file read — that is the difference between a medium and a P1. For defenders: resolve and allow-list include paths, never derive them from request parameters.
+
+### 2026-10-07 — Remote code execution via the Extract add-on (Nextcloud) — n/a
+- Source: [HackerOne #546753](https://hackerone.com/reports/546753)
+- Type: RCE via archive-extraction add-on
+- Summary: The third-party "Extract" app, installable from the Nextcloud Marketplace, allowed remote code execution through its extraction handling. The reported sink was in `ExtractionController.php`, around the branch gated on `extension_loaded("rar")`.
+- Technique / pattern: The researcher targeted the marketplace rather than core: add-ons receive far less review than the platform, and an extraction feature is attractive because it takes an attacker-controlled archive and hands its contents to a shell or library call. Reviewing the controller's handling of the archive path was enough to reach code execution.
+- Takeaway: In any platform with a plugin or app store, enumerate the installed add-ons and treat each as its own target with its own (weaker) review history. Archive extraction, image conversion and document preview are the three features where attacker-supplied files most often reach a command interpreter.
+
+### 2026-10-07 — Command injection via Mercurial branch names (Phabricator) — n/a
+- Source: [HackerOne #288704](https://hackerone.com/reports/288704)
+- Type: OS command injection
+- Summary: Phabricator shelled out to Mercurial when rendering repository history without sanitising branch names, so a branch whose name contained shell metacharacters executed arbitrary commands with Phabricator's privileges when the history page was viewed.
+- Technique / pattern: The attacker-controlled value lived in the *repository metadata*, not in an HTTP parameter. The researcher pointed a Phabricator instance at a remote Mercurial repository they controlled, created a branch with a crafted name, and triggered execution by loading the repository's history page. The injection crossed a trust boundary that the application did not model: data fetched from an external VCS.
+- Takeaway: Shell-outs that interpolate names from an external system are a blind spot — the data looks internal by the time it reaches the command string. When reviewing a VCS, CI or package integration, ask which fields the *remote* side controls (branch, tag, ref, filename, commit author) and trace each to its command construction.
+
+### 2026-10-07 — CVE-2023-40195: Airflow Spark provider RCE by deserializing a malicious server's response (Internet Bug Bounty) — n/a
+- Source: [HackerOne #2127968](https://hackerone.com/reports/2127968)
+- Type: Insecure deserialization of untrusted data to RCE, with the client as the victim
+- Summary: Apache Airflow's Spark provider let a user set a Spark connection's host and port from the Airflow UI; running `spark-submit --master spark://<attacker-host>:<port>` made the PySpark *client* deserialize RPC data returned by an attacker-controlled Spark server, executing arbitrary Java methods on the Airflow worker.
+- Technique / pattern: Treat every connection string, broker URL, callback host and `--master`-style target an application lets you configure as a deserialization sink pointed *outward* — stand up a malicious server, feed it a `ysoserial` gadget chain built for the client's own library (here `CommonsCollections4`), then trigger the task that dials out; because the victim is the client, no inbound access to the target is needed.
+- Takeaway: Audit outbound protocol clients as attack surface, restrict who may define connection endpoints, and never deserialize data from a peer address a user can choose.
+
 ### 2026-10-05 — Store Development Resource Center vulnerable to unauthenticated RCE via SharePoint deserialization CVE-2019-0604 (Starbucks) — bounty awarded (amount undisclosed)
 - Source: [HackerOne #536134](https://hackerone.com/reports/536134)
 - Type: RCE via insecure deserialization in a known-vulnerable product (CVE-2019-0604)

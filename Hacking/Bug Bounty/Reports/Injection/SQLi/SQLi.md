@@ -12,6 +12,41 @@ Disclosed **SQL injection** reports — error/boolean/time-based, UNION, blind, 
 
 ## Reports
 
+### 2026-10-09 — Authenticated SQL injection in the ExpressionEngine control panel (ExpressionEngine) — n/a
+- Source: [HackerOne #968240](https://hackerone.com/reports/968240)
+- Type: SQL injection (authenticated / post-auth)
+- Summary: A SQL injection reachable from the ExpressionEngine control panel. Exploitation requires an account with control-panel access and the ability to create members, so the issue is a privilege-escalation primitive for an already-authenticated low-to-mid privileged CMS user rather than a pre-auth bug.
+- Technique / pattern: Audit post-authentication admin surfaces of open-source CMS platforms: member creation, search filters, sort/order parameters and bulk-action handlers often build SQL by string concatenation because the developers assume the operator is trusted. Reading the source of the member module beats blind fuzzing here.
+- Takeaway: "Requires admin" is not the same as "not a vulnerability" — in multi-role CMS deployments a restricted control-panel user turning SQLi into database read/write is a real privilege boundary crossing. Parameterize queries even behind the admin login.
+
+### 2026-10-07 — SQL injection against an IBM domain (IBM) — n/a
+- Source: [HackerOne #1567516](https://hackerone.com/reports/1567516)
+- Type: SQL injection
+- Summary: A SQL injection vulnerability was reported on an IBM-owned domain, analysed by IBM and remediated; IBM subsequently disclosed the report publicly.
+- Technique / pattern: A SQLi on a large organisation's peripheral domain — the kind of finding that comes from broad subdomain enumeration and then testing the smaller, older, less-maintained applications rather than the flagship product. (The publicly disclosed metadata confirms the class and the remediation but not the specific parameter.)
+- Takeaway: Attack surface scales with the asset inventory, not the brand. On a wide-scope program, enumerate subdomains first and prioritise the legacy or regional apps; they are where unparameterised queries survive long after the main product has been hardened.
+
+### 2026-10-07 — Time-based blind SQL injection in a URI path leading to full database disclosure (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #3234050](https://hackerone.com/reports/3234050)
+- Type: SQL injection (time-based blind, MySQL) via a path segment
+- Summary: A U.S. Government PKI site took an injectable value from the URI *path* of its `/home/server-ocsp/` endpoint rather than from a query parameter, letting an unauthenticated attacker reach the backend MySQL database and enumerate the current database, its tables and its columns.
+- Technique / pattern: Fuzz path segments as first-class injection points — append the payload to the route itself and measure response time, confirming manually with a conditional sleep such as `'XOR(if(now()=sysdate(),sleep(6),0))` before automating in time-based mode with `ghauri` or `sqlmap`; a path sink typically sits in routing code that never saw a placeholder.
+- Takeaway: Parameterize values taken from the URL path exactly as you would query parameters, and add path segments to injection fuzzing lists, since many scanners only touch `?params`.
+
+### 2026-10-06 — SQL injection in Django ORM via Q objects (Django) — n/a
+- Source: [HackerOne #3335709](https://hackerone.com/reports/3335709)
+- Type: SQLi (ORM query-connector injection)
+- Summary: Django's `WhereNode.as_sql` interpolated the query connector — the boolean `AND`/`OR` joiner — into raw SQL with string formatting, so an application that built a filter from untrusted keyword arguments, as in `Q(**user_input)`, let an attacker control `_connector` and reshape the query.
+- Technique / pattern: Look past value parameters to ORM *structure* inputs: operators, connectors, aliases, column names and type names are concatenated because placeholders cannot bind them. Dictionary unpacking of request data into an ORM constructor is the reachable pattern, since it can set private attributes the public API never meant to expose.
+- Takeaway: Never unpack request data into ORM constructors; allow-list the keys and keep every identifier and operator out of user control.
+
+### 2026-10-06 — Error-based blind SQL injection in three request parameters (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #3006666](https://hackerone.com/reports/3006666)
+- Type: SQLi (error-based blind)
+- Summary: The `sites`, `rods` and `ous` parameters were injectable; the application blocked the characters `=`, `|`, `;`, `>` and `<`, but valid SQL could still be written without them, and database error messages served as the extraction oracle.
+- Technique / pattern: Treat a character deny-list as an inconvenience rather than a boundary — rewrite the confirmed payload using `LIKE`, `BETWEEN`, `IN`, keyword logic and comment forms that avoid the filtered set, then read data out of the error text. Fuzz every parameter on the page, since sibling filter fields usually share one unsafe query builder.
+- Takeaway: Blocking characters does not block a grammar; parametrize the query and return generic errors so the error path cannot be used as an oracle.
+
 ### 2026-10-05 — SQL injection in access control panel and broken access in admin panel (IBM) — n/a
 - Source: [HackerOne #1355817](https://hackerone.com/reports/1355817)
 - Type: SQLi via an unsanitised `client_id` parameter, chained with broken access control on an admin panel

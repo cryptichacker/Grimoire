@@ -12,6 +12,13 @@ Disclosed **Server-Side Template Injection** reports (often escalating to RCE). 
 
 ## Reports
 
+### 2026-10-09 — Server-Side Include injection on a DoD website, potentially reaching code execution (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #192931](https://hackerone.com/reports/192931)
+- Type: Server-Side Include (SSI) injection / server-side template-style injection
+- Summary: A Department of Defense web application reflected attacker input into server-parsed HTML, allowing Server-Side Include injection. The reporter demonstrated it with a crafted URL; the disclosure notes that under some server configurations SSI directives can be escalated toward remote command execution.
+- Technique / pattern: Where reflected input lands in a page served by a server that parses includes (classic Apache `mod_include` with `.shtml`, or `XBitHack` on `.html`), probe with include directives instead of script tags: a directive that echoes a server variable proves server-side evaluation, and an exec-style directive tests for command execution. Run this check wherever an HTML-injection or reflected-XSS payload shows up but script execution is filtered.
+- Takeaway: SSI is the legacy cousin of SSTI and lives on in older government and enterprise estates. When a reflected-input finding is dismissed as "just HTML injection", test the server-side evaluation layer before you drop it — the same sink can be worth RCE.
+
 ### 2026-09-30 — Template injection in the password reset form (Acronis) — n/a
 - Source: [HackerOne #1265344](https://hackerone.com/reports/1265344)
 - Type: Server-side template injection (assessed as self-DoS)

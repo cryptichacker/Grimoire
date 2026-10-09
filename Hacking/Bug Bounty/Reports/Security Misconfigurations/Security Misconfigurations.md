@@ -12,6 +12,146 @@ Disclosed **security misconfiguration** reports — permissive CORS, default/exp
 
 ## Reports
 
+### 2026-10-09 — Config files with VPN pre-shared key and other credentials exposed by directory indexing (Tesla) — $10,000
+- Source: [Bugcrowd #bdc4fb5a](https://bugcrowd.com/disclosures/bdc4fb5a-ac99-4c3e-866f-37b3f58a0fa3/config-files-with-vpn-pre-shared-key-and-other-credentials-in-them)
+- Type: Security misconfiguration (directory indexing enabled) leading to credential exposure
+- Summary: An nginx server on a Tesla subdomain had directory indexing enabled, exposing a browsable directory containing a zip archive of RADIUS passwords, network-equipment administrator passwords, store Wi-Fi passwords, the IKE pre-shared key for corporate VPN access, and real-estate financial data. Rated P1 and resolved; disclosed 2021-02-26.
+- Technique / pattern: Entirely passive: enumerate subdomains, request directory paths rather than only files, and read what the index page lists. No authentication bypass and no payload — the web server volunteered its own file listing, and the archive was downloadable anonymously.
+- Takeaway: Directory indexing turns every forgotten upload into a public one. When reviewing a host, request bare directory paths (not just known filenames) and treat archive extensions as the highest-value hit; one misconfigured directive produced a P1 and a $10,000 payout.
+
+### 2026-10-09 — Wildcard allowlist bypass leads to full SSRF in Jira Data Center (Atlassian) — n/a
+- Source: [Bugcrowd #8ceda9d9](https://bugcrowd.com/disclosures/8ceda9d9-7f87-4621-84f8-76b9262bbd96/bypass-of-wildcard-allowlist-which-leads-to-full-ssrf)
+- Type: Security misconfiguration / SSRF (allowlist parsing flaw)
+- Summary: In Jira 8.20.6 the gadget proxy endpoint `/plugins/servlet/gadgets/makeRequest` forwarded requests with arbitrary HTTP methods and custom headers, and the configured wildcard allowlist entry could be satisfied by placing the allowlisted string in a query parameter instead of the host. Rated P4 (VRT: Broken Access Control > SSRF > Internal High Impact); submitted 2022-05-18 and disclosed 2025-07-14.
+- Technique / pattern: The allowlist was a wildcard expression over a domain the researcher controlled, documented as matching "one or more characters". A direct request to an out-of-band catcher returned 403, but a URL of the shape `https://<attacker-domain>?r=<allowlisted-host>` passed the check and returned 200 OK with the response body and headers visible — a full-read SSRF. The researcher suggested this bypassed the fix for CVE-2019-8451 and noted Confluence might share the flaw.
+- Takeaway: Allowlist checks that substring-match a URL rather than parsing it and comparing the authority are bypassable by putting the trusted value in the query string, path or userinfo. Always test the 403-versus-200 difference, and check whether a past CVE's patch validates the host or merely searches the URL.
+
+### 2026-10-09 — Content-Security-Policy script-src includes unsafe-inline and unsafe-eval (Asana) — n/a
+- Source: [Bugcrowd #e7da9ecf](https://bugcrowd.com/disclosures/e7da9ecf-e470-4f75-8495-a29c36b1888a/csp-parameter-script-src-includes-unsafe-inline)
+- Type: Security misconfiguration (weak security headers)
+- Summary: The `Content-Security-Policy` response header on `asana.com` listed `'unsafe-inline'` and `'unsafe-eval'` in its `script-src` directive alongside an allowlist of third-party domains, weakening CSP as a defence against injected script. Rated P5 and accepted as a business risk; submitted 2021-04-25 and disclosed 2021-05-19.
+- Technique / pattern: A pure header review, reproducible in three steps: issue a request to the root URL and capture the response headers, locate the `Content-Security-Policy` header, and read the `script-src` directive for unsafe keywords and overly broad host sources. Full response headers plus a screenshot were attached as evidence.
+- Takeaway: Header hygiene findings are almost always P5 or informational on their own — the control is weakened, not broken, and no exploit is shown. Their value is as a multiplier: record the weak directive, then look for an injection point it would otherwise have contained, and report the chain.
+
+### 2026-10-09 — Authentication bypass and Apache Tomcat misconfiguration on a pilot host (8x8) — n/a
+- Source: [HackerOne #1364022](https://hackerone.com/reports/1364022)
+- Type: Security misconfiguration (exposed management interfaces)
+- Summary: A single host in 8x8's pilot environment exposed the Apache Tomcat `/admin` and `/manager` endpoints; access was subsequently restricted. Rated Medium with no bounty; submitted 2021-10-08 and disclosed 2021-11-04.
+- Technique / pattern: Enumerate well-known administrative paths on every host found, not just the primary application. Tomcat's `/manager` and `/admin` contexts are default-shipped management surfaces whose presence indicates the application server is directly reachable rather than fronted by a proxy that strips them; pilot, staging and pre-production hosts routinely skip the hardening the production fleet receives.
+- Takeaway: Non-production hosts in scope are often the weakest asset a program owns. A short wordlist of default management paths against every discovered host costs almost nothing and finds what deployment checklists missed.
+
+### 2026-10-09 — Misconfigured S3 bucket found via JavaScript references exposes a "blocked" docs folder (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #998981](https://hackerone.com/reports/998981)
+- Type: Cloud storage misconfiguration (public S3 bucket)
+- Summary: A DoD site appeared to block access to a documents folder at the web tier, but the folder's contents were actually hosted in an Amazon S3 bucket that was readable by anyone. The researcher located the bucket by reading the site's JavaScript files.
+- Technique / pattern: Front-end JavaScript is the cheapest source-code disclosure you get for free: pull every script and source map, and grep for bucket names, `s3.amazonaws.com`/`storage.googleapis.com` hosts, CDN origins and API base paths. Then test the storage origin directly — a 403 from the application does not mean the backing store is private.
+- Takeaway: Access control enforced only at the application or CDN layer is bypassed by addressing the origin store directly. Enumerate the asset origins behind every "forbidden" path, and on the defensive side make buckets private and serve through signed URLs.
+
+### 2026-10-09 — CORS misconfiguration reflects arbitrary Origin with credentials allowed (Clario) — n/a
+- Source: [HackerOne #731472](https://hackerone.com/reports/731472)
+- Type: CORS misconfiguration
+- Summary: A GET request carrying an arbitrary `Origin` header came back with that same origin echoed in `Access-Control-Allow-Origin` together with `Access-Control-Allow-Credentials: true` — the combination that lets any attacker-controlled site read authenticated responses cross-origin. Reported against a Kromtech/Clario translate host.
+- Technique / pattern: One-line test on every API host: resend a request with `Origin: https://evil.example` and inspect the response. Reflected origin plus `Allow-Credentials: true` is exploitable; a wildcard `*` with credentials is rejected by browsers, and a reflected-but-credential-less origin is usually low impact. Also try null origin, subdomain and suffix/prefix tricks (`target.com.evil.com`, `eviltarget.com`) against sloppy allow-list regexes.
+- Takeaway: Never build `Access-Control-Allow-Origin` by reflecting the request header. Keep a static allow-list, and when credentials are permitted treat the allow-list as a security control with the same scrutiny as authentication.
+
+### 2026-10-09 — Internal RFC1918 address exposed through a public DNS record (NASA VDP (Bugcrowd)) — n/a (P5, informational)
+- Source: [Bugcrowd #33889902](https://bugcrowd.com/disclosures/33889902-f5bd-4346-93c0-d66c82a74506/internal-ip-disclosure-via-public-dns-record-blue-guest-hq-nasa-gov)
+- Type: Information-leaking DNS misconfiguration
+- Summary: A public DNS record for `blue.guest.hq.nasa.gov` resolved to the private address `192.168.50.4`, publishing internal addressing to anyone who queried it. The researcher argued it aids network mapping and could support DNS rebinding if chained. NASA closed it as an accepted business risk (site decommissioned); disclosed 2025-10-02.
+- Technique / pattern: Bulk-resolve every subdomain you enumerate and filter the answers for RFC1918 / loopback / link-local ranges. These records are also leads: a hostname that resolves internally often has a sibling that resolves externally, and a public name pointing at `127.0.0.1` or a private range is the precondition for DNS-rebinding and SSRF-allow-list bypass work.
+- Takeaway: Keep internal zones on internal resolvers. Treat this as a reconnaissance finding rather than a standalone bug — report it with the chain it enables, or expect P5/informational.
+
+### 2026-10-09 — Directory listing enabled on maps.nccs.nasa.gov (NASA VDP (Bugcrowd)) — n/a (P5, informational)
+- Source: [Bugcrowd #db8806c9](https://bugcrowd.com/disclosures/db8806c9-cdf1-4d3a-87f9-6fabe5bd1e47/information-exposure-through-directory-listing-vulnerability-on-https-maps-nccs-nasa-gov)
+- Type: Security misconfiguration — directory indexing
+- Summary: The web server on `maps.nccs.nasa.gov` returned auto-generated directory indexes, letting anyone browse the file listing of the affected paths. Triaged P5 / accepted business risk; disclosed 2024-08-30.
+- Technique / pattern: Request every discovered directory with a trailing slash and compare against the configured index document; `Index of /` in the body is the tell. The value is in what the listing then reveals — backups, archives, `.sql`/`.bak`/`.zip` dumps, credentials in config files — so always triage the contents before writing it up.
+- Takeaway: Directory indexing on its own is routinely closed as informational. It only becomes a real finding when the listing itself exposes something sensitive, so lead the report with the file you found, not with the listing.
+
+### 2026-10-07 — S3 bucket takeover on learn2.khanacademy.org (Khan Academy) — n/a
+- Source: [HackerOne #1777077](https://hackerone.com/reports/1777077)
+- Type: Dangling DNS record / subdomain takeover
+- Summary: The subdomain `learn2.khanacademy.org` pointed at Amazon S3, but no bucket with the matching name existed — so anyone could register that bucket and serve arbitrary content from a khanacademy.org hostname.
+- Technique / pattern: Standard dangling-record hunt: resolve every subdomain, keep the ones whose target is a cloud service, and check whether the backing resource still exists. Here the tell was the S3 error response for an unregistered bucket, visible by simply loading `http://learn2.khanacademy.org`.
+- Takeaway: Decommissioning an app means removing its DNS record, not just its bucket — and the two are usually owned by different teams, which is why this class persists. Content served from a real subdomain inherits the organisation's trust and, depending on cookie scope, its session reach.
+
+### 2026-10-07 — Open redirect on a NASA Keycloak staging instance (NASA VDP) — n/a (P4)
+- Source: [Bugcrowd #d69f5c9e](https://bugcrowd.com/disclosures/d69f5c9e-d5e4-40bb-94f8-bc6cd1d14bcf/open-redirect-vulnerability-occurring-at-https-keycloak-shared-services-staging-appdat-jsc-nasa-gov)
+- Type: Open redirect on an identity provider
+- Summary: A NASA-hosted Keycloak authentication instance in a staging environment accepted an attacker-controlled redirect target, sending authenticated users to an external site.
+- Technique / pattern: The target was found by enumerating subdomains and noticing a staging identity provider exposed to the internet. On an IdP, the redirect parameter (the post-login return URL) is the natural place to test, since a permissive allowlist there is both common and more impactful than a redirect on a content page.
+- Takeaway: Open redirects matter most on login and SSO endpoints: the redirect fires at the moment the user has just authenticated, which makes credential-phishing and token-leak chains plausible. Staging instances of identity infrastructure are worth enumerating specifically — they are frequently configured with looser allowlists than production.
+
+### 2026-10-07 — Clickjacking exposing sensitive information through iframes (StackPath) — n/a (P4, 5 points)
+- Source: [Bugcrowd #812ca668](https://bugcrowd.com/disclosures/812ca668-217a-4b4d-aed1-8d92c3f26846/clickjacking-exposing-sensitive-information-through-iframes)
+- Type: Missing framing protection (clickjacking / UI redressing)
+- Summary: Pages containing sensitive information could be embedded in a third-party iframe because the application sent no framing restrictions, enabling UI-redressing attacks.
+- Technique / pattern: The check is a one-liner: load the page inside an attacker-hosted iframe and see whether it renders. It renders when neither `X-Frame-Options` nor a CSP `frame-ancestors` directive is present on the response.
+- Takeaway: Framing protection is a response-header property, so it has to be verified per route — a header set at the edge for the main app often misses legacy paths, error pages and embedded widgets. Impact is driven by what the framed page can do in one click, so prioritise pages with a destructive or state-changing control.
+
+### 2026-10-07 — Directory listing exposure (NASA VDP) — n/a (P5, accepted risk)
+- Source: [Bugcrowd #0e4d1410](https://bugcrowd.com/disclosures/0e4d1410-da5a-4aff-b0ad-3e402199ac9b/directory-listing)
+- Type: Directory listing enabled
+- Summary: A NASA web path had automatic directory indexing enabled, exposing the contents of a directory to anyone who requested it. NASA accepted the finding as informational business risk.
+- Technique / pattern: Found by requesting directory paths rather than files — trimming a known file's URL back to its parent path and checking whether the server returns an index instead of a 403 or 404. Cheap to test across many hosts once a subdomain list exists.
+- Takeaway: Directory listing is rarely the finding in itself; its value is as a discovery primitive, because the index reveals backup files, config files and older versions you would otherwise have to guess. Chase what the listing exposes before reporting the listing alone — that is usually what decides severity.
+
+### 2026-10-07 — WordPress takeover via a reachable setup-config.php pointed at an attacker's database (U.S. Dept Of Defense) — $1,000
+- Source: [HackerOne #1626205](https://hackerone.com/reports/1626205)
+- Type: Misconfiguration — exposed installer leading to administrative takeover
+- Summary: A leftover WordPress tree exposed `/old/wp-admin/setup-config.php`, the installer page that collects database details; because the installer accepts any database server it can reach, the reporter supplied a free externally hosted MySQL instance of their own, completed installation, and obtained WordPress administrator access on the `.edu` host without ever knowing a target credential.
+- Technique / pattern: Enumerate leftover and staging paths (`/old/`, `/new/`, `/backup/`, `/wp/`) for installer and setup endpoints of any stack — WordPress `setup-config.php`, framework install routes, database admin setup scripts — and remember that a credential prompt is not a gate when the credentials may point outward; CMS admin then means plugin or theme upload and code execution.
+- Takeaway: An unfinished or re-exposed installer is a full compromise rather than an information leak — block setup routes after installation and delete abandoned copies of the application instead of leaving them unlinked.
+
+### 2026-10-07 — Link hijacking via an encoded slash yields an open redirect on accounts.yoyogames.com (Opera) — $100
+- Source: [Bugcrowd #73a1a65b](https://bugcrowd.com/disclosures/73a1a65b-7c95-4b0a-9791-e0f9a48a0fe7/link-hijacking-leads-to-open-redirection-on-accounts-yoyogames-com)
+- Type: Misconfiguration — unvalidated redirect through URL normalization (GET-based, P4)
+- Summary: Requesting a crafted path such as `https://accounts.yoyogames.com//%2fevil.com/test/` caused the page's logout navigation link to be rendered with an attacker-supplied external host in its `href`, so opening that link in a new tab sent the user to the attacker's domain.
+- Technique / pattern: Attack the link-*building* code rather than a redirect parameter — when a template constructs navigation hrefs from the current request path, a leading `//` plus `%2f` makes a relative link resolve as protocol-relative and absolute; inspect rendered anchors for your injected host, and note the exploitation quirk that a plain click did not redirect while opening in a new tab did.
+- Takeaway: Build links from server-side route definitions rather than from the incoming path, and normalize or reject encoded separators before any URL is echoed into markup.
+
+### 2026-10-07 — Open redirect through the browser extension's Network Lock page (ExpressVPN) — n/a (5 points, P4)
+- Source: [Bugcrowd #62ce59a6](https://bugcrowd.com/disclosures/62ce59a6-9016-4efd-b52b-f0e6cf686775/open-redirect-via-chrome-extension)
+- Type: Misconfiguration — unvalidated redirect inside an extension page
+- Summary: The ExpressVPN Chrome extension's Network Lock page could be driven to redirect to an arbitrary external page by manipulating the extension-scoped URL of the form `chrome://<browser-extension-id>/..`; the vendor rated it low because the unusual URL shape makes convincing social engineering unlikely, and fixed it in extension version 4.9.6.4116.
+- Technique / pattern: Extension pages are their own origin with their own routing and routinely skip the validation applied to website redirects — enumerate `web_accessible_resources` and internal pages from the manifest, then test each page's URL parameters for redirect and injection sinks.
+- Takeaway: Validate redirect targets inside extension pages as well, and expect triage to weigh how plausible the delivery URL looks rather than only whether the redirect works.
+
+### 2026-10-07 — TLSv1.3 disabled on caps.gsfc.nasa.gov (NASA VDP) — n/a (P5, informational)
+- Source: [Bugcrowd #3367a84c](https://bugcrowd.com/disclosures/3367a84c-0d94-45a3-9120-a270e247b004/ssl-tls-configuration-issue-on-caps-gsfc-nasa-gov)
+- Type: Misconfiguration — transport security configuration
+- Summary: The host negotiated only TLSv1.2 with TLSv1.3 disabled; ciphers were secure and the certificate valid, so the program closed it as informational, noting the certificate had been updated and met current NASA requirements.
+- Technique / pattern: Protocol-version and cipher scans are cheap reconnaissance worth running, but a configuration that is merely not the newest has no attack narrative — pair any TLS finding with a concrete consequence (a downgrade, a genuinely weak cipher, mixed content, an expired chain) before submitting it.
+- Takeaway: "Not best practice" is not a vulnerability; calibrate reports to demonstrable impact and keep raw scanner output out of submissions unless you can exploit it.
+
+### 2026-10-06 — AEM misconfiguration exposes the content repository via JSON render selectors (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #1939272](https://hackerone.com/reports/1939272)
+- Type: Security misconfiguration / information disclosure
+- Summary: Appending `/.1.json` to certain URLs on an Adobe Experience Manager site returned a JSON rendering of the underlying repository node, disclosing every template and file in the web root together with system usernames.
+- Technique / pattern: Sling-based stacks such as AEM re-render any node in alternate formats chosen by a URL selector, so suffixes like `/.1.json` or `/content.3.json` serve content the page template filtered out, with the integer controlling traversal depth. Fingerprint the CMS first, then append that stack's own selectors to ordinary page paths before concluding the site exposes no API.
+- Takeaway: Disable or restrict default render selectors and depth parameters in production — a URL suffix that swaps the serializer is an undocumented API.
+
+### 2026-10-06 — Directory listing on a publicly accessible service (Nextcloud) — n/a
+- Source: [HackerOne #2311179](https://hackerone.com/reports/2311179)
+- Type: Security misconfiguration (directory listing)
+- Summary: A web server in the program's estate was configured to display a directory's file list to anonymous visitors; the reporter flagged the listing and deliberately did not enumerate files or check tokens because they could not confirm the host was in scope.
+- Technique / pattern: Indexing is found by requesting the parent path of any known asset — `/assets/`, `/uploads/`, `/static/` — and watching for an index page instead of a `403`. The discipline worth copying is scope-first reporting: describe the configuration and stop, rather than reading what the listing exposes.
+- Takeaway: `autoindex off` / `Options -Indexes` belongs in the baseline config, and where scope is uncertain, report the misconfiguration without exploring the data behind it.
+
+### 2026-10-06 — Unauthenticated access to an InterScan VirusWall admin interface (NASA VDP) — n/a
+- Source: [Bugcrowd #702a130f](https://bugcrowd.com/disclosures/702a130f-5f34-4fd5-bfe4-beefe8813db7/unauthenticated-access-to-interscan-viruswall-admin-interface)
+- Type: Security misconfiguration / exposed administrative interface (P5, accepted business risk)
+- Summary: Administrative endpoints of a Trend Micro InterScan VirusWall appliance, among them `/admin.cgi` and `/interscan/`, answered without credentials, putting the gateway's security configuration within reach of anonymous visitors; the endpoints were subsequently secured.
+- Technique / pattern: Security appliances — mail and web gateways, antivirus relays, load balancers, printers — publish fixed vendor-documented admin paths. Fingerprint the appliance from page titles, asset paths and CGI names, then walk its documented management routes; these hosts are usually missing from the application team's inventory and sit outside the web app's auth middleware.
+- Takeaway: Appliance management planes belong on an internal network or behind authentication; keep non-application hosts in the recon inventory and rate them by the controls their console can change.
+
+### 2026-10-06 — Clickjacking on NASA's AHED portal login (NASA VDP) — n/a
+- Source: [Bugcrowd #fa505134](https://bugcrowd.com/disclosures/fa505134-406d-46d0-9e2f-77cb9ff8ee50/clickjacking-vulnerability-on-nasa-s-ahed-portal-login)
+- Type: Security misconfiguration (missing anti-framing controls, P5)
+- Summary: The AHED portal's login page could be loaded in an invisible iframe on an attacker-controlled site, enabling UI-redress attacks against the authentication form; it was remediated by adding `X-Frame-Options` protection.
+- Technique / pattern: Test framing per sensitive page rather than per host — request each login, consent, payment and delete-confirmation page and check for `X-Frame-Options` or CSP `frame-ancestors` in the *response headers*, then build a minimal iframe proof of concept. Impact rests entirely on what a tricked click accomplishes.
+- Takeaway: Send `frame-ancestors 'self'` on every authentication and state-changing page; a framable login only matters when one click yields a security-relevant outcome.
+
 ### 2026-10-05 — Security misconfiguration: weak passwords accepted (Semrush) — n/a
 - Source: [HackerOne #285482](https://hackerone.com/reports/285482)
 - Type: Security misconfiguration / weak password policy

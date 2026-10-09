@@ -12,6 +12,146 @@ Disclosed **exposed API / sensitive information disclosure** reports — leaked 
 
 ## Reports
 
+### 2026-10-09 — Sensitive user information disclosure via the userUuid parameter on an RPC endpoint (Uber) — bounty awarded (amount not public)
+- Source: [HackerOne #542340](https://hackerone.com/reports/542340)
+- Type: Exposed API / sensitive information disclosure (authorization bypass)
+- Summary: The `getConsentScreenDetails` RPC on `bonjour.uber.com/marketplace/_rpc` accepted a `userUuid` POST parameter and returned that user's personal data along with their mobile auth token, which could then be used to call Uber's mobile APIs as that rider or driver. Rated High (CVSS 8.5); submitted 2019-04-19 and disclosed 2019-09-09.
+- Technique / pattern: The researcher probed an internal-style RPC gateway where each call names a method and its parameters, and found a method that trusted a caller-supplied user identifier instead of the session. Only a low-privilege account was needed and no victim interaction; supplying another user's UUID returned their record. The leaked field was not merely PII but a usable credential, escalating disclosure into full account access.
+- Takeaway: RPC and `_rpc`-style gateways multiply attack surface because every method is a separate authorization decision and they are rarely enumerated by scanners. Always read a disclosure response for tokens, not just for PII — a leaked auth token turns a read bug into account takeover.
+
+### 2026-10-09 — Full access to the inDrive Jira panel via an exposed API token (inDrive) — bounty awarded (amount not public)
+- Source: [HackerOne #1785145](https://hackerone.com/reports/1785145)
+- Type: Exposed secret in public source code / information disclosure
+- Summary: A public GitHub repository belonging to inDrive contained a source file with a hardcoded Jira API token (plus a second token in a commented-out line). Used as HTTP Basic auth against inDrive's Atlassian instance, it returned issue data and granted access to projects, issues, comments and accounts. Rated Critical; submitted 2022-11-27 and disclosed 2023-06-28.
+- Technique / pattern: Organisation-scoped source reconnaissance: identify repositories plausibly owned by the target, then grep committed files for credential patterns, including commented-out and historical values that developers assume are inert. The researcher verified the token's live validity with a single authenticated request — the site normally redirects to an Atlassian OAuth login, so the token bypassed the access control entirely.
+- Takeaway: A secret in a public repository is only a finding once you prove it still authenticates, so always demonstrate impact with one minimal authenticated request. Commented-out credentials are as live as uncommented ones, and internal trackers hold the roadmap, infrastructure detail and PII that make them high-value targets.
+
+### 2026-10-09 — Path traversal in a Tomcat server via proxy path-normalisation mismatch (LY Corporation) — n/a
+- Source: [HackerOne #988877](https://hackerone.com/reports/988877)
+- Type: Information disclosure via path traversal (proxy/app-server normalisation mismatch)
+- Summary: A misconfiguration between the reverse proxy and the Tomcat application server let `..;/` in the URL path reach restricted paths, including an administrator page, and return their resources. Weakness recorded as Information Disclosure, no bounty; submitted 2020-09-23 and disclosed 2023-03-28. The flaw arose while the team was correcting an incorrect path in proxy settings.
+- Technique / pattern: The two tiers disagree about what a path segment means. The proxy does not recognise `..;/` as traversal, so its path-based access rules do not match and it forwards the request unchanged; Tomcat then treats `;` as the start of a path parameter and resolves the segment as a directory traversal, landing outside the intended prefix. Probing `..;/` (and relatives such as `/.;/` or encoded separators) against proxy-protected prefixes tests for this disagreement.
+- Takeaway: Access control enforced on a URL prefix at one tier is only as strong as the agreement between tiers on how that URL parses. Wherever nginx or another proxy guards a path while Tomcat serves it, test the normalisation gap — and note that a routine proxy-config edit is exactly when the gap gets introduced.
+
+### 2026-10-09 — Internal network scanning through SSRF in the NASA WorldWind API (NASA VDP) — n/a
+- Source: [Bugcrowd #6296825c](https://bugcrowd.com/disclosures/6296825c-7c02-4771-80d8-9d1496331981/internal-scan-through-ssrf-in-nasa-worldwind-api)
+- Type: Exposed API / SSRF-driven internal information disclosure
+- Summary: The WorldWind WMS `GetMap` endpoint fetched and processed the URL supplied in its `SLD` parameter without validation, letting an attacker force outbound requests to internal addresses such as `127.0.0.1` as well as external hosts. Rated P3 and marked accepted and fixed; disclosed 2025-12-17.
+- Technique / pattern: The researcher used a standards-defined parameter as the SSRF primitive: OGC WMS allows an `SLD` styling document to be referenced by URL, so a conforming request is also a server-side fetch. Information came back through error messages rather than response bodies — MapServer's errors revealed which ports were open, which internal services were reachable, how far interaction with them went, and whether given file paths existed, which is enough for internal reconnaissance and enumeration.
+- Takeaway: Standardised APIs document their own SSRF sinks; read the specification for any parameter that takes a URL or external reference. When the fetched content is not echoed back, differential error messages are the oracle — a blind SSRF still yields a port scanner and a path-existence check.
+
+### 2026-10-09 — GraphQL team object exposes private-program participant counts and details (HackerOne) — n/a
+- Source: [HackerOne #380317](https://hackerone.com/reports/380317)
+- Type: Excessive data exposure via GraphQL
+- Summary: After a release that added user ordering, the GraphQL API began returning the number of participants in **private** programs to users who had never been invited, and the reporter noted the participants' details were reachable the same way.
+- Technique / pattern: Pull the GraphQL schema (introspection, or the shipped `.graphql`/persisted-query files when introspection is off) and diff it after each deploy. Then request every field on a sensitive type — here `team` — as an unauthorized user. Aggregate fields such as counts, `totalCount`, `edges` and connection metadata are often left unguarded even when the underlying list is protected.
+- Takeaway: GraphQL authorization has to be per-field, not per-endpoint. New features that add sorting, counting or pagination to an existing type silently widen what that type will answer, so re-test old types after unrelated releases.
+
+### 2026-10-09 — OrderListInitial GraphQL operation leaks order details to Customer-only staff (Shopify) — n/a
+- Source: [HackerOne #882412](https://hackerone.com/reports/882412)
+- Type: Excessive data exposure / broken function-level authorization in GraphQL
+- Summary: The `OrderListInitial` operation on `POST /admin/internal/web/graphql/core` returned more order information than a staff account holding only the "Customer" permission was supposed to see.
+- Technique / pattern: Create a staff account with the narrowest permission set the product offers, drive the admin UI, and capture the internal GraphQL operations it issues — then replay each operation from the low-privilege session and diff the response against the admin's. Internal/undocumented admin GraphQL endpoints (note the `internal` path segment) are where permission scoping most often diverges from the public API.
+- Takeaway: Granular staff-permission models need the permission checked on every field the resolver returns, not on the operation name. Low-privilege-account replay against internal admin APIs is one of the highest-yield tests on any multi-role SaaS product.
+
+### 2026-10-09 — Bearer token exposed on a NASA subdomain leading to account takeover (NASA VDP (Bugcrowd)) — n/a (P3)
+- Source: [Bugcrowd #5c6b25ac](https://bugcrowd.com/disclosures/5c6b25ac-4bed-4a28-b5f1-2eac292378b8/bearer-token-disclosed-in-a-nasa-subdomain-leads-to-account-takeover)
+- Type: Sensitive credential disclosure → account takeover
+- Summary: Researcher `yatanim` found a bearer token exposed on a NASA subdomain and showed it could be used to take over a user account. Accepted and fixed, rated P3; disclosed 2024-11-13. The public page records the impact but not the discovery method.
+- Technique / pattern: Hunt for tokens in the places applications accidentally publish them: front-end bundles and source maps, `Authorization` values hard-coded in JavaScript, API responses that echo tokens, error pages and stack traces, archived pages, and build/config artefacts left in the webroot. Then verify the token is actually live by calling a benign authenticated endpoint such as a self/whoami route — enough to prove impact without touching third-party data.
+- Takeaway: A leaked bearer token is a credential, so treat discovery and reporting with the same care: prove validity with the minimum possible call, never pivot into another person's data, and report immediately. Defenders should keep tokens out of anything served to the browser and support fast revocation.
+
+### 2026-10-09 — Unrestricted Google Docs exposing NASA documentation (NASA VDP (Bugcrowd)) — n/a (P3)
+- Source: [Bugcrowd #c2e88322](https://bugcrowd.com/disclosures/c2e88322-057a-4ac5-99a2-06cae386f0a7/google-docs-no-restriction-vulnerability-in-nasa-documentation)
+- Type: Broken access control on third-party document hosting / information disclosure
+- Summary: Researcher `0xSaikat` reported NASA documentation hosted in Google Docs with no access restriction, making the documents readable by anyone holding or discovering the link. Accepted and fixed, rated P3; disclosed 2024-11-04.
+- Technique / pattern: Third-party document hosting is part of the attack surface: search for `docs.google.com`, `drive.google.com`, Sharepoint, Notion, Airtable and Confluence links that reference the target, both in search-engine indexes and in links embedded on the target's own pages, then check whether "anyone with the link" or "anyone on the internet" sharing is set.
+- Takeaway: Data leaves the perimeter through SaaS sharing defaults far more often than through application bugs. Inventory externally-hosted documents and enforce domain-restricted sharing — "unlisted link" is not an access control.
+
+### 2026-10-07 — Email disclosure via dummy report invitations (HackerOne) — n/a
+- Source: [HackerOne #2032716](https://hackerone.com/reports/2032716)
+- Type: Information disclosure — PII via a collaboration feature
+- Summary: The report-collaboration invite flow revealed the private email addresses of invited users: an attacker could file a throwaway report, add target users as collaborators, and read back email addresses those users had chosen to keep private.
+- Technique / pattern: The leak was in the response of a legitimate feature, not in a broken endpoint. Inviting a user put them in a pending state and the pending-invite representation carried their email, so the attacker-controlled report became a lookup oracle mapping usernames to private emails.
+- Takeaway: Features that let you reference other users by handle — invites, mentions, sharing, transfers, team add — are PII oracles whenever their response echoes back more of the referenced user's record than the UI displays. Read the raw JSON of such responses rather than the rendered page.
+
+### 2026-10-07 — Exposed .git/config file (BlockDev Sp. Z o.o) — n/a
+- Source: [HackerOne #686805](https://hackerone.com/reports/686805)
+- Type: Information disclosure — exposed version-control metadata
+- Summary: A WordPress theme directory on a production blog served its version-control metadata over HTTP: `https://blog.makerdao.com/wp-content/themes/makerDAO/.git/config` was directly retrievable, exposing repository details.
+- Technique / pattern: The deploy copied the working tree, `.git` directory included, and the web server had no rule blocking dot-directories. The check is a direct request for `.git/config` under each application root — and under *nested* roots like a theme or plugin folder, which is where this one was, since scanners often only test the site root.
+- Takeaway: `.git/config` is the cheap confirmation; the real risk is that `.git/HEAD`, the index and the object store can allow reconstruction of the source, including secrets in history. Test dot-paths (`.git`, `.svn`, `.env`, `.DS_Store`) at every directory level of a CMS install, not just at `/`.
+
+### 2026-10-07 — Source code disclosure of SQL database (NASA VDP) — n/a (P4)
+- Source: [Bugcrowd #0f426f40](https://bugcrowd.com/disclosures/0f426f40-1b22-404a-87c6-516a9f8b31e4/source-code-disclosure-of-sql-database)
+- Type: Information disclosure — exposed source / database code
+- Summary: Source code relating to a SQL database was exposed on a NASA web asset. The finding was accepted and remediated. (The public disclosure records the class and resolution but not the specific path.)
+- Technique / pattern: Source disclosure on a web asset typically comes from one of a small set of causes: a file extension the server does not map to a handler, an editor or backup suffix (`.php~`, `.bak`, `.old`, `.inc`, `.txt` appended), or a path served as a static asset. Enumerating those suffixes against known script paths is the usual discovery route.
+- Takeaway: Exposed database-layer source is valuable twice over: it may contain connection credentials directly, and it reveals the query construction and schema, which turns later injection testing from blind guessing into targeted work. Always grep recovered source for credentials and for unparameterised query building.
+
+### 2026-10-07 — Private information exposed through GraphQL search aggregates (HackerOne) — n/a
+- Source: [HackerOne #1838329](https://hackerone.com/reports/1838329)
+- Type: Information disclosure via GraphQL aggregation arguments
+- Summary: The `search` and `opportunities_search` root fields accepted an `aggs` argument whose returned buckets were not filtered by authorization, so a query such as `opportunities_search(query:{}, aggs:{results:{terms:{field:"handle"}}})` returned bucket keys for private program handles even while `me` resolved to null.
+- Technique / pattern: Aggregations, facets, counts and sort orders are a read channel distinct from the records themselves — once a search or GraphQL API exposes a `terms`, `aggs` or `facet` parameter, enumerate it against every field that could hold private values, because the per-record authorization filter usually runs on hits and not on the aggregation pipeline.
+- Takeaway: Apply the same authorization scope to aggregation queries as to record reads, and restrict which fields may be aggregated at all.
+
+### 2026-10-07 — H1514: access to non-public store data by pivoting with GraphQL queries (Shopify) — $1,500
+- Source: [HackerOne #423388](https://hackerone.com/reports/423388)
+- Type: Broken function-level authorization in a GraphQL admin API
+- Summary: A collaborator account holding only Apps permission could use the GraphiQL app to read data from permission areas it did not hold — store locations and addresses via `locations`, inventory via `inventoryLevel(inventoryItemId)`, marketing spend via `marketingActivities`, and publication records including an app's `apiKey` — with the API returning results rather than access-denied.
+- Technique / pattern: Take the thinnest possible permission set, then walk the schema field by field against the vendor's own permission documentation and record which root queries answer anyway; a GraphQL explorer shipped as a first-party app is the ideal client, and a silent result instead of an authorization error is the signal that a resolver has no permission check.
+- Takeaway: Authorization in GraphQL belongs in every resolver, mapped to the documented permission scopes — and a low-privilege role is the right starting point for a schema audit.
+
+### 2026-10-07 — NASA FTP credentials exposed in a publicly hosted CORAL mission PDF (NASA VDP) — n/a (P3, letter of appreciation)
+- Source: [Bugcrowd #d1847e21](https://bugcrowd.com/disclosures/d1847e21-df10-4001-99ef-9ba9a3459141/public-exposure-of-nasa-ftp-credentials-in-coral-document-pdf-hosted-on-google-docs)
+- Type: Sensitive information disclosure — plaintext credentials in public documentation
+- Summary: A publicly reachable PDF for NASA's CORAL mission, hosted on Google Docs, contained FTP URLs with embedded user and password pairs in plaintext referencing the `avng.jpl.nasa.gov` domain; NASA removed public access, revoked the credentials and audited for unauthorized use.
+- Technique / pattern: Credential hunting is not only a code-and-bucket exercise — passive OSINT across document hosts (Google Docs and Drive, slide decks, conference proceedings, research portals) for a target's mission and project names regularly surfaces `ftp://user:pass@host` style URLs in operational guides written for internal readers; report the finding without authenticating to the service.
+- Takeaway: Treat documentation as a secret store nobody rotates, and keep credentials out of URLs, where they survive in cached and shared copies long after the document is withdrawn.
+
+### 2026-10-07 — Sensitive PII reachable through an unprotected route on nightsky.jpl.nasa.gov (NASA VDP) — n/a (P3)
+- Source: [Bugcrowd #f5a1b2b0](https://bugcrowd.com/disclosures/f5a1b2b0-5aaa-4afd-8f83-abcf4bf4bd2c/pii-disclosure-exposure-of-phone-numbers)
+- Type: Broken access control leading to PII disclosure
+- Summary: Fuzzing hidden directories on a NASA subdomain, combined with search-engine reconnaissance, surfaced a route that served documents containing phone numbers, home addresses and handwritten signatures instead of returning an unauthorized response.
+- Technique / pattern: Pair content discovery (directory and file fuzzing with a wordlist tuned to the stack) with search-engine and archive reconnaissance for the same host — indexed filenames reveal which naming conventions to extend, and an unauthenticated `200` on a path the interface never links is the finding; stop at proof rather than collecting the PII in bulk.
+- Takeaway: Authorization must be enforced on the document route itself — the absence of a link is not an access control, because unlinked paths are discoverable and indexable.
+
+### 2026-10-07 — Confidential third-party document publicly retrievable on a NASA domain (NASA VDP) — n/a (P5, informational)
+- Source: [Bugcrowd #c0e34a88](https://bugcrowd.com/disclosures/c0e34a88-8e9c-4c02-8342-221c08d7d67c/public-access-to-confidential-document-on-nasa-website)
+- Type: Information disclosure — a confidentially marked file served without authentication
+- Summary: A file marked "Confidential" by a third party, covering proprietary carbon-dioxide-removal technology, was retrievable from NASA's domain with no authentication; the program noted it may have originated in public conference distribution but updated the site to remove it.
+- Technique / pattern: Treat a document's own markings as the evidence — crawl a target's file paths for `pdf`, `pptx` and `xlsx` assets, extract their text, and grep for "confidential", "proprietary", "internal use only" and distribution statements, which turns a pile of public files into a ranked list; impact rests on whether the content was ever meant to be public, which a program may dispute.
+- Takeaway: Hosting a third party's confidential material is still a disclosure issue even when the host does not own it — review uploaded assets for classification markings before publishing them.
+
+### 2026-10-06 — Internal meeting chat logs published on a public NASA site (NASA VDP) — n/a
+- Source: [Bugcrowd #9f1283c7](https://bugcrowd.com/disclosures/9f1283c7-4d47-44b7-8e81-b6e96515ab52/sensitive-information-disclosure-nasa-meeting-internal-chat-logs-exposed)
+- Type: Sensitive information disclosure (P5, accepted business risk)
+- Summary: A file holding the internal chat log of an October 2020 Mars Exploration Program Analysis Group meeting — discussion between officials, presenters and external participants — was reachable without authentication on a public NASA host, and was removed after the report.
+- Technique / pattern: Found passively with no exploitation: enumerate the document-bearing paths of a program's public sites (meeting, agenda, minutes, archive and presentation directories) and look for artifacts generated as a by-product of the event rather than published deliberately — chat transcripts, attendee lists, raw question-and-answer exports.
+- Takeaway: Event platforms emit side artifacts nobody reviews for publication, so the by-products of a workflow need the same review as its intended output.
+
+### 2026-10-06 — Public exposure of NASA personnel contact information on a JPL server (NASA VDP) — n/a
+- Source: [Bugcrowd #0329715c](https://bugcrowd.com/disclosures/0329715c-e5f3-4e6f-a78e-63ba2e8df286/public-exposure-of-nasa-personnel-contact-information-on-jpl-server)
+- Type: PII / information disclosure (P5, accepted business risk)
+- Summary: An unauthenticated file on a JPL server listed staff full names, email addresses and phone numbers; NASA assessed the material as intended for public release, so it closed as an accepted business risk.
+- Technique / pattern: Passive reconnaissance of a host's static files for roster-shaped data — directory, contacts, participants, distribution list. The reporting lesson is that aggregated contact data is rated by whether it was *meant* to be public, so check the organisation's own public directory first and argue impact from the aggregation and its social-engineering value rather than from the presence of a name.
+- Takeaway: Published-by-design data is not a finding; a credible PII report needs a field that is not already public, or a volume and structure that makes targeting materially easier.
+
+### 2026-10-06 — Directory listing exposes space-weather data files on cdaw.gsfc.nasa.gov (NASA VDP) — n/a
+- Source: [Bugcrowd #13ee821c](https://bugcrowd.com/disclosures/13ee821c-1083-4acd-b4fc-057f03120300/information-disclosure-https-cdaw-gsfc-nasa-gov)
+- Type: Information disclosure / directory listing (P5, accepted business risk)
+- Summary: A directory index on the CDAW host listed files describing space-weather events; NASA's response confirmed the listing is the intended delivery mechanism for researchers and the public, and the report closed informational.
+- Technique / pattern: A calibration case for directory-index findings — before reporting, read what the index actually serves and whether the host exists to distribute data. Scientific, mirror and contributor hosts publish indexes on purpose, so the finding only exists when the listed files were not meant to be public.
+- Takeaway: Rate a directory listing by the sensitivity of what it indexes rather than by the presence of the index; sampling one file answers the question before the report is written.
+
+### 2026-10-06 — Publicly accessible NASA internal shipping document (NASA VDP) — n/a
+- Source: [Bugcrowd #c51e2180](https://bugcrowd.com/disclosures/c51e2180-2a9e-46a7-9ded-ecf8930cec36/publicly-accessible-nasa-internal-shipping-document-exposing-sensitive-information)
+- Type: Sensitive information disclosure (P3)
+- Summary: An internal shipping document describing NASA logistics was reachable from the public internet without authentication, disclosing operational detail about internal shipping processes.
+- Technique / pattern: Logistics and procurement artifacts — shipping manifests, packing lists, bills of lading, asset inventories — carry names, internal addresses, site codes and hardware descriptions, and are typically dropped into a web root for a one-off transfer and never removed. Search a host by document convention and filetype for these operational file classes, not only for credentials.
+- Takeaway: Operational paperwork is sensitive data, and one-off file transfers need an expiry and a review step, because a web root is permanent storage.
+
 ### 2026-10-05 — 1.7M password hashes and no-auth-required access tokens exposed (Wemo) — n/a
 - Source: [Bugcrowd #01e09745](https://bugcrowd.com/disclosures/01e09745-59b7-4aea-a7ce-8a0b39837e6b/1-7m-password-hashes-no-auth-required-access-tokens)
 - Type: Exposed API / mass sensitive data disclosure through unauthenticated endpoints

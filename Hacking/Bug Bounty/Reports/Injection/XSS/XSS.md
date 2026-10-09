@@ -12,6 +12,83 @@ Disclosed **Cross-Site Scripting** reports — reflected, stored, and DOM-based.
 
 ## Reports
 
+### 2026-10-09 — Stored XSS in the partner search feature on www.atlassian.com (Atlassian) — $300
+- Source: [Bugcrowd #b73ec631](https://bugcrowd.com/disclosures/b73ec631-e74c-4824-bc8d-dc41b4a6382a/cross-site-scripting-in-atlassian)
+- Type: Cross-Site Scripting (stored, non-admin to anyone)
+- Summary: The "Find partners" search field on `www.atlassian.com` rendered submitted markup without encoding it, so an `img` tag with an `onerror` handler executed in the context of the marketing domain. Rated P3; submitted 2017-11-15 and disclosed 2023-07-21.
+- Technique / pattern: The researcher navigated the low-traffic marketing surface rather than the product itself: from an in-scope page's "Expand & learn" footer group to "Partners", then "Find partners", and submitted an `img`/`onerror` payload calling `prompt(document.cookie)` in the search box. Because the payload persisted in the search result rendering, a crafted link reproduced it for any visitor. The reporter's remediation advice was to reject input failing validation rather than sanitize it, and to HTML-encode on output.
+- Takeaway: Secondary marketing and directory pages on a primary domain share its cookie scope but rarely share its security review. Walk the footer and "learn more" navigation that automated scanners skip.
+
+### 2026-10-09 — Reflected XSS in the type parameter on nlsp.nasa.gov (NASA VDP) — n/a
+- Source: [Bugcrowd #73b472b1](https://bugcrowd.com/disclosures/73b472b1-f07a-4b20-bb70-ca3982064ae4/reflected-xss-in-type-parameter-on-nlsp-nasa-gov)
+- Type: Cross-Site Scripting (reflected)
+- Summary: The `type` query parameter on `nlsp.nasa.gov` was reflected into the response without encoding, letting a crafted URL run arbitrary JavaScript in a visitor's browser. Rated P3; disclosed 2025-10-30.
+- Technique / pattern: A single-parameter reflection test against a low-profile subdomain of a very large VDP scope. The disclosure publishes only the vulnerable parameter name and the bug class, not the payload; the transferable method is enumerating subdomains across a broad wildcard scope and fuzzing each listing or filter parameter such as `type`, `view` or `sort` for unencoded reflection.
+- Takeaway: Wide government and research VDP scopes contain many small, old applications that never got a templating-layer audit. Breadth of subdomain coverage beats payload sophistication on this kind of target.
+
+### 2026-10-09 — Blind stored XSS in TeamConnect global search via a federal-actions form (Indeed (Bugcrowd)) — $400 (P2)
+- Source: [Bugcrowd #dea3c9c5](https://bugcrowd.com/disclosures/dea3c9c5-ae3c-4137-acae-1d1acc91b995/blind-stored-xss-in-https-indeed-teamconnect-com)
+- Type: Stored XSS (blind / second-order)
+- Summary: A script payload submitted through a TeamConnect form used to record information about federal actions was stored server-side and rendered unescaped on the global search page. The payload was written to fire when an administrator later viewed the affected record, and could harvest page contents, `localStorage` and cookies. Resolved, disclosed 2024-05-09.
+- Technique / pattern: Blind-XSS workflow: seed every free-text field of an internal-facing workflow with a callback payload (an external collector that reports `document.domain`, `document.cookie` and DOM/`localStorage` snapshots), then wait for a privileged user or an aggregation view — here global search — to render it. The injection point and the execution point are different pages, so a reflected-only test on the submit form finds nothing.
+- Takeaway: Enterprise/legal case-management and intake forms are high-value blind-XSS targets because staff read them in an admin context. Always instrument your payload to tell you *where* it fired, and sanitize on output in every aggregation view, not just the detail page.
+
+### 2026-10-09 — CSRF chained into XSS on gmao.gsfc.nasa.gov (NASA VDP (Bugcrowd)) — n/a (P3)
+- Source: [Bugcrowd #42f5457d](https://bugcrowd.com/disclosures/42f5457d-887d-4117-9cc5-bda3b7a3ec51/gmao-gsfc-nasa-gov-csrf-xss)
+- Type: Cross-Site Scripting chained with CSRF
+- Summary: A cross-site request forgery weakness on a NASA Goddard subdomain was chained to achieve cross-site scripting in a nasa.gov origin. Accepted and fixed; disclosed 2025-04-11. The public page gives the chain and priority (P3) but no endpoint-level detail.
+- Technique / pattern: When a state-changing request lacks CSRF protection and one of its stored parameters is later rendered unescaped, a single attacker-hosted page can write the payload *and* make the victim store it — turning a self-XSS or an "authenticated-only" injection into a one-click attack. Pair every missing-CSRF-token finding with a hunt for an injection sink among that request's parameters.
+- Takeaway: Severity comes from chains. Report the CSRF and the injection together: individually each may be triaged low, combined they are a drive-by script execution in the target's own origin.
+
+### 2026-10-07 — Stored XSS in the ticketing system (TikTok) — n/a
+- Source: [HackerOne #1694037](https://hackerone.com/reports/1694037)
+- Type: Stored XSS
+- Summary: A TikTok Seller ticketing endpoint stored attacker-supplied input without encoding it, so injected JavaScript executed in the browser of whoever later viewed the ticket.
+- Technique / pattern: Support/ticketing systems are a high-value stored-XSS target because the payload is rendered in an internal or privileged viewer rather than the submitter's own session. The researcher placed script into a ticket field that was echoed back unencoded on the ticket view page.
+- Takeaway: Follow the data to where it is *read*, not where it is written. Any field a user submits that staff or another tenant later views — tickets, abuse reports, feedback, order notes — is a stored-XSS surface with cross-privilege impact.
+
+### 2026-10-07 — CVE-2025-4388: reflected XSS in marketplace-app-manager-web (NASA VDP (MSFC Directives Master List)) — n/a (P3)
+- Source: [Bugcrowd #7e4f036b](https://bugcrowd.com/disclosures/7e4f036b-c115-4ca3-9090-96947eaaf61f/cve-2025-4388-reflected-xss-in-marketplace-app-manager-web)
+- Type: Reflected XSS (CVE in third-party platform)
+- Summary: Liferay Portal's marketplace app manager module reflected the `iconURL` parameter of `icon.jsp` into the page without encoding, giving an unauthenticated attacker script execution against `dml.msfc.nasa.gov`.
+- Technique / pattern: The finding came from identifying the underlying product and version behind the site, then applying a known CVE's parameter and path (`icon.jsp` with `iconURL`) rather than fuzzing the application blind. Confirming the vulnerable module was reachable on the target was the whole exercise.
+- Takeaway: Fingerprint the platform first. A single known-CVE parameter on a widely deployed portal product (Liferay, SharePoint, Confluence) is often faster than black-box fuzzing, and a URL-valued parameter rendered into an attribute is a recurring XSS sink in such modules.
+
+### 2026-10-07 — Reflected XSS via unsanitized User-Agent on a NASA subdomain (NASA VDP) — n/a (P5, informational)
+- Source: [Bugcrowd #da0e3345](https://bugcrowd.com/disclosures/da0e3345-4a66-428f-a4d4-55f8dbf9c589/reflected-xss-exploit-chain-with-session-cookie-theft-on-nasa-subdomain)
+- Type: Reflected XSS through a request header
+- Summary: A NASA subdomain reflected the `User-Agent` request header into its response without sanitization; the reporter demonstrated a proxy-delivered payload executing JavaScript in the trusted NASA origin, with session-cookie theft and domain-backed phishing as the stated impact. The program accepted it as a business risk at P5.
+- Technique / pattern: Header-borne XSS needs a delivery vehicle, because a victim cannot be made to send a chosen `User-Agent` by clicking a link — the chain here routed the victim through a proxy that injected the header, which is what separates a demonstrable exploit from a self-reported reflection.
+- Takeaway: Encode every header value echoed into HTML, and when reporting header-based reflection carry it through to a realistic delivery path or expect an informational rating.
+
+### 2026-10-07 — JavaScript injection into a Liferay login-redirect global on globe.gov (NASA VDP) — n/a (P5, informational)
+- Source: [Bugcrowd #a8836d6b](https://bugcrowd.com/disclosures/a8836d6b-6f26-462d-9417-151b148bcb0c/javascript-injection-via-redirect-parameter-on-globe-gov-leading-to-potential-dom-xss)
+- Type: DOM XSS primitive / unsanitized assignment into page-global state
+- Summary: The value of the `_com_liferay_login_web_portlet_LoginPortlet_redirect` parameter was assigned straight into the page-global `Liferay.SPA.loginRedirect` variable with no sanitization; nothing evaluated it on that page, so the program rated it informational self-XSS, but the attacker-controlled string persisted in global scope where any later `eval()` or router call would execute it.
+- Technique / pattern: Trace reflected parameters into JavaScript *state*, not only into HTML — grep the rendered script blocks for your marker and global assignments, then hunt the consumer (`eval`, `Function`, `location =`, a single-page-app router's redirect handler) that evaluates that global later in the page lifecycle.
+- Takeaway: A sink-less injection is still worth fixing, but its rating depends on reaching an executing sink; sanitize at the point of assignment rather than relying on no current caller evaluating the value.
+
+### 2026-10-07 — XSS via client-side template injection in a news search parameter (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #1736317](https://hackerone.com/reports/1736317)
+- Type: Client-side template injection to XSS, with a method deny-list bypass
+- Summary: A DoD news and speeches page embedded the `Search` parameter into a client-side template, so `{{7*7}}` rendered as `49` and expressions inside double curly braces executed as JavaScript in the page; a deny-list blocked obvious calls such as `alert(1)`.
+- Technique / pattern: Confirm template evaluation with an arithmetic probe inside the engine's delimiters before attempting script, then route around method deny-lists by resolving everything through bracketed `window` lookups and decoding at runtime — the disclosed payload was `{{window['eval'](window['atob'](window['decodeURIComponent']('BASE_64_ENCODED_PAYLOAD')))}}`, which never names a blocked identifier in the request.
+- Takeaway: Deny-listing function names does not contain template injection, because the language can reconstruct any name at runtime; keep user input out of template expressions entirely and interpolate it as data.
+
+### 2026-10-06 — Reflected XSS leading to account takeover on a Liferay control panel (NASA VDP) — n/a
+- Source: [Bugcrowd #c918cf78](https://bugcrowd.com/disclosures/c918cf78-e294-4c9e-8ff0-8e220279ad4e/reflected-xss-can-lead-to-account-takeover)
+- Type: Reflected XSS (P3)
+- Summary: On `globe.gov`'s control-panel user administration page the Liferay portlet parameter `_com_liferay_users_admin_web_portlet_UsersAdminPortlet_keywords` was reflected into the HTML without encoding, so a crafted link executed script in a logged-in administrator's session and exfiltrated the session cookie to an external host.
+- Technique / pattern: Portal and CMS products expose long framework-generated parameter names (`_com_liferay_...`, `p_p_id`, `_jsf`) that reflect into deeply nested markup, so the payload first had to close several open tags before injecting a new element carrying an event handler. Probe a portal's admin and control-panel surface, not only its public pages, and prove impact with an image-beacon cookie read rather than `alert()`.
+- Takeaway: Reflected XSS on an authenticated admin surface is session theft — rate it by whose session it runs in; encode on output per HTML context and keep session cookies `HttpOnly`.
+
+### 2026-10-06 — Reflected XSS on sservi.nasa.gov closed as self-XSS (NASA VDP) — n/a
+- Source: [Bugcrowd #78524642](https://bugcrowd.com/disclosures/78524642-d39f-47dc-a35e-aeacd8a4830a/reflected-xss-vulnerability-in-nasa-sservi-nasa-gov)
+- Type: Reflected XSS (P5 — self-XSS, accepted business risk)
+- Summary: User input on `sservi.nasa.gov` was reflected into the response without sanitisation or encoding and fired a proof-of-concept `alert()`, but the only delivery path required the victim to supply the payload themselves, so it was closed as self-XSS.
+- Technique / pattern: The instructive half is triage. Once reflection is proved, establish delivery: is the sink reachable through a `GET` parameter in a shareable URL, or only through a field the victim fills in? A payload with no attacker-controlled delivery vector is self-XSS however cleanly it executes.
+- Takeaway: Carry the finding past `alert()` to a delivery mechanism and a stolen asset; without a cross-user vector the reflection is informational.
+
 ### 2026-10-05 — Stored XSS on Portfolio (Atlassian / Jira Cloud) — n/a
 - Source: [Bugcrowd #6408df19](https://bugcrowd.com/disclosures/6408df19-6148-420e-8ce6-91aca9e14b7b/stored-xss-on-portfolio)
 - Type: Stored XSS in a plan-name field
