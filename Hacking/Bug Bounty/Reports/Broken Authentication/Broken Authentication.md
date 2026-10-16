@@ -12,6 +12,90 @@ Disclosed **broken authentication & session management** reports — account tak
 
 ## Reports
 
+### 2026-10-16 — Unicode dot normalization mismatch allows TLS wildcard-depth authentication bypass in Node.js (Node.js) — n/a
+- Source: [HackerOne #3688064](https://hackerone.com/reports/3688064)
+- Type: Broken authentication — TLS hostname verification bypass (CVE-2026-48618)
+- Summary: Node.js handled Unicode dot separators inconsistently between the resolver and the certificate verifier. Because the two components normalized hostnames differently, a name could be treated as having fewer labels during wildcard matching than during resolution, letting a wildcard certificate validate a host it should not cover and bypassing the intended TLS trust boundary. All supported release lines (Node.js 22, 24 and 26) were affected.
+- Technique / pattern: The bug class is a parser-differential: two code paths that must agree on "what is this hostname" disagree because only one applies IDNA/Unicode normalization. Unicode characters that normalize to `.` (such as U+3002 ideographic full stop) change the label count after normalization, so `*.example.com` can be made to match a deeper name. Hunting it means diffing how each layer canonicalizes the same identity string before comparing it.
+- Takeaway: Canonicalize an identity exactly once, as early as possible, and have every later check consume that single normalized value. Wildcard matching in particular must count labels on the post-IDNA form. The same differential pattern applies to host allowlists, cookie domain scoping and SNI-based routing.
+
+### 2026-10-16 — `ssh_config_matches()` is dead code, so libcurl reuses SSH sessions authenticated with a different key (curl) — n/a
+- Source: [HackerOne #3826843](https://hackerone.com/reports/3826843)
+- Type: Broken authentication — connection-reuse guard bypass (relates to CVE-2022-27782 / CVE-2023-27538)
+- Summary: libcurl's SSH connection-reuse guard `ssh_config_matches()`, added for CVE-2022-27782 and reaffirmed by CVE-2023-27538, had been inert in every release since 7.83.1. It compares `sshc->rsa` / `sshc->rsa_pub` between the new transfer and the pooled connection, but both pointers are `NULL` when the comparison runs, so `Curl_safecmp(NULL, NULL)` always returned TRUE. A transfer configured with an unauthorized SSH key therefore reused a pooled session authenticated with a different, authorized key and was served the data. Triaged as informative.
+- Technique / pattern: Lifetime analysis of a security check rather than payload testing. On the needle side the `sshc` struct is zero-allocated in `ssh_setup_connection()` before `ConnectionExists()` runs, so the key paths are still NULL at check time; on the pooled side the same fields are freed unconditionally right after `libssh2_userauth_publickey_fromfile_ex()`, before the return code is examined. The regression test for the original CVE still passed because the guard returns the "match" verdict either way.
+- Takeaway: Verify that a comparison-based security check actually has both values populated at the moment it executes — a guard comparing two NULLs silently fails open. Connection, session and TLS pools must key on the full credential identity, and tests should assert that a *mismatch* is rejected, not only that a match is accepted.
+
+### 2026-10-16 — Keycloak realm with default credentials gives unauthenticated access to a NASA subdomain, chained to PII exposure and reflected XSS (NASA VDP) — n/a
+- Source: [Bugcrowd #26e60aee](https://bugcrowd.com/disclosures/26e60aee-7c0d-4205-a531-9ef8742024ec/authentication-bypass-exposure-of-pii-reflected-xss)
+- Type: Broken authentication — default credentials, chained to information disclosure and XSS (P1)
+- Summary: On a subdomain of `appdat.jsc.nasa.gov` the Keycloak `ordem-production` realm accepted default credentials, granting full application access without authorization. Post-login, an About page exposed internal staff PII (full names, mail codes, phone numbers and e-mail addresses), and the `jobno` parameter was unsanitized, allowing reflected JavaScript execution and session-cookie theft.
+- Technique / pattern: Identity-provider realms deployed from templates often keep their shipped administrative or demo accounts, so testing default credential pairs against the IdP's own login — not just the application's — is worth doing early. The researcher then did the work that sets severity: enumerated what the authenticated session actually reaches, and kept parameter-fuzzing inside the session, surfacing a post-auth reflected XSS that compounds the initial bypass.
+- Takeaway: Treat the identity provider as its own in-scope asset and check its realms for default and demo accounts. Access gained is a starting point, not the finding — enumerate reachable PII and continue testing authenticated parameters, because the chained impact (bypass + PII + session hijack) is what makes the report critical.
+
+### 2026-10-16 — Session not invalidated after logout on NASA LP DAAC Earthdata, with temporary cloud credential exposure (NASA VDP) — n/a
+- Source: [Bugcrowd #2424c906](https://bugcrowd.com/disclosures/2424c906-2829-4bd8-8422-8f9063fb85a9/session-hijacking-aws-credential-exposure)
+- Type: Broken session management — improper session termination plus temporary credential exposure (P3)
+- Summary: NASA's LP DAAC Earthdata platform handled sessions improperly: a session remained usable after the user logged out, so access could be maintained post-logout, and the flaw could further be used to obtain temporary cloud credentials issued to that session.
+- Technique / pattern: The standard logout test is also the most frequently skipped one — capture a session token, log out through the UI, then replay the token against an authenticated API route. A 200 means the server only cleared the client-side cookie. The escalation step is to replay against the endpoints that *mint* downstream credentials (S3 temporary credentials, presigned URLs, data-access tokens), since those extend the stolen session's lifetime beyond the session itself.
+- Takeaway: Logout must destroy server-side session state, not just expire a cookie; the same applies to password change, role change and session revocation. Always test whether a stale session can still reach credential-vending endpoints, because a short-lived session that can issue cloud credentials is effectively long-lived.
+
+### 2026-10-15 — Multiple CSRF vulnerabilities in the GLOBE social networking portlet (NASA VDP) — n/a (P3)
+- Source: [Bugcrowd #62063e9b](https://bugcrowd.com/disclosures/62063e9b-cd95-4772-a3e8-890da44c1d4a/multiple-csrf-vulnerabilities-in-globe-social-networking-portlet)
+- Type: CSRF on state-changing actions, plus weak anti-CSRF token entropy
+- Summary: Several state-changing actions in the social-networking portlet on `globe.gov` could be triggered by luring an authenticated user, allowing team deactivation and bulk emails sent to team members from the trusted domain. Supplementary analysis with the NIST SP 800-22 randomness test suite indicated the token generator lacked cryptographically secure entropy.
+- Technique / pattern: Inventory every state-changing request and try dropping or replaying its anti-CSRF token; separately, collect a large sample of tokens and test them statistically, since a predictable token defeats the control even where it is present.
+- Takeaway: CSRF defence has two halves — the token must be required on every mutating route and it must be unpredictable; a token drawn from a weak PRNG is no token at all.
+
+### 2026-10-15 — Timing-based email enumeration in the forgot-password endpoint on my.nasa.gov (NASA VDP) — n/a (P5, informational)
+- Source: [Bugcrowd #5889c7cb](https://bugcrowd.com/disclosures/5889c7cb-88eb-4641-aa16-80ca787d4e1a/timing-based-email-enumeration-in-forgot-password-endpoint-my-nasa-gov)
+- Type: User enumeration through a response-time side channel
+- Summary: The password-reset flow returned identical HTTP responses for registered and unregistered addresses, but response times differed measurably between the two, letting an attacker infer whether an account existed. The program accepted it as a business risk, noting no session hijack or account takeover followed.
+- Technique / pattern: When a login or reset endpoint is uniform in status code, body and headers, measure latency across many repeated requests per address and compare distributions rather than single samples — the extra work done only for real accounts (password hashing, mail queueing) is the signal.
+- Takeaway: Identical responses alone do not stop enumeration; the work performed must also be constant-time, or the reset path should be queued asynchronously for every input.
+
+### 2026-10-15 — Unauthenticated self-registration grants full access to an internal supplier procurement portal and vendor data (Essity) — n/a
+- Source: [HackerOne #4071064](https://hackerone.com/reports/4071064)
+- Type: Missing authentication for a critical function (open self-registration)
+- Summary: On an open-scope program the reporter used ASN enumeration to find company-owned subdomains and, reading a JavaScript bundle, located a hidden self-registration endpoint that accepted account creation with no invitation, approval code or affiliation check. The account was confirmed by email and, on login, returned live vendor numbers and names from the production procurement system rather than sandboxed data.
+- Technique / pattern: Expand scope by ASN and IP-range enumeration, then read the front-end JavaScript of each internal-looking portal for registration and provisioning routes the UI never links; register, then check whether the resulting session is scoped or sees production records.
+- Takeaway: A registration endpoint that is merely unlinked is still public — internal portals need an invitation or SSO gate, and new accounts should default to no data access.
+
+### 2026-10-15 — CVE-2026-86411: FTP connection reuse inherits client-certificate (curl) — n/a
+- Source: [HackerOne #3973190](https://hackerone.com/reports/3973190)
+- Type: Authentication bypass via connection-pool reuse
+- Summary: A plain `ftp://` transfer configured without SSL could reuse a pooled FTP control connection that an earlier request had upgraded with `STARTTLS` and authenticated with a client certificate. The second transfer skipped both the TLS handshake and the FTP login, so the server kept treating it as the first request's certificate identity — reported as a regression in curl.
+- Technique / pattern: When auditing a client library or proxy, issue requests with different security and identity settings on the same handle or pool and work out which properties form the connection-reuse key; anything omitted from that key lets a later request inherit the earlier authenticated state.
+- Takeaway: Connection reuse must key on every credential and transport-security option, or a later, weaker request silently inherits an earlier identity.
+
+### 2026-10-12 — Public live Slack invitation link grants unauthorized access to a NASA AMMOS Slack workspace (NASA VDP) — n/a
+- Source: [Bugcrowd #bd8f2801](https://bugcrowd.com/disclosures/bd8f2801-752f-45d7-86cf-090471b3bd29/access-to-nasa-slack-channel-vai-live-slack-invitation-link-https-join-slack-com-t-nasa-ammos-shared_invite-zt-1mlgmk5c2-mgqvsykzvruwrxy87fnqpw)
+- Type: Broken authentication / access control — exposed invitation link
+- Summary: A live, reusable Slack workspace invite link (`join.slack.com/t/nasa-ammos/...`) was publicly exposed, letting anyone join a NASA AMMOS Slack workspace without authorization.
+- Technique / pattern: A self-service Slack invite URL was discoverable in public content; following it granted workspace membership with no vetting.
+- Takeaway: Treat self-service invite links as credentials — they bypass your identity controls; scope them, expire them, and never expose them publicly.
+
+### 2026-10-12 — Authentication bypass on NASA CSBF platform (NASA VDP) — n/a
+- Source: [Bugcrowd #23b25b7b](https://bugcrowd.com/disclosures/23b25b7b-c81b-4bf9-8466-b1d798b8f517/authentication-bypass-on-nasa-csbf-platform)
+- Type: Authentication bypass
+- Summary: The NASA CSBF platform could be reached without completing valid authentication, exposing functionality intended to sit behind a login.
+- Technique / pattern: An access-control gap let a request reach authenticated areas without finishing the intended login flow.
+- Takeaway: Enforce authentication server-side on every protected route; a client-side or missing gate leaves `logged-in` pages reachable directly.
+
+### 2026-10-12 — Unauthenticated path-normalization bypass plus JWT forgery reaches protected key-generation endpoint (NASA VDP) — n/a
+- Source: [Bugcrowd #2e6248ee](https://bugcrowd.com/disclosures/2e6248ee-344e-4009-9bdc-b50a11541492/scan-for-good-unauthenticated-path-normalization-bypass-and-jwt-forgery-on-73so-key-generate-disclose-plaintext-litellm_master_key-and-6-34m-nasa-itar-llm-spend-logs)
+- Type: Authentication bypass — path normalization plus JWT forgery
+- Summary: Encoding `/sso` as `/%73so` bypassed the access rule guarding a NASA LiteLLM key-generation endpoint, and combined with JWT forgery exposed the plaintext master key and millions of ITAR LLM spend-log entries.
+- Technique / pattern: An edge/proxy rule matched the literal path while the backend decoded the percent-encoded character, so the encoded path slipped past the auth check; forged tokens then unlocked the protected route.
+- Takeaway: Normalize and decode paths once, before authorization decisions — front-end allow/deny rules that run on the raw path are bypassed when the backend decodes differently.
+
+### 2026-10-12 — Full admin takeover of R3 JFrog Artifactory via default empty join key / forged service JWT (R3) — n/a
+- Source: [HackerOne #3994056](https://hackerone.com/reports/3994056)
+- Type: Authentication bypass — forged service token via default signing key (CVE-2026-82329)
+- Summary: R3's JFrog Artifactory ran with the default empty `join key`, so an unauthenticated attacker could forge an HMAC-signed service JWT, register as a trusted node and obtain a full admin token over the entire instance.
+- Technique / pattern: With the join key left at its install default, the HMAC signing secret is predictable, letting the attacker mint a valid service-registration token and escalate to an admin access token — a supply-chain-grade compromise of an artifact repository.
+- Takeaway: Change every default signing/join secret on install; a predictable server-side key turns signed tokens into attacker-forgeable credentials.
+
 ### 2026-10-09 — Two-factor authentication bypass in Android apps and web (TikTok) — bounty awarded (amount not public)
 - Source: [HackerOne #1747978](https://hackerone.com/reports/1747978)
 - Type: Broken authentication (2FA/2SV bypass)

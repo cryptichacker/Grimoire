@@ -430,3 +430,6 @@ A fast A–Z lookup of the acronyms above (full forms only).
 ---
 
 > **Related:** pairs with [[SQL]]/[[Python]] ([[pandas]], [[numpy]]) for quant analysis. Extend this file freely — split any section into its own note if it grows large.
+
+## Related
+- [[Candlesticks]] — reading price candles & patterns (bullish/bearish)

@@ -12,6 +12,34 @@ Disclosed **Cross-Site Scripting** reports — reflected, stored, and DOM-based.
 
 ## Reports
 
+### 2026-10-16 — Reserved Rails URL option in pagination links yields one-click cross-account JS execution and token theft (Basecamp) — n/a
+- Source: [HackerOne #3943339](https://hackerone.com/reports/3943339)
+- Type: XSS — reflected, via URL-generation parameter injection chained to Active Storage HTML
+- Summary: In Basecamp's Fizzy app, a pagination helper passed every request parameter into Rails' `url_for`. Because `script_name` is a reserved URL-generation option, an attacker could rewrite the generated page-2 link into an Active Storage blob-proxy path serving attacker-uploaded HTML. A signed-in victim opening one crafted public-board URL executed same-origin JavaScript, which minted a write access token on the victim's identity and exfiltrated it to the attacker.
+- Technique / pattern: The root cause is `url_for(params.permit!.to_h.merge(...))` — mass-assigning untrusted params into URL generation. Rails treats keys such as `script_name`, `host`, `protocol` and `controller` as generation directives, not query data, so they relocate the link rather than appear in it. A trailing encoded `#` collapsed the intended route into a client-side fragment, and an unattached Active Storage blob supplied same-origin attacker HTML to land on.
+- Takeaway: Never splat untrusted request parameters into a URL builder; allow-list the specific keys a link needs. Separately, any file-serving route that can return attacker-controlled `text/html` on the application's own origin is an XSS primitive — serve user uploads from a separate origin or force a download disposition.
+
+### 2026-10-15 — Stored XSS on the public Pontoon dashboards via a latest-activity tooltip that re-parses an account address as HTML (Mozilla) — $3,000
+- Source: [HackerOne #3988961](https://hackerone.com/reports/3988961)
+- Type: Stored XSS (attribute-to-HTML sink round-trip)
+- Summary: Pontoon's public dashboards built a latest-activity tooltip by passing contributor-controlled `data-*` attribute values into jQuery as HTML; the translation text was escaped but the other values were not. Because the browser HTML-decodes attribute values before jQuery reads them, an account address containing markup executed as live script. The fix disabled local signup, restored the content security policy and rebuilt the tooltip from DOM nodes instead of string concatenation.
+- Technique / pattern: Hunt for the pattern "server HTML-encodes a value into an attribute, client reads that attribute and hands the string to an HTML-parsing sink" — the attribute read undoes the encoding, so the single layer of escaping is silently cancelled.
+- Takeaway: Escaping is only safe relative to one context; a value crossing from an attribute into `.html()` or `innerHTML` needs re-encoding, or better, DOM construction with `textContent`.
+
+### 2026-10-15 — Reflected XSS on taskbook.nasaprs.com via the errmsg parameter, filter bypassed with an unclosed tag (NASA VDP) — n/a (P3)
+- Source: [Bugcrowd #f08d29b2](https://bugcrowd.com/disclosures/f08d29b2-08b1-4e74-b1c2-d14ffdfd8b1d/reflected-xss-on-taskbook-nasaprs-com-via-errmsg-parameter-filter-bypass-using-unclosed-tag)
+- Type: Reflected XSS (regex filter bypass)
+- Summary: The `errmsg` query parameter was reflected into the HTML response without output encoding, and the server-side filter that stripped tag-like input only matched sequences containing a closing `>`. An unclosed tag therefore slipped past the filter and executed arbitrary HTML and JavaScript in a victim's browser.
+- Technique / pattern: When a denylist filter removes `<...>` sequences, try payloads that never close the tag (for example an `img` element with an `onerror` handler and no trailing `>`): the browser's error-tolerant parser still completes the element while the regex fails to match.
+- Takeaway: Regex tag-stripping assumes well-formed input that browsers never require. Reflected error-message parameters are a classic place to look because they bypass the app's normal input validation.
+
+### 2026-10-12 — Stored XSS in Value-sorting metadata lets a Jira Viewer run JS in an administrator's Dependency Map frame (Dependency Map for Jira) — n/a
+- Source: [Bugcrowd #b468eb7d](https://bugcrowd.com/disclosures/b468eb7d-b351-494f-b438-19e8abe69826/stored-xss-in-value-sorting-metadata-allows-a-jira-viewer-to-execute-javascript-in-an-administrator-s-dependency-map-frame)
+- Type: Stored XSS (cross-privilege)
+- Summary: A Jira user with only Viewer rights could store a payload in the `Value sorting` metadata of the Dependency Map for Jira app that later executed as JavaScript inside an administrator's Dependency Map frame.
+- Technique / pattern: User-controlled metadata was persisted and rendered into a higher-privileged user's view without output encoding, so a low-privilege actor planted script that ran in the admin's authenticated context.
+- Takeaway: Stored input authored by a low-privilege user but rendered to a high-privilege one is a privilege-escalation vector; encode on output in every context where the stored value is displayed.
+
 ### 2026-10-09 — Stored XSS in the partner search feature on www.atlassian.com (Atlassian) — $300
 - Source: [Bugcrowd #b73ec631](https://bugcrowd.com/disclosures/b73ec631-e74c-4824-bc8d-dc41b4a6382a/cross-site-scripting-in-atlassian)
 - Type: Cross-Site Scripting (stored, non-admin to anyone)

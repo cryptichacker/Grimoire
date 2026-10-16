@@ -12,6 +12,34 @@ Disclosed **SQL injection** reports — error/boolean/time-based, UNION, blind, 
 
 ## Reports
 
+### 2026-10-16 — Unauthenticated error-based SQL injection in HEASARC W3Browse (NASA VDP) — n/a
+- Source: [Bugcrowd #e0f7b8d5](https://bugcrowd.com/disclosures/e0f7b8d5-b90a-4a50-b531-2da37e802c84/unauthenticated-error-based-sql-injection-in-heasarc-w3browse-w3hdprods-pl)
+- Type: SQL injection — error-based, unauthenticated (P1)
+- Summary: A legacy Perl CGI script, `w3hdprods.pl`, in NASA's HEASARC W3Browse archive interface passed user input into a backend PostgreSQL query unsanitized. An unauthenticated attacker could execute arbitrary SQL and extract observation metadata spanning several major space-mission archives.
+- Technique / pattern: Old `.pl` / `.cgi` query front-ends over scientific data catalogues are prime SQLi surface — they predate parameterized-query conventions and often concatenate every form field into SQL. The researcher triggered database error messages and read the leaked PostgreSQL diagnostics to confirm injection and enumerate structure, which is the fastest confirmation path when the app is verbose on failure.
+- Takeaway: Enumerate legacy CGI endpoints (`/cgi-bin/`, `.pl`, `.php`, `.cgi`) on archive, catalogue and search hosts and fuzz every parameter, not just the obvious ID field. Verbose database errors turn a blind guess into a confirmed, mappable injection, so error suppression is worth treating as part of the fix, not the whole fix.
+
+### 2026-10-15 — Blind SQL Injection in IDStr parameter on a bibliography-search CGI (NASA VDP) — n/a (P1)
+- Source: [Bugcrowd #17dacb96](https://bugcrowd.com/disclosures/17dacb96-91d5-4e4b-95af-11fb9c3d123e/blind-sql-injection-in-idstr-parameter-cgi-bin-bib_ui-bibliography-search)
+- Type: Blind SQL injection (legacy CGI query parameter)
+- Summary: The `IDStr` parameter of a bibliography-search CGI endpoint at `/cgi-bin/bib_ui` concatenated user input into a SQL query, giving blind SQL injection on a public NASA host; the program triaged it as P1 and fixed it.
+- Technique / pattern: Legacy `/cgi-bin/` scripts are rarely covered by modern ORMs or WAF rules — fuzz each parameter with boolean and time-based payloads and judge the result from response-content and latency differences rather than waiting for SQL error text.
+- Takeaway: Old CGI/Perl endpoints surviving on otherwise modern sites are high-yield injection targets; inventory them from archived URLs, sitemaps and directory listings.
+
+### 2026-10-15 — Blind Based SQL Injection in 3d.sc.money (CS Money) — n/a
+- Source: [HackerOne #1107536](https://hackerone.com/reports/1107536)
+- Type: Boolean-based blind SQL injection via the URL path
+- Summary: A boolean-based blind SQL injection was reachable through the URL path rather than a query parameter on a CS Money subdomain, and the reporter demonstrated it against the origin server's IP, behind which the Cloudflare WAF sat.
+- Technique / pattern: Inject into path segments, not only query strings and request bodies; once the origin IP is known, send the payloads straight to it so the CDN/WAF in front never inspects them.
+- Takeaway: Path parameters are a frequently missed injection sink, and a WAF only protects the traffic that actually passes through it — origins must be locked to the CDN's ranges.
+
+### 2026-10-12 — Blind SQLi in post_id — database enumerated on aab.larc.nasa.gov (NASA VDP) — n/a
+- Source: [Bugcrowd #cba4adfc](https://bugcrowd.com/disclosures/cba4adfc-888c-4df3-87d2-f366aedbdc6d/blind-sqli-in-post_id-database-enumerated-on-aab-larc-nasa-gov)
+- Type: SQL injection (blind, unauthenticated)
+- Summary: The `post_id` parameter on `aab.larc.nasa.gov` was vulnerable to blind SQL injection, letting an unauthenticated attacker enumerate the backend database.
+- Technique / pattern: A numeric-looking `post_id` parameter was concatenated into a query without parameterization; boolean/time-based blind payloads let the tester infer data one condition at a time with no visible query output.
+- Takeaway: Even an id-shaped parameter must be bound as a query parameter — blind SQLi needs no visible output, only an observable true/false or timing difference.
+
 ### 2026-10-09 — Authenticated SQL injection in the ExpressionEngine control panel (ExpressionEngine) — n/a
 - Source: [HackerOne #968240](https://hackerone.com/reports/968240)
 - Type: SQL injection (authenticated / post-auth)

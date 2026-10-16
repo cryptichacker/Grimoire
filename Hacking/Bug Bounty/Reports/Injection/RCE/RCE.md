@@ -12,6 +12,27 @@ Disclosed **Remote Code Execution** reports reached via injection chains — **O
 
 ## Reports
 
+### 2026-10-16 — Unauthenticated RCE on NASA CMR via unsafe Clojure `read-string` in search-parameter validation (NASA VDP) — n/a
+- Source: [Bugcrowd #948921ed](https://bugcrowd.com/disclosures/948921ed-6603-4d2b-9022-f25f6552138f/unauthenticated-remote-code-execution-rce-via-unsafe-clojure-deserialization-on-cmr-earthdata-nasa-gov)
+- Type: RCE via unsafe deserialization / dynamic evaluation of user input
+- Summary: NASA's Common Metadata Repository used `clojure.core/read-string` inside its search-parameter validation logic, which evaluates reader macros in the input rather than parsing it as inert data. By injecting Clojure reader macros into specific API endpoints, an unauthenticated attacker could bypass validation and run arbitrary Java and OS commands on the server. The fix replaced it with `clojure.edn/read-string`.
+- Technique / pattern: The bug lives in the *validation* layer, which is a commonly overlooked sink — input reaches a dangerous parser before any allow-list runs. `clojure.core/read-string` honours `#=(...)` evaluation, so it is an eval primitive on untrusted strings, exactly like Python `pickle.loads`, Ruby `Marshal.load`, Java native deserialization or JS `eval`. Probing involves sending syntactically valid reader-macro payloads to parameters that look like they are being type-coerced.
+- Takeaway: Map the language-specific "parses data but can also execute" functions for each stack and grep for them on request paths. Validation and coercion code is as much an injection sink as business logic, and the correct fix is a data-only parser (`clojure.edn/read-string`, `json.loads`, `yaml.safe_load`), not a denylist of payloads.
+
+### 2026-10-15 — Unauthenticated Remote Code Execution via the Trick Variable Server (NASA VDP) — n/a (P1)
+- Source: [Bugcrowd #c520cca3](https://bugcrowd.com/disclosures/c520cca3-b04a-4f1b-a257-05e955d6be7f/unauthenticated-remote-code-execution-rce-via-trick-variable-server)
+- Type: Unauthenticated RCE (network service that executes submitted code)
+- Summary: The NASA Trick Simulation Environment's variable server is a TCP service enabled by default on all network interfaces that runs Python sent by any connected client, with no authentication and no sandbox. A single TCP message carrying a Python payload gave full control at the privileges of the simulation process, and the fix landed in the Trick codebase.
+- Technique / pattern: Discover non-HTTP services through multicast announcements and port scanning, then probe each one for an interpreter-style protocol; a service that accepts code by design is an RCE the moment it is reachable and unauthenticated.
+- Takeaway: Debug and telemetry sidecars of scientific and simulation software often bind to all interfaces by default — "accepts code from the network" is critical regardless of the intended trust boundary.
+
+### 2026-10-12 — Incomplete input sanitization in CodeInterpreter install_packages allows command/argument injection via pip flags (AWS VDP) — n/a
+- Source: [HackerOne #3633123](https://hackerone.com/reports/3633123)
+- Type: Argument injection via package installer -> RCE / file read
+- Summary: The `install_packages()` helper in the Bedrock AgentCore Python SDK screened package names with a character blocklist that missed installer flags, so a crafted `package name` such as an `--index-url` pointing at an attacker server (or a `-r` file argument) could fetch hostile packages or read local files inside the Code Interpreter sandbox.
+- Technique / pattern: Inputs were joined into a `pip install` command string and only checked for shell metacharacters; because flags like `--index-url`, `-r` and newline were not blocked, the attacker controlled pip's own behavior — reachable via prompt injection against an agent that calls the tool.
+- Takeaway: Blocklisting shell metacharacters does not stop argument injection — pass untrusted values as argv items to a fixed command and never let them become command-line flags for tools like `pip`.
+
 ### 2026-10-09 — Deserialization via POST parameter 0 leads to RCE on a NASA host, CVE-2025-55182 (NASA VDP) — n/a
 - Source: [Bugcrowd #41e70d21](https://bugcrowd.com/disclosures/41e70d21-db93-463c-a80e-4ee03942a481/cve-2025-55182-deserialization-on-vizss-czdt-smce-nasa-gov-through-via-post-parameter-0-leads-to-remote-code-execution-rce)
 - Type: RCE via insecure deserialization

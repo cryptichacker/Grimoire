@@ -12,6 +12,90 @@ Disclosed **Insecure Direct Object Reference** reports. Core idea: an object ide
 
 ## Reports
 
+### 2026-10-16 — Improper authorization lets a project writer edit issue/PR metadata via Memex bulk update (GitHub) — n/a
+- Source: [HackerOne #3527788](https://hackerone.com/reports/3527788)
+- Type: IDOR / broken object-level authorization (CVE-2026-3306)
+- Summary: A user with only **read** access to a repository but **write** access to a GitHub Project could change issue and pull-request metadata through the project's bulk-update path. When an item was added to a project it already belonged to, column value updates were applied without re-checking the actor's repository write permission.
+- Technique / pattern: Look for a second surface that writes the same underlying object through a different permission model. Here the project board was the alternate path to repository objects; the "add item that already exists" branch skipped the repo-level authorization that the normal issue edit route enforced. The researcher then showed real impact by setting labels that GitHub Actions workflows gate on, turning a metadata write into a CI control primitive.
+- Takeaway: Authorization must be enforced on the **target object**, not on the container the request came through. Audit every alternate write path (bulk endpoints, board/project views, import flows) and the "already exists / upsert" branches, which are where the permission check is most often skipped.
+
+### 2026-10-16 — Any logged-in user can unapprove approved translations in Mozilla Pontoon (Mozilla) — n/a
+- Source: [HackerOne #3020021](https://hackerone.com/reports/3020021)
+- Type: IDOR / vertical privilege escalation (missing authorization)
+- Summary: Pontoon restricted the "unapprove translation" action to privileged users and translation owners in the UI, but the `POST /translations/unapprove/` endpoint itself performed no role check. Any authenticated user could unapprove any approved translation by supplying its translation ID.
+- Technique / pattern: The researcher noted a UI-level restriction, then hunted for the object identifier that the restricted action needs. Replaying the page revealed a `/get-history/` request whose response contains the approved translation's numeric ID; that ID was then replayed into the privileged endpoint with the attacker's own session cookie and CSRF token. UI-hidden does not mean server-enforced.
+- Takeaway: Any action a UI hides behind a role must repeat that role check server-side on the handler itself. Sibling read endpoints that hand out internal object IDs (history, audit, metadata routes) are the standard source of the identifier needed to exercise a missing check.
+
+### 2026-10-16 — IDOR in NASA PROSAMS exposes PII for 1,700+ application users (NASA VDP) — n/a
+- Source: [Bugcrowd #5c2ca864](https://bugcrowd.com/disclosures/5c2ca864-dc69-43b1-bdd4-c61c81a08b09/idor-that-allows-disclosing-username-email-pin-firstname-lastname-uei-firmname-address-phonenumbers-etc-of-prosams-application-users)
+- Type: IDOR / broken access control (P2)
+- Summary: An Insecure Direct Object Reference in NASA's PROSAMS (Proposal Submissions and Awards Management System) staging application allowed unauthorized retrieval of records belonging to other users and firms, including usernames, e-mail addresses, PINs, first/last names, UEI and firm names, addresses and phone numbers for more than 1,700 users.
+- Technique / pattern: A classic record-identifier walk against a proposal/award management workflow: change the user or firm reference in the request and the application returns the other tenant's full profile, including admin-level entries. The researcher scoped the impact by counting distinct records reachable, which is what moved it from "one record leaks" to a mass-disclosure finding.
+- Takeaway: Grant-, proposal- and award-management portals hold dense PII keyed by sequential or guessable organization identifiers, so they are high-yield IDOR targets. Always quantify how many records an identifier walk reaches — scale is what sets severity. Note the finding was on staging, so confirm which environment is in scope before testing.
+
+### 2026-10-16 — Explicit-media scan endpoints return message objects from channels the attacker cannot read — $2,000
+- Source: [Bugcrowd #9e02d0a1](https://bugcrowd.com/disclosures/9e02d0a1-b625-4b11-966e-757e8fc43cca/permission-bypass-in-explicit-media-endpoints-leading-to-private-message-leakage)
+- Type: IDOR / broken access control — permission bypass (P2)
+- Summary: A chat platform's explicit-media scanning endpoint accepted a message ID plus channel ID and returned the corresponding message object without enforcing the caller's `VIEW_CHANNEL` and `READ_MESSAGE_HISTORY` permissions. An attacker could read contents of messages carrying an embed or media attachment from channels, DMs and threads they had no access to.
+- Technique / pattern: Two-stage chain. First, a legitimate listing call (`GET /guilds/:guildId/channels`) leaks each channel's `last_message_id`, which updates live as users post — that supplies the object identifiers. Second, `PATCH /messages/explicit-media` with a body of `{"messages": [{"message_id": "...", "channel_id": "..."}]}` makes the server emit `MESSAGE_UPDATE` gateway events containing the full message objects back to the attacker. The response channel was the realtime gateway, not the HTTP reply, which is why the bypass went unnoticed.
+- Takeaway: Safety/moderation and content-scanning endpoints are frequently built outside the main permission middleware and are a reliable place to find authorization gaps. Also check whether a result is delivered over a side channel such as a websocket or gateway event — needing to know an ID is not a mitigation when another endpoint hands those IDs out.
+
+### 2026-10-15 — Unauthenticated Create, Read, and Delete of Any User's Data + Email Relay on JPL Hurricane Watch (NASA VDP) — n/a (P1)
+- Source: [Bugcrowd #eb823c31](https://bugcrowd.com/disclosures/eb823c31-5e78-4bf9-9b2a-4c339918e879/unauthenticated-create-read-and-delete-of-any-user-s-data-email-relay-on-jpl-hurricane-watch)
+- Type: Broken access control / unauthenticated IDOR
+- Summary: A NASA/JPL production web application's API let anyone create, read and delete any user's saved data by supplying only a name as the record identifier — no session, cookie or token required — and the same service also exposed an unauthenticated email-relay endpoint.
+- Technique / pattern: Inventory the app's API calls, then replay every state-changing request with all authentication material stripped; where a human-readable field (a name) is the only identifier, substitute other users' values to confirm cross-user read, write and delete.
+- Takeaway: Any API that keys records on a guessable, user-supplied identifier should be re-tested with no credentials at all and for every verb (`GET`, `POST`, `DELETE`), not just with a second user's session.
+
+### 2026-10-15 — View user voice activity status without sharing mutual server / channel permission (program undisclosed) — $750
+- Source: [Bugcrowd #67b12410](https://bugcrowd.com/disclosures/67b12410-5e35-46bb-8b33-f311c84fa794/view-user-voice-activity-status-without-sharing-mutual-server-channel-permission)
+- Type: Broken access control / presence leak over the realtime gateway
+- Summary: A user in a voice call while in a "hang" presence state had their live voice activity and custom voice-channel status text exposed to accounts that shared no mutual server or channel with them. The data arrived in `PRESENCE_UPDATE` events on the gateway WebSocket at `wss://gateway.discord.gg/`.
+- Technique / pattern: Attach to the application's realtime gateway WebSocket, log every pushed event, and diff the fields actually received against what the permission model allows the UI to show; authorization enforced on REST routes is often missing on the push channel.
+- Takeaway: WebSocket/event-stream payloads are a separate authorization surface — compare what a client receives on the wire with the permission model instead of trusting the rendered UI.
+
+### 2026-10-15 — An organization admin can create an attacker-controlled organization owner via the gem transfer flow (RubyGems) — n/a
+- Source: [HackerOne #3938927](https://hackerone.com/reports/3938927)
+- Type: Improper access control / privilege escalation
+- Summary: RubyGems.org blocked organization admins from granting the owner role through the normal membership-invitation flow, but the gem transfer flow carried no such restriction, so an admin could make an attacker-controlled account an organization owner. That new owner could then remove the legitimate owners and members along with the publishing rights their memberships granted.
+- Technique / pattern: Enumerate every code path that can assign a role rather than only the obvious one; when a permission rule lives in a single controller (invitations) instead of the model or policy layer, a secondary flow (transfer, import, bulk edit) often writes the same field unchecked.
+- Takeaway: Authorization for role assignment belongs at the model/policy layer; when one entry point is hardened, look for the alternate flow that reaches the same privileged write.
+
+### 2026-10-15 — IDOR while uploading attachments at a redacted endpoint (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #1196976](https://hackerone.com/reports/1196976)
+- Type: IDOR on a sub-resource (attachment upload), chained with a race condition
+- Summary: An attacker could attach files to another user's item whenever that item had no attachment of its own yet, by supplying the victim's object identifier in the upload request; combined with a race condition the same trick also worked against freshly created items.
+- Technique / pattern: Upload to your own object, capture the request, then replay it with another user's object id. Where the server only checks ownership once an attachment already exists, the empty-state window is the bug, and racing the creation step widens it.
+- Takeaway: Authorization on sub-resources must be checked on every write rather than inferred from whether the parent already has children — empty and newly created states deserve their own test cases.
+
+### 2026-10-12 — Unauthenticated project discovery enables cross-session modification of marketplace projects (Creoline) — n/a
+- Source: [Bugcrowd #81921e6f](https://bugcrowd.com/disclosures/81921e6f-7696-45f8-9ace-f9b8ba283623/unauthenticated-project-discovery-enables-cross-session-modification-of-marketplace-projects)
+- Type: IDOR / broken access control (unauthenticated object discovery)
+- Summary: Unauthenticated enumeration of marketplace project identifiers let an attacker discover and then modify projects across other users' sessions on `marketplace.creoline.com`.
+- Technique / pattern: Project objects were discoverable without authentication, and the modification endpoint relied on knowledge of the object id rather than a per-session ownership check, enabling cross-session edits.
+- Takeaway: Treating an object id as a secret is not access control — discoverable ids plus a missing ownership check on the write path give cross-tenant modification.
+
+### 2026-10-12 — Unauthenticated API allows reading, writing and deleting any user's private chat history (program undisclosed) — n/a
+- Source: [HackerOne #4020767](https://hackerone.com/reports/4020767)
+- Type: Unauthenticated IDOR / broken access control (API)
+- Summary: An unauthenticated API allowed reading, writing and deleting any user's private chat history by referencing conversation identifiers directly, with no authentication or ownership check on the endpoint.
+- Technique / pattern: The chat API exposed CRUD operations keyed on a predictable object id and never enforced a session or ownership check, so iterating ids exposed and modified arbitrary users' conversations.
+- Takeaway: Every state-changing API route needs an explicit authentication and ownership gate; `unauthenticated` plus `object id in the request` is the classic recipe for mass data exposure and tampering.
+
+### 2026-10-12 — Files drop share links for E2EE folders allow dropping into other folders of the share owner (Nextcloud) — n/a
+- Source: [HackerOne #3304830](https://hackerone.com/reports/3304830)
+- Type: IDOR / broken access control (file-drop share)
+- Summary: A `file drop` share link for an end-to-end-encrypted folder could be abused to drop files into other folders belonging to the share owner, not only the intended drop target (CVE-2026-45159).
+- Technique / pattern: The upload handler trusted a client-supplied target path/identifier from the drop share without confirming it resolved to the single folder the share was scoped to, allowing writes to sibling folders of the owner.
+- Takeaway: Share links must bind every write to the exact resource they were issued for; validate the resolved destination server-side rather than trusting a path parameter sent by the uploader.
+
+### 2026-10-12 — Missing ownership validation allows cross-manager tracker-campaign linking (Revive Adserver) — n/a
+- Source: [HackerOne #3780709](https://hackerone.com/reports/3780709)
+- Type: IDOR / Broken Object-Level Authorization (missing ownership validation)
+- Summary: A low-privileged manager could link their own trackers to campaigns owned by other managers on the same Revive Adserver instance because the reverse linking operation in `tracker-campaigns.php` did not re-check object ownership (incomplete fix for CVE-2026-34913; assigned CVE-2026-50739).
+- Technique / pattern: The original CVE fix validated ownership on one direction of the campaign-tracker link but not the inverse operation; the attacker replays the link request against another manager's campaign id to create cross-owner relationships.
+- Takeaway: When patching a missing-authorization bug, audit every endpoint that performs the inverse or related operation — a fix applied to one direction of a relationship often leaves the mirror action unguarded.
+
 ### 2026-10-09 — Add labels to arbitrary issues and PRs via project column permission gap (GitHub) — bounty awarded (amount not public)
 - Source: [HackerOne #3527771](https://hackerone.com/reports/3527771)
 - Type: IDOR / improper authorization

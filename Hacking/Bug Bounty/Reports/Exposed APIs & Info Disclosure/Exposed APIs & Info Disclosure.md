@@ -12,6 +12,90 @@ Disclosed **exposed API / sensitive information disclosure** reports — leaked 
 
 ## Reports
 
+### 2026-10-16 — Private subforum content broadcast in full through the BuddyPress activity REST API (WordPress / bbPress) — n/a
+- Source: [HackerOne #4053546](https://hackerone.com/reports/4053546)
+- Type: Exposed API / information disclosure — unauthenticated leak of private content
+- Summary: bbPress's BuddyPress integration computed the `hide_sitewide` flag for new topic and reply activity by checking only the posting forum's own status, never its ancestors. A publish-status subforum nested under a private or hidden parent therefore had its topics broadcast in full — title, forum name, permalink and raw body — to the public BuddyPress activity stream, even though the topic's own permalink correctly returned 404 to the same viewer.
+- Technique / pattern: Two views of one object disagreed about its visibility. The researcher confirmed the inconsistency directly: posting into the nested subforum, verifying the permalink 404s anonymously, then reading the content back unauthenticated from `GET /wp-json/buddypress/v1/activity`. Hierarchical permissions that are evaluated per-node rather than over the ancestor chain are the recurring root cause.
+- Takeaway: When content lives in a tree, the effective visibility is the most restrictive value along the whole path to the root — compute it that way, once. And always re-check "private" content through every secondary surface: REST collections, activity feeds, search indexes, sitemaps and RSS, which commonly bypass the canonical route's access control.
+
+### 2026-10-16 — Ticket-trick attack on an unverified support-portal e-mail grants access to an organization's workspaces (Rockstar Games) — n/a
+- Source: [HackerOne #1534465](https://hackerone.com/reports/1534465)
+- Type: Information disclosure / account takeover via support-desk e-mail ingestion ("ticket trick")
+- Summary: A support portal did not verify ownership of an e-mail address before granting access, allowing the classic ticket-trick attack. By registering on the portal with an address at the organization's support domain, the attacker could read inbound mail delivered to that address as support tickets — including magic login links requested for the organization's accounts on third-party sites — and then sign in as the organization.
+- Technique / pattern: The support desk is an unintended mail reader. The attacker signs up with an address the help desk itself receives at, logs into the portal dashboard, then triggers a login-link or password-reset flow for that address on an external SaaS product. The resulting e-mail becomes a ticket visible in the attacker's dashboard, converting "can receive mail at a domain address" into authentication at every site that trusts e-mail possession.
+- Takeaway: Any system that both ingests e-mail and lets users self-register must verify address ownership before showing message contents, and should refuse to create accounts on its own ingest domains. Conversely, e-mail possession is a weak authenticator — magic links and resets for high-value accounts need a second factor.
+
+### 2026-10-16 — Unauthenticated Gravity Forms REST route on nasa.gov exposes internal form metadata (NASA VDP) — n/a
+- Source: [Bugcrowd #623ea694](https://bugcrowd.com/disclosures/623ea694-3569-4725-ab60-cfdc48c19427/unauthenticated-nasa-gravity-forms-api-endpoint-exposes-sensitive-internal-metadata)
+- Type: Exposed API / information disclosure — missing authentication on a custom REST route (P5, informational)
+- Summary: A custom, unauthenticated REST API endpoint on nasa.gov exposed internal metadata from NASA's Gravity Forms installation, disclosing labels and IDs for several internal forms covering HR processes, grants and mission-specific workflows such as Artemis II. No submissions or personal data were exposed, but the internal process names and form IDs provide reconnaissance value and social-engineering material. Root cause was missing authentication and permission callbacks on a custom route.
+- Technique / pattern: On WordPress targets, enumerate `/wp-json/` and walk the route index for custom namespaces added by plugins or site code; those are where `permission_callback` is most often left as `__return_true`. Form-builder plugins are especially productive because their metadata routes enumerate every form on the site, including unlinked internal ones, giving a map of workflows that are not reachable from the public navigation.
+- Takeaway: Every custom REST route needs an explicit permission callback — a framework that defaults to open turns "we just expose metadata" into a published inventory of internal processes. Metadata-only leaks still deserve reporting: form and endpoint names are the reconnaissance input for targeted phishing.
+
+### 2026-10-16 — `developers.json` in a public NASA-related repository exposes privileged users' names and corporate e-mails (NASA VDP) — n/a
+- Source: [Bugcrowd #c1753cc6](https://bugcrowd.com/disclosures/c1753cc6-7193-4792-b99a-9e4a3ee6d0a4/public-exposure-of-sensitive-information-of-highly-privileged-users-in-the-developers-json-file)
+- Type: Information disclosure — PII in a committed configuration file (P3)
+- Summary: A public NASA-related GitHub repository contained a `developers.json` file listing personally identifiable information for several developers, including full names and corporate e-mail addresses. The exposure of a roster of highly privileged users opened the door to social engineering, spear phishing and sender spoofing.
+- Technique / pattern: Source-repository reconnaissance aimed at config and manifest files rather than secrets: `developers.json`, `CODEOWNERS`, `AUTHORS`, `.mailmap`, `package.json` maintainer blocks, CI variable files and commit author metadata. These are rarely scrubbed because they are not credentials, yet together they map who holds privileged access — the prerequisite for a credible phishing or help-desk impersonation attempt against the people who can grant it.
+- Takeaway: Treat the identities of privileged staff as sensitive, not merely as contact information. Keep contributor rosters out of published artifacts (or reduce them to role aliases), and audit repositories for files naming individuals alongside their access. A leak with no credential in it can still be the first step of a full compromise.
+
+### 2026-10-15 — NASA-hosted training PDF exposes hardcoded credentials and insecure credential distribution (NASA VDP) — n/a (P5)
+- Source: [Bugcrowd #4d8f1660](https://bugcrowd.com/disclosures/4d8f1660-3fb1-4f96-8607-d35b96341d68/nasa-hosted-training-pdf-exposes-hardcoded-credentials-and-insecure-credential-distribution)
+- Type: Credential exposure in published documentation
+- Summary: A recently uploaded training PDF on a public NASA subdomain contained a live username and password together with staff email addresses; the report also flagged the practice of distributing demo credentials inside published documents.
+- Technique / pattern: Watch a target's document directories and "recently uploaded" listings, then extract PDF/DOCX text and grep it for credential keywords such as `password`, `username`, `login` and `api key` — training and onboarding material is written for internal use and reviewed least.
+- Takeaway: Treat published documentation as code for secret-scanning purposes; demo credentials must be disposable and scoped, and files need a sanitisation pass before release.
+
+### 2026-10-15 — Full path disclosure and verbose error messages on webdisks.jpl.nasa.gov (NASA VDP) — n/a (P5)
+- Source: [Bugcrowd #aaf069ae](https://bugcrowd.com/disclosures/aaf069ae-4bde-4b3e-8647-225b0bff1b92/full-path-disclosure-and-verbose-error-messages-on-webdisks-jpl-nasa-gov)
+- Type: Information disclosure through verbose errors (full path disclosure)
+- Summary: The application failed to handle unexpected input gracefully and emitted verbose PHP errors that printed internal server directory paths, which an attacker could use to map the host's filesystem layout.
+- Technique / pattern: Feed each parameter a type the code cannot handle (an array where a string is expected, an empty value, oversized input) and read the resulting error output; full paths recovered this way feed later local-file-inclusion, log-poisoning and arbitrary-file-write attempts.
+- Takeaway: Low-severity verbose errors are reconnaissance fuel for higher-severity file-path bugs — turn off error display in production and return generic messages.
+
+### 2026-10-15 — CVE-2026-86409: stale SigV4 headers sent unintended (curl) — n/a
+- Source: [HackerOne #3973135](https://hackerone.com/reports/3973135)
+- Type: Credential leakage through an incomplete option reset
+- Summary: Setting `CURLOPT_AWS_SIGV4` to `NULL` returned success but left AWS SigV4 authentication enabled, because the handler in `lib/setopt.c` cleared the parameter string without removing the `CURLAUTH_AWS_SIGV4` flag from the handle's auth settings. Later `curl_easy_perform()` calls on the same handle therefore still sent an `AWS4-HMAC-SHA256` `Authorization` header, including to a URL set after the reset.
+- Technique / pattern: For each option that configures a credential, check that clearing it also clears the derived state (auth-method flags, cached headers), then re-run the same handle against a different host and watch whether the credential still goes out.
+- Takeaway: Reusable client handles need a complete reset path; a partially cleared credential setting is how secrets end up sent to an unintended origin.
+
+### 2026-10-15 — Exposing HackerOne users' personally identifiable information by abusing a sandbox with swag reward enabled (HackerOne) — n/a
+- Source: [HackerOne #357576](https://hackerone.com/reports/357576)
+- Type: Sensitive information disclosure (PII surfaced by a reward workflow)
+- Summary: With swag rewards enabled on a sandbox program, a hacker's shipping details were sent to the program owner and shown on the program's swag page, so a sandbox owner could reward swag for a test report from an invited team member and read that member's name, address and phone number.
+- Technique / pattern: Exercise a platform's own test or sandbox features with every optional reward type switched on, then compare the data each role can see against what the feature actually needs; shipping, invoicing and payout flows are where PII crosses role boundaries.
+- Takeaway: Sandbox and demo modes inherit production data paths — PII collected for fulfilment should never be surfaced to a role that only needs to confirm the reward.
+
+### 2026-10-12 — Unauthenticated disclosure of draft/private/pending post titles and IDs via Secure Custom Fields nopriv AJAX (WordPress) — n/a
+- Source: [HackerOne #3893632](https://hackerone.com/reports/3893632)
+- Type: Information disclosure (unauthenticated AJAX)
+- Summary: Draft, private and pending post titles and ids could be disclosed to unauthenticated users through a Secure Custom Fields `nopriv` AJAX field handler.
+- Technique / pattern: A `wp_ajax_nopriv_` action was registered for a field-fetching endpoint without a capability check, so logged-out requests returned metadata for non-published posts.
+- Takeaway: `nopriv` AJAX handlers run for anonymous users by design — gate them with capability/nonce checks, or do not register them for data that is not public.
+
+### 2026-10-12 — Unauthenticated disclosure of private and hidden bbPress forum content via the WordPress core REST single-item endpoint (WordPress) — n/a
+- Source: [HackerOne #3801107](https://hackerone.com/reports/3801107)
+- Type: Information disclosure / improper access control (REST API)
+- Summary: Private and hidden bbPress forum topics and replies — stored with public post status — could be read by unauthenticated users via the WordPress core REST single-item endpoint, because forum visibility was enforced only through query filters.
+- Technique / pattern: The plugin registered post types with REST exposure while relying on list-query filters for access control; a direct single-item REST request by sequential post id bypassed those filters and returned full restricted content.
+- Takeaway: Access control must live on the object, not only on list queries — a single-item fetch by id will bypass filters applied only to listing endpoints.
+
+### 2026-10-12 — Live password-reset token reaches Datadog RUM, and the same session records the account it unlocks (HackerOne) — $200
+- Source: [HackerOne #4071670](https://hackerone.com/reports/4071670)
+- Type: Information disclosure — secret captured by telemetry (RUM)
+- Summary: A live, single-use password-reset token was captured by Datadog Real User Monitoring because it travelled in the URL query string, and the same RUM session also recorded the account it unlocked; sampling was 100% with no URL sanitization.
+- Technique / pattern: Sensitive tokens placed in a URL are swept up by front-end monitoring SDKs; a prior fix had redacted one telemetry sink, but an alternate RUM sink remained uncovered.
+- Takeaway: Keep secrets out of URLs entirely, and apply redaction across every telemetry/monitoring sink — patching one analytics pipeline does not cover the others.
+
+### 2026-10-12 — Leaked MySQL and SMTP credentials exposed on GitHub (program undisclosed) — n/a
+- Source: [Bugcrowd #a2d35d68](https://bugcrowd.com/disclosures/a2d35d68-f10c-440a-8cee-bc1a6fdb3343/leaked-credentials-mysql-and-smpt-credentials-exposed-on-github)
+- Type: Sensitive information disclosure — leaked credentials in public repo
+- Summary: Live MySQL and SMTP credentials were exposed in a public GitHub repository, handing out usable database and mail credentials.
+- Technique / pattern: Secrets were committed to a public repo (config/source) and were discoverable via code search; the credentials were still valid and reusable.
+- Takeaway: Scan repos for secrets before and after pushing, rotate anything committed, and keep credentials in a secrets manager — public commit history is permanently searchable.
+
 ### 2026-10-09 — Sensitive user information disclosure via the userUuid parameter on an RPC endpoint (Uber) — bounty awarded (amount not public)
 - Source: [HackerOne #542340](https://hackerone.com/reports/542340)
 - Type: Exposed API / sensitive information disclosure (authorization bypass)

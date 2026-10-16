@@ -12,6 +12,13 @@ Disclosed **Server-Side Template Injection** reports (often escalating to RCE). 
 
 ## Reports
 
+### 2026-10-16 — Twine template injection in the Shopify Embedded App SDK modal gives XSS in the admin origin (Shopify) — $1,000
+- Source: [HackerOne #217790](https://hackerone.com/reports/217790)
+- Type: Client-side template injection (twine) leading to XSS in the admin context
+- Summary: `Shopify.API.Modal.input`, part of the Embedded App SDK, rendered its modal through lodash `_.template`. Although lodash escapes interpolated values, the "input" template placed the value into a special `data-define` attribute that is later evaluated by Shopify's twine framework. A malicious embedded app could inject additional expressions into that attribute and, because twine does not sandbox, obtain an eval primitive and script execution in the context of `$shop$.myshopify.com/admin/`.
+- Technique / pattern: The escaping was context-blind: it was sufficient for HTML text but not for an attribute whose contents are themselves a template language. The attacker never needed to break out of the attribute quoting — staying inside the attribute and appending valid twine expressions was enough. This is the general shape of client-side template injection: find a sink where one templating layer's output becomes another layer's input.
+- Takeaway: When a value crosses two template engines, escaping for the first does not protect the second. Audit framework-specific evaluated attributes (`data-define`, `ng-*`, `v-*`, `x-*`) as injection sinks in their own right, and treat an embedded-app or plugin SDK as an attacker-controlled input path into the host application's origin.
+
 ### 2026-10-09 — Server-Side Include injection on a DoD website, potentially reaching code execution (U.S. Dept Of Defense) — n/a
 - Source: [HackerOne #192931](https://hackerone.com/reports/192931)
 - Type: Server-Side Include (SSI) injection / server-side template-style injection

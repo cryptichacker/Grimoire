@@ -12,6 +12,90 @@ Disclosed **security misconfiguration** reports — permissive CORS, default/exp
 
 ## Reports
 
+### 2026-10-16 — Case-sensitive scheme check on `app.hey.com/proxy_image` turns into an open redirect that defeats the HEY desktop origin allowlist (Basecamp) — n/a
+- Source: [HackerOne #3972760](https://hackerone.com/reports/3972760)
+- Type: Security misconfiguration — open redirect / improper URL parsing bypassing a client-side origin allowlist
+- Summary: `app.hey.com/proxy_image` compared the submitted URL's scheme case-sensitively. A lowercase `https://` target was signed and proxied correctly, but `HTTPS://` was not recognised and the endpoint issued a 302 straight to the raw URL — an unauthenticated open redirect. Because the HEY desktop app used "is this URL on `app.hey.com`?" as its test for trusted internal content, an emailed link could open attacker content inside a chrome-less HEY `BrowserWindow`.
+- Technique / pattern: RFC 3986 makes URL schemes case-insensitive, so `HTTPS://` is a valid URL rather than a malformed edge case; the filter was still correctly rejecting `javascript:`, which proved the gap was the comparison, not a missing denylist. The researcher then chained the primitive: a host-based trust decision in the desktop client was satisfied by a URL that genuinely lived on the trusted host but did not stay there.
+- Takeaway: Normalise scheme and host (case-fold, resolve) before any security comparison, and test allowlists with case variants, trailing dots and encoded forms. More broadly, never decide "is this our own content" from the hostname of the *initial* URL — an open redirect on a trusted origin converts every host-based allowlist in every client into a content-injection vector.
+
+### 2026-10-16 — Unsafe nginx regex in `/colibri-relay-ws/` turns docker-jitsi-meet into an open proxy (8x8 / Jitsi) — n/a
+- Source: [HackerOne #3889473](https://hackerone.com/reports/3889473)
+- Type: Security misconfiguration — overly permissive nginx location regex feeding `proxy_pass`
+- Summary: In `docker-jitsi-meet`, the nginx location for `/colibri-relay-ws/` used the pattern `[a-zA-Z0-9-\._]+` to capture a relay target and interpolated it into a `proxy_pass` directive. With `ENABLE_OCTO` enabled, that character class accepted arbitrary domain names and IP addresses, so unauthenticated requests could be proxied to attacker-specified destinations. The deprecated location and relay websocket proxy config were removed in the fix.
+- Technique / pattern: The finding comes from reading deployment configuration rather than the application: grep an infrastructure repo for `proxy_pass` directives that contain a captured variable, then check whether the capturing regex is actually constrained to known hosts. A class permitting letters, digits, dots and hyphens matches any hostname, so the "validation" is cosmetic. Feature flags are part of the attack surface — the path only existed when `ENABLE_OCTO` was on.
+- Takeaway: Audit reverse-proxy configs as source code. A variable in `proxy_pass` must resolve against an explicit map or upstream allow-list, never a permissive character class, otherwise the host becomes an SSRF/open-proxy pivot into the internal network. Deprecated-but-still-shipped routes are worth checking first.
+
+### 2026-10-16 — Exposed AWS Cognito pool identifiers on a NASA login page allow unauthenticated user creation (NASA VDP) — n/a
+- Source: [Bugcrowd #cbe0edab](https://bugcrowd.com/disclosures/cbe0edab-82a9-46ae-9ed3-f3a0b30d1cca/unauthenticated-user-creation-in-aws-cognito-user-pool)
+- Type: Security misconfiguration — client-side secret exposure plus permissive Cognito self-sign-up (P3)
+- Summary: The page at `loginapp.prosams.nasa.gov/login-legal-notices` exposed AWS Cognito configuration values, including `UserPoolId` and `UserPoolWebClientId`. Although the web interface offered no registration, those identifiers were enough to call the Cognito API directly and successfully create a new user in the production user pool.
+- Technique / pattern: Read the login page's client-side configuration (inline JS, bundled config objects, `/env.json`-style endpoints) for identity-provider identifiers, then test the provider's API directly rather than the app's UI — here `aws cognito-idp sign-up --client-id <clientId> --username <email> --password <pw>`. Absence of a registration form in the SPA says nothing about whether the pool has self-sign-up enabled.
+- Takeaway: Cognito pool and client IDs are not secrets, so the real control is the pool's own configuration: disable self-service sign-up when registration is meant to be admin-only, and restrict the app client's allowed auth flows. Whenever an app front-end reveals a managed identity service's identifiers, test that service's API surface directly for flows the UI never exposes.
+
+### 2026-10-16 — CSRF token accepted as the upload-permission token enables unauthenticated writes to a NASA production GCS bucket (NASA VDP) — n/a
+- Source: [Bugcrowd #817dab3c](https://bugcrowd.com/disclosures/817dab3c-ec4a-45b6-b855-c8d44b18d6af/broken-access-control-csrf-token-accepted-as-upload-permission-token-unauthenticated-file-upload-to-nasa-production-google-cloud-storage-adapt-fellowship-portal)
+- Type: Security misconfiguration / broken access control — two distinct tokens sharing one signer (P4)
+- Summary: The ADAPT fellowship portal let anonymous users obtain a CSRF token from `POST /upload/refresh-csrf-token`. The upload endpoint `POST /upload/generate-resume-url` required both `csrf_token` and `upload_token`, but both were validated by the same signer and `upload_token` was not bound to any form submission. Submitting the CSRF token in both fields returned a valid signed PUT URL for the production bucket, allowing unauthenticated file writes into NASA's HR pipeline.
+- Technique / pattern: When a request carries two different tokens, try swapping one for the other. A shared HMAC signer with no type, audience or purpose claim makes any token it issued interchangeable, so the anonymous-by-design CSRF token satisfies the gate meant to prove a completed application. The researcher confirmed end to end by PUTting a PDF to the returned signed URL and getting a 200.
+- Takeaway: Tokens must be bound to their purpose — distinct keys, or a signed `purpose`/`aud` claim plus the specific resource and submission they authorize. Treat every endpoint that mints a cloud-storage pre-signed URL as a privileged operation and verify what actually gates it, since the signed URL carries the service's own authority.
+
+### 2026-10-15 — Unauthenticated SSRF in NASA Trek addManifest allows internal network access from the Trek server (NASA VDP) — n/a (P2)
+- Source: [Bugcrowd #652ddcf8](https://bugcrowd.com/disclosures/652ddcf8-f52a-44f5-8a72-2e4a61f7c9ce/unauthenticated-ssrf-in-nasa-trek-addmanifest-allows-internal-network-access-from-the-trek-server)
+- Type: Server-side request forgery (unauthenticated endpoint, no egress controls)
+- Summary: The outreach endpoint `/moon/TrekServices/ws/outreach/eq/addManifest` accepted a caller-supplied URL in the `manifestURL` parameter and fetched and parsed it with no authentication, allowlist or egress restriction (CVSS 3.1 base 8.6), so an external requester could make the server reach its own loopback interface and an internal-only backend host. The reporter limited testing to proving reachability.
+- Technique / pattern: Grep API documentation and front-end JavaScript for parameters whose names end in `URL`, `uri`, `src`, `callback` or `manifest`, then point them at loopback and internal hostnames and read the outcome from response differences and timing.
+- Takeaway: A fetch-a-URL feature needs authentication plus a destination allowlist and a network egress policy; an "internal only" backend is reachable the moment one public service will proxy to it.
+
+### 2026-10-15 — Insecure Google Drive permissions allow complete deletion of NASA SEPVAL 2023 event data (NASA VDP) — n/a (P3)
+- Source: [Bugcrowd #5e76bccc](https://bugcrowd.com/disclosures/5e76bccc-1df1-4403-8532-b289f19659b0/insecure-google-drive-permissions-allow-complete-deletion-of-nasa-sepval-2023-event-data)
+- Type: Third-party sharing misconfiguration (integrity and availability loss)
+- Summary: Google Drive files for a NASA event were shared with permissions broader than read-only, so anyone holding the link could act beyond intended read access — including deleting the event documents — without authenticating.
+- Technique / pattern: Follow links from the in-scope site out to SaaS document hosts and check the effective permission rather than only whether the file opens; a link-shared file that grants editor access is an unauthenticated write primitive.
+- Takeaway: Link-sharing defaults are part of the attack surface — review every "anyone with the link" grant for the role attached, because integrity and availability loss need no credential at all.
+
+### 2026-10-15 — Subdomain takeover in help.tictail.com pointing to Zendesk, a Shopify acquisition (Shopify) — n/a
+- Source: [HackerOne #869605](https://hackerone.com/reports/869605)
+- Type: Subdomain takeover (dangling CNAME to a SaaS provider)
+- Summary: The subdomain `help.tictail.com`, belonging to a Shopify acquisition, still had a CNAME pointing at `tictail.zendesk.com` after the Zendesk account was gone, and the reporter confirmed during Zendesk signup that the target name was free to claim.
+- Technique / pattern: Enumerate DNS records of acquired brands, resolve each CNAME, and flag any that resolve to a SaaS provider's host; confirm by checking whether the provider still has that subdomain name available, without claiming production assets.
+- Takeaway: Acquisitions leave orphaned DNS behind long after the SaaS subscriptions lapse — decommissioning has to remove the DNS record, not just the vendor account.
+
+### 2026-10-15 — Subdomain takeover via an insecure CloudFront distribution on cdn.grab.com (Grab) — $1,000
+- Source: [HackerOne #352869](https://hackerone.com/reports/352869)
+- Type: Subdomain takeover (unclaimed CDN alternate domain name)
+- Summary: `cdn.grab.com` had a CNAME to a CloudFront hostname that was not registered as an alternate domain name in Grab's own CloudFront account, so the reporter could claim the name in their own distribution and serve a proof-of-concept page from the Grab subdomain. The first recommended fix was simply removing the CNAME record.
+- Technique / pattern: For CNAMEs that end in a cloud CDN domain, test whether the alternate-domain claim is actually held by the owner — an unclaimed alias on a CDN lets any account bind the name to its own distribution.
+- Takeaway: CDN aliases are claimed per-distribution, so a CNAME pointing at a CDN with no matching alias registration is a takeover waiting to happen.
+
+### 2026-10-12 — LiteLLM proxy credential exposed through WorldWind configuration (NASA VDP) — n/a
+- Source: [Bugcrowd #c83e7c95](https://bugcrowd.com/disclosures/c83e7c95-3fb9-45c6-9e22-2464e84aba3a/litellm-proxy-credential-exposed-through-worldwind-configuration)
+- Type: Security misconfiguration — credential exposed in client-reachable config
+- Summary: A live LiteLLM proxy credential was exposed through a publicly reachable NASA WorldWind configuration surface, handing out a usable secret for the LLM proxy.
+- Technique / pattern: A configuration served to clients embedded a live proxy credential; simply reading the config yielded the key directly.
+- Takeaway: Secrets must never ship in client-reachable configuration; treat any config endpoint as public and keep credentials server-side only.
+
+### 2026-10-12 — Sensitive information disclosure (CVE-2025-61138) in Qlik Sense Dev Hub (EPA VDP) — n/a
+- Source: [Bugcrowd #7e6fce2c](https://bugcrowd.com/disclosures/7e6fce2c-4cae-42cc-b402-eae4284a791c/sensitive-information-disclosure-cve-2025-61138-in-qlik-sense-dev-hub)
+- Type: Security misconfiguration — exposed dev interface (known CVE)
+- Summary: A Qlik Sense Dev Hub instance under `*.epa.gov` was publicly reachable and affected by CVE-2025-61138, leaking sensitive information that should not have been exposed.
+- Technique / pattern: A development/management hub was left internet-facing on a version matching a disclosed CVE, so unauthenticated requests returned configuration/information details.
+- Takeaway: Keep dev/admin hubs off the public internet and patched; an exposed `Dev Hub` is both an information leak and an entry point when it matches a public CVE.
+
+### 2026-10-12 — Content spoofing via broken link hijacking on www.nasa.gov (NASA VDP) — n/a
+- Source: [Bugcrowd #91812b4b](https://bugcrowd.com/disclosures/91812b4b-29a0-4558-950a-1e914d4e73ef/content-spoofing-via-broken-link-hijacking-on-www-nasa-gov)
+- Type: Security misconfiguration — broken link hijacking / content spoofing
+- Summary: A live page on `www.nasa.gov` linked to an external/abandoned resource whose destination could be claimed by an attacker, allowing content spoofing under the trust of the official page.
+- Technique / pattern: An outbound link or embedded resource pointed to an unregistered/expired external handle; claiming it lets the attacker place arbitrary content reached from the trusted page.
+- Takeaway: Periodically audit outbound links and embedded third-party resources; abandoned destinations become impersonation and spoofing channels that borrow your domain's trust.
+
+### 2026-10-12 — Confirmed S3 bucket takeover of ASF Cumulus production buckets (NASA VDP) — n/a
+- Source: [Bugcrowd #78b51a29](https://bugcrowd.com/disclosures/78b51a29-4aa4-4dad-9d2a-e5356c482f4a/confirmed-s3-bucket-takeover-of-asf-cumulus-production-buckets-asf-cumulus-prod-browse-asf-cumulus-prod-opera-product)
+- Type: Security misconfiguration — dangling S3 bucket takeover
+- Summary: Production ASF Cumulus S3 buckets referenced by NASA infrastructure (e.g. `asf-cumulus-prod-browse`) were unclaimed and re-registerable, so an attacker could claim the names and serve content from buckets the application trusted.
+- Technique / pattern: The application pointed at S3 bucket names that no longer existed in the owner's account; because bucket names are globally unique, an attacker claims the free name and controls whatever the site loads from it.
+- Takeaway: Remove or re-point application references to decommissioned cloud storage; globally-unique bucket names left dangling are claimable by anyone.
+
 ### 2026-10-09 — Config files with VPN pre-shared key and other credentials exposed by directory indexing (Tesla) — $10,000
 - Source: [Bugcrowd #bdc4fb5a](https://bugcrowd.com/disclosures/bdc4fb5a-ac99-4c3e-866f-37b3f58a0fa3/config-files-with-vpn-pre-shared-key-and-other-credentials-in-them)
 - Type: Security misconfiguration (directory indexing enabled) leading to credential exposure
