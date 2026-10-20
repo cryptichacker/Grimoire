@@ -12,6 +12,69 @@ Disclosed **security misconfiguration** reports — permissive CORS, default/exp
 
 ## Reports
 
+### 2026-10-20 — HTTP request smuggling via unsanitized hop-by-hop headers (Cloudflare Public Bug Bounty) — $1,500
+- Source: [HackerOne #3622877](https://hackerone.com/reports/3622877)
+- Type: Security misconfiguration / HTTP request smuggling (proxy header handling)
+- Summary: Hop-by-hop headers were forwarded rather than stripped at the proxy boundary, so a request could be interpreted differently by the front end and the origin, enabling request smuggling. Triaged High, classified `Improper Access Control - Generic`, $1,500 bounty.
+- Technique / pattern: At any proxy or CDN boundary, test which connection-scoped headers survive the hop — `Connection`, `Transfer-Encoding`, `Keep-Alive`, `Upgrade`, and anything a request nominates inside `Connection:`. A header the front end should have consumed but passes on instead leaves two parsers disagreeing about where one request ends.
+- Takeaway: A proxy must normalise and strip hop-by-hop headers, including the ones listed dynamically in `Connection`, before forwarding; smuggling comes from parser disagreement, so the fix is one canonical interpretation at the edge.
+
+### 2026-10-20 — Host header injection on a bia.gov host (Bureau of Indian Affairs VDP) — n/a (P5, informational)
+- Source: [Bugcrowd 4abc50f7](https://bugcrowd.com/disclosures/4abc50f7-2400-475f-b126-822b9c19cea3/host-header-injection)
+- Type: Security misconfiguration (unvalidated `Host` header)
+- Summary: A `*.bia.gov` host accepted an attacker-supplied `Host` header and let it influence application behaviour. Triaged P5 and closed as informational — an accepted business risk for this target.
+- Technique / pattern: Send the request with a `Host` header pointing at your own domain (and separately with `X-Forwarded-Host`), then look for where that value resurfaces: absolute URLs in the body, cache keys, redirects and — most valuably — password-reset links. What moves this class off P5 is a demonstrated consequence, not the reflection itself.
+- Takeaway: Validate `Host` against an allowlist of expected names and build absolute URLs from configuration rather than from the request. Worth noting how triage reasons here: informational without impact, high once it poisons a reset link or a cache entry.
+
+### 2026-10-20 — Identity theft via broken link hijacking on a NASA astronaut news release page (NASA VDP) — n/a (P4)
+- Source: [Bugcrowd 98a08457](https://bugcrowd.com/disclosures/98a08457-4f9d-4d27-b7e2-daaa975a1a67/identity-theft-via-broken-link-hijacking-on-nasa-astronaut-news-release-page)
+- Type: Security misconfiguration (broken link hijacking / dangling social handle)
+- Summary: A NASA news release page linked to an official social media handle that had since been released, so anyone could register that handle and inherit the trust carried by a link from nasa.gov. Resolved, rated P4.
+- Technique / pattern: Crawl the target's pages for outbound social and third-party links, then check each destination for a 404 or an available handle. The exploit is a registration rather than a request, which is why these turn up with a link checker plus a scripted availability lookup instead of a scanner.
+- Takeaway: Outbound links are part of the attack surface — audit them on a schedule, remove references to retired accounts, and retain ownership of handles that official pages still point at.
+
+### 2026-10-20 — Public Google Drive linked in a NASA ARSET training PDF allowed unauthenticated file modification and deletion (NASA VDP) — n/a (P4)
+- Source: [Bugcrowd 24753086](https://bugcrowd.com/disclosures/24753086-60a4-4597-825d-6613faa35306/public-google-drive-linked-in-nasa-arset-training-pdf-allows-unauthenticated-users-to-modify-and-delete-files)
+- Type: Security misconfiguration (third-party storage sharing scope)
+- Summary: A training PDF published on a NASA site linked to a Google Drive location shared with edit rather than view rights, so anyone holding the link could change or delete the hosted files. NASA remediated by removing the link from the site; rated P4.
+- Technique / pattern: Treat published documents as a link source — pull the PDFs, decks and spreadsheets a target hosts, extract every embedded URL, then check the sharing scope of each cloud-storage destination. "Anyone with the link can edit" is the finding, and it is invisible from the HTML alone.
+- Takeaway: Links inside published documents inherit the publisher's authority, so review the permission scope of every externally shared folder and default to view-only for anything referenced publicly.
+
+### 2026-10-18 — Unauthenticated go-httpbin instances on an AWS domain enable cookie tossing and open redirect (AWS VDP) — n/a
+- Source: [HackerOne #3966599](https://hackerone.com/reports/3966599)
+- Type: Security misconfiguration — a request-reflection test service exposed unauthenticated on a trusted parent domain
+- Summary: Unauthenticated instances of the `go-httpbin` request-reflection service were found running on hosts under `aws.dev`. Because the service sets arbitrary cookies and issues arbitrary redirects on request, its presence on a shared parent domain produced cookie tossing against `*.aws.dev` siblings plus an open redirect on an AWS-owned origin. Rated Medium and resolved.
+- Technique / pattern: The bug is not in the tool, it is in where the tool lives. `httpbin`-style echo services, request bins and debug reflectors expose "set this cookie", "redirect to this URL" and "echo these headers" as features; placed on a subdomain whose siblings share cookie scope, those features become attacks, because a cookie written for the parent domain is sent to every sibling and can overwrite or fixate session, CSRF or preference cookies there. During recon, fingerprint every subdomain for known echo and debug software, then ask which sibling origins share cookie scope and which clients trust the parent domain by hostname.
+- Takeaway: Keep test, debug and reflection services off any domain that hosts real sessions — give them an isolated apex rather than a subdomain. Use `__Host-` prefixed cookies so siblings cannot write them, and never treat "this URL is on our domain" as a trust decision, because one reflector or open redirect anywhere on the estate invalidates every such check.
+
+### 2026-10-18 — Content spoofing via broken link hijacking of the ENERGYSTARHomes handle (US EPA VDP) — n/a (P4)
+- Source: [Bugcrowd #598e8a2c](https://bugcrowd.com/disclosures/598e8a2c-6c6b-4fe7-9b76-8eb06283cfd5/content-spoofing-via-broken-link-hijacking-energystarhomes)
+- Type: Security misconfiguration — dangling outbound social-media reference enabling impersonation
+- Summary: `www.energystar.gov` linked to the social handle `@ENERGYSTARHomes`, which was unclaimed. Anyone could register the handle and publish content that an official government page vouches for by linking to it. Reported to the EPA VDP, rated P4, accepted and fixed.
+- Technique / pattern: Crawl the target's own pages for outbound links to platforms where identifiers are first-come-first-served — social handles, app-store listings, package names, link shorteners, community channels — then resolve each and flag any that return not-found, say the account does not exist, or are otherwise still registrable. Government and large-institution estates are productive because programme microsites are created per campaign and outlive the team that ran them, so the handle is renamed or retired while the page keeps pointing at the old name.
+- Takeaway: Outbound links are part of the attack surface, and the impersonation inherits the authority of the page that links to it. Treat the inventory of referenced third-party identifiers as an asset list, reserve the handles you cite, and add a periodic link-health scan that flags unresolvable destinations rather than only broken internal links.
+
+### 2026-10-18 — Dangling social-media link lets the NASAOSBP handle be claimed and impersonated (NASA VDP) — n/a (P4)
+- Source: [Bugcrowd #f6341af5](https://bugcrowd.com/disclosures/f6341af5-c9da-4e29-893f-8d66c4d18907/dangling-social-media-link-takeover-broken-link-hijack-on-nasaosbp)
+- Type: Security misconfiguration — abandoned social handle referenced from official assets
+- Summary: NASA Office of Small Business Programs assets referenced the `NASAOSBP` Twitter/X handle, which was unclaimed. The researcher demonstrated impact by registering the handle, showing that an attacker could publish under what appears to be an official NASA channel. Rated P4 and remediated.
+- Technique / pattern: The distinguishing detail from the generic case is the proof step: for a dangling *outbound* reference the demonstration is claiming the identifier, which is why scope and restraint matter — claim it, show control, release it, and publish nothing from it. Prioritise handles referenced from pages that confer authority: press, procurement, recruiting, security-contact pages.
+- Takeaway: An organization's identity perimeter includes names it does not host. Keep a register of every third-party identifier cited anywhere on the estate, keep those registrations alive even for retired programmes, and release accounts only in the same change that removes the references.
+
+### 2026-10-18 — Expired official handle referenced from the NASA Earth Matters blog enables impersonation (NASA VDP) — n/a (P4)
+- Source: [Bugcrowd #081a696d](https://bugcrowd.com/disclosures/081a696d-d1d2-4d7d-acb7-29b313c9aa9b/impersonation-via-broken-link-hijacking-on-nasa-earth-matters-blog-page)
+- Type: Security misconfiguration — broken link hijacking on a content/blog surface
+- Summary: A NASA Earth Matters blog page referenced an expired official social-media handle. Because the handle had lapsed it could be registered by anyone and used to impersonate NASA from a link an official blog still carried. Rated P4, validated and patched.
+- Technique / pattern: Blogs, newsrooms and archived article pages are the densest source of this issue and the least likely to be re-reviewed, because posts are published once and then treated as immutable history. Scrape the full archive rather than the current navigation — sitemaps, pagination and tag listings reach posts the menus no longer link — and resolve every outbound identifier found in old posts.
+- Takeaway: Content that is never edited again still carries live trust. Include archived and paginated content in link-health scanning, and when retiring an account, search the estate's historical content for references to it as part of decommissioning.
+
+### 2026-10-18 — macOS screen-share permission dialog overlaps ChatGPT Atlas's full-screen notification, enabling UI spoofing (OpenAI) — $200 (P4)
+- Source: [Bugcrowd #44e37fb3](https://bugcrowd.com/disclosures/44e37fb3-3a52-4d7d-8429-c3c78b77f514/atlas-browser-fullscreen-notification-overlap-by-screen-share-permission-dialog-leading-to-ui-spoofing-and-unauthorized-screen-capture-in-chatgpt-atlas-for-macos)
+- Type: Security misconfiguration / UI redressing — a security indicator obscured by a native permission prompt
+- Summary: In ChatGPT Atlas for macOS, a page in full-screen mode could trigger the operating system's screen-recording permission request, and that native dialog could overlap or obscure the browser's own full-screen notification. A security-sensitive permission request could therefore be made to look as though it belonged to a different, benign action. Rated P4, rewarded $200, accepted and fixed.
+- Technique / pattern: The target is the *indicator*, not the permission. Full-screen notifications, address-bar origin chips, "a site is using your camera" badges and download prompts are the user's only evidence of what is happening, so anything that covers, delays or races them converts an informed click into a blind one. The probe is systematic: enter full-screen from page content, then fire every prompt-producing API — screen capture, camera, microphone, notifications, geolocation, external-protocol open, file picker — and observe whether the indicator stays visible, legible and on top. Timing matters as much as geometry, since an indicator that fades on a timer is as good as covered.
+- Takeaway: Treat security indicators as a surface with their own threat model in any embedded browser or desktop client: they must render above page and dialog content, persist for as long as the state they describe is active, and suppress the sensitive action when they cannot be shown.
+
 ### 2026-10-16 — Case-sensitive scheme check on `app.hey.com/proxy_image` turns into an open redirect that defeats the HEY desktop origin allowlist (Basecamp) — n/a
 - Source: [HackerOne #3972760](https://hackerone.com/reports/3972760)
 - Type: Security misconfiguration — open redirect / improper URL parsing bypassing a client-side origin allowlist

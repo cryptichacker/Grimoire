@@ -12,6 +12,27 @@ Disclosed **Cross-Site Scripting** reports — reflected, stored, and DOM-based.
 
 ## Reports
 
+### 2026-10-20 — Reflected XSS in AI chat bot greetings at help.shopify.com via Markdown image rendering (Shopify) — $1,600
+- Source: [HackerOne #2509022](https://hackerone.com/reports/2509022)
+- Type: Reflected XSS (Markdown rendering sink)
+- Summary: The AI support chat bot on `help.shopify.com` rendered its greeting text as Markdown, and the image-syntax path let reflected input reach script execution in the page. Triaged Medium, classified `Cross-site Scripting (XSS) - Reflected`, $1,600 bounty.
+- Technique / pattern: Markdown renderers are an XSS sink hiding behind an escaping layer — even where raw HTML is stripped, the link and image constructs still emit attributes (`src`, `href`, `title`) that may accept a `javascript:` scheme or let a payload break out of the attribute. Hunt for any place a URL parameter seeds assistant, greeting or preview text that is later rendered as Markdown.
+- Takeaway: Sanitise the renderer's *output*, not only its input, and restrict URL schemes on link and image nodes to an allowlist before serialising to HTML.
+
+### 2026-10-20 — Reflected XSS and HTML injection on cce-signin.gsfc.nasa.gov via the popup_flag parameter (NASA VDP) — n/a (P4)
+- Source: [Bugcrowd 7773707b](https://bugcrowd.com/disclosures/7773707b-09b0-46ec-9891-682546e02434/reflected-xss-and-html-injection-on-cce-signin-gsfc-nasa-gov-via-popup_flag-parameter)
+- Type: Reflected XSS / HTML injection
+- Summary: The `popup_flag` parameter on a NASA Goddard sign-in page was echoed into the response without encoding, allowing reflected HTML and script injection on an authentication host. Resolved, rated P4; the public page carries only high-level detail at the program's request.
+- Technique / pattern: Flag-style parameters (`popup_flag`, `debug`, `mode`, `errmsg`) are expected to hold `0`/`1` or a short token, so encoding gets skipped — yet they are often printed straight into the template. Fuzz the boolean and flag parameters on login and error pages, not just the obvious search and name fields.
+- Takeaway: Encode on output for every reflected value however constrained the developer believes it is, and reject values outside the expected set — XSS on a sign-in origin is worth more to an attacker because credentials are typed there.
+
+### 2026-10-18 — Stored XSS fires when a team whose name carries the payload is selected in a filter (NASA VDP) — n/a (P3)
+- Source: [Bugcrowd #1f521558](https://bugcrowd.com/disclosures/1f521558-8293-42f8-ae6a-6eadf699ddb2/stored-xss-triggered-when-selecting-team-filter)
+- Type: XSS — stored, delivered through a filter/dropdown control
+- Summary: A stored cross-site scripting flaw was identified in a team-filter feature: a team name containing a script payload was persisted, and the payload executed in the browser when that team was chosen from the filter list. Reported to NASA's VDP, rated P3, accepted and fixed.
+- Technique / pattern: The injection point and the execution point are different screens, which is why this class survives review. A name field on a "create team/group/project" form is validated once on write, while the filter, dropdown, breadcrumb, chip, tooltip or export that later renders that name is a separate template — often built with string concatenation or an unescaped bind. Plant a benign marker payload in every nameable entity, then walk the application looking for where the marker renders raw, especially controls populated client-side from a JSON list.
+- Takeaway: Output encoding belongs at every render site, not at the input boundary, and entity-name fields are the highest-value stored-XSS carrier because they propagate into dozens of secondary views. When auditing, inventory all the places a given field is displayed rather than testing only the page that created it.
+
 ### 2026-10-16 — Reserved Rails URL option in pagination links yields one-click cross-account JS execution and token theft (Basecamp) — n/a
 - Source: [HackerOne #3943339](https://hackerone.com/reports/3943339)
 - Type: XSS — reflected, via URL-generation parameter injection chained to Active Storage HTML

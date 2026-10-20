@@ -12,6 +12,27 @@ Disclosed **Remote Code Execution** reports reached via injection chains — **O
 
 ## Reports
 
+### 2026-10-20 — Command injection via unsanitized filename in NASA OCSSW matchup tools (NASA VDP) — n/a (P1)
+- Source: [Bugcrowd 10cb4a9f](https://bugcrowd.com/disclosures/10cb4a9f-9173-4aca-9429-1b994a6233e6/command-injection-via-unsanitized-filename-in-nasa-ocssw-matchup-tools)
+- Type: OS command injection leading to RCE
+- Summary: A filename argument in NASA's OCSSW scientific matchup tooling flowed unsanitised into a shell command execution sink, giving arbitrary command execution with no authentication and no user interaction. Resolved at P1; the reporter validated it with a local proof-of-concept rather than against NASA systems.
+- Technique / pattern: In scientific and data-processing toolchains, filenames and dataset identifiers are routinely handed to shell wrappers around command-line binaries. Read the source for `os.system`, `subprocess(..., shell=True)` or backticks and trace which arguments originate in a request; shell metacharacters in a filename (`;`, `$( )`, a newline) are the payload.
+- Takeaway: Never build a command string — pass an argument vector with `shell=False` and validate filenames against a strict pattern. Note too that reproducing locally from published source is the in-scope way to prove an RCE on a government target.
+
+### 2026-10-18 — RCE in the AWS Amplify CLI via prototype-chain traversal in amplify-velocity-template (AWS VDP) — n/a
+- Source: [HackerOne #3897236](https://hackerone.com/reports/3897236)
+- Type: Code injection — template-engine escape reaching arbitrary code execution (High, Resolved)
+- Summary: The `amplify-velocity-template` rendering library used by the AWS Amplify CLI allowed a template expression to walk the JavaScript prototype chain out of its intended data context and reach executable natives, giving remote code execution on the machine rendering the template.
+- Technique / pattern: A JavaScript template engine that resolves property paths dynamically against a context object is an injection sink: if it does not block `__proto__`, `constructor` and `prototype` segments, an expression can climb from a harmless value to `Function` and call it — the JS analogue of the Jinja2 `__class__.__mro__` chain. Fingerprint the engine, probe whether arbitrary property paths are reflected, and only then escalate. The amplifying factor is that developer tooling renders *project-supplied* templates with full local privileges, so a cloned repository or a pulled project definition counts as attacker-controlled input.
+- Takeaway: Treat template content in CLIs, build tools and CI as untrusted code. Sandbox the renderer's property resolution with an explicit denylist of prototype-walking segments plus a frozen context, and pin and review template/expression libraries the way you would a deserializer — both turn data into execution by design.
+
+### 2026-10-18 — Unauthenticated file write on `/tlm/query` chained to `/script/run` for RCE in NASA AMMOS AIT-GUI 2.5.0 (NASA VDP) — n/a (P1, CVSS 9.8)
+- Source: [Bugcrowd #e7ef226d](https://bugcrowd.com/disclosures/e7ef226d-895b-4cfa-859a-59f83475ee60/unauthenticated-remote-code-execution-in-nasa-ammos-ait-gui-2-5-0-via-tlm-query-file-write-chained-to-script-run-code-execution)
+- Type: RCE via chained primitives — unauthenticated file write plus weak path validation on an execute endpoint
+- Summary: In AIT-GUI 2.5.0 the `/tlm/query` endpoint was reachable without authentication and permitted attacker-controlled file creation, while `/script/run` applied insufficient path validation before executing a script. Writing a Python file through the first endpoint and invoking it through the second gave unauthenticated remote code execution. Reproduced on a self-hosted instance rather than NASA production, reported through the VDP, rated P1 / CVSS 9.8 and fixed.
+- Technique / pattern: Neither endpoint is remarkable alone — one writes a file, one runs a named script from a directory it believes it controls — and each would likely be triaged as low on its own. The composition is the finding. While enumerating, keep two explicit lists: every primitive that puts attacker bytes somewhere on disk (upload, export, log, cache, report, query-to-file) and every primitive that loads or executes a path (script runner, plugin loader, template path, import, include). Then check whether any write target lands inside any execute root, and whether the execute side canonicalizes the path before validating it.
+- Takeaway: Rate primitives by what they compose into, not by their standalone severity. Ground-support, telemetry and operator-console software is especially exposed to this shape because it assumes a trusted network: authenticate every write path, validate executable paths after canonicalization against an allow-list, and keep such tooling off untrusted networks.
+
 ### 2026-10-16 — Unauthenticated RCE on NASA CMR via unsafe Clojure `read-string` in search-parameter validation (NASA VDP) — n/a
 - Source: [Bugcrowd #948921ed](https://bugcrowd.com/disclosures/948921ed-6603-4d2b-9022-f25f6552138f/unauthenticated-remote-code-execution-rce-via-unsafe-clojure-deserialization-on-cmr-earthdata-nasa-gov)
 - Type: RCE via unsafe deserialization / dynamic evaluation of user input

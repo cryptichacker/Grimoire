@@ -12,6 +12,62 @@ Disclosed **exposed API / sensitive information disclosure** reports — leaked 
 
 ## Reports
 
+### 2026-10-20 — Server fully exposed with database credentials (Essity) — n/a
+- Source: [HackerOne #3584078](https://hackerone.com/reports/3584078)
+- Type: Sensitive information disclosure (directory listing exposing credentials)
+- Summary: A directory listing on an Essity server exposed its contents, including database credentials. Triaged Critical, classified `Information Exposure Through Directory Listing`; the program redacted the hostnames in the public report.
+- Technique / pattern: Directory indexing remains one of the highest-yield checks — request the bare directory for every path you discover, and when a listing appears, read the config, backup and environment files it reveals instead of stopping at the listing. The listing is where the finding starts, not where it ends.
+- Takeaway: Disable autoindex, keep configuration and backup files out of web roots, and treat any credential that has sat in a public listing as compromised and rotate it.
+
+### 2026-10-20 — Sensitive information disclosure (CVE-2025-61138) in Qlik Sense Dev Hub (US EPA VDP) — n/a (P3)
+- Source: [Bugcrowd df96dba0](https://bugcrowd.com/disclosures/df96dba0-779d-49fc-84f0-0f353490b6aa/sensitive-information-disclosure-cve-2025-61138-in-qlik-sense-dev-hub)
+- Type: Sensitive information disclosure (known CVE in a third-party product)
+- Summary: A Qlik Sense Dev Hub instance inside EPA scope was affected by CVE-2025-61138 and disclosed sensitive information. Resolved, rated P3.
+- Technique / pattern: Product-and-version reconnaissance — fingerprint the off-the-shelf platforms in scope (BI tools, wikis, CI dashboards), map each to recently published CVEs, and verify the advisory's non-destructive indicator against the deployed version. Almost no custom exploitation is needed, and coverage is wide because these products hide in the long tail of a large estate.
+- Takeaway: Inventory third-party web applications per host and patch them on the vendor's clock; a current CVE feed scoped to the products actually deployed is a dependable source of valid findings on either side of the fence.
+
+### 2026-10-20 — Public exposure of staging STAC API, test datasets and Keycloak configuration on the NASA VEDA platform (NASA VDP) — n/a (P5, informational)
+- Source: [Bugcrowd 06a4cc5b](https://bugcrowd.com/disclosures/06a4cc5b-ce68-49a7-a262-aca70316ba5b/medium-public-exposure-of-staging-stac-api-test-datasets-keycloak-configuration-on-nasa-veda-platform)
+- Type: Exposed API / configuration disclosure (unauthenticated staging environment)
+- Summary: A publicly reachable staging environment in the NASA VEDA ecosystem served STAC API endpoints, test datasets and authentication configuration metadata without authentication, enabling unauthenticated reconnaissance of staging systems and internal architecture. No data modification or privileged access was demonstrated; NASA closed it as expected behaviour at P5.
+- Technique / pattern: Enumerate environment-prefixed hostnames (`staging-`, `dev-`, `test-`) for each production service, then pull the well-known descriptor endpoints — an API's own catalog or OpenAPI document and the identity provider's `/.well-known/openid-configuration` — which between them map endpoints, realms and client ids without a single authenticated call.
+- Takeaway: Staging deployments inherit production's architecture, so place them behind authentication or network restriction. Note also that a reconnaissance-only finding is frequently accepted as risk, so chain it to a concrete impact before reporting.
+
+### 2026-10-20 — Internal IP address and verbose server version disclosure via 404 error pages (NASA VDP, globe.gov) — n/a (P5)
+- Source: [Bugcrowd ab3fd857](https://bugcrowd.com/disclosures/ab3fd857-030a-417c-9a34-62e2d6aba64b/internal-ip-address-and-verbose-server-version-disclosure-via-404-error-pages)
+- Type: Sensitive information disclosure (verbose error / client-side config object)
+- Summary: Invalid or modified API requests to `globe.gov` returned a verbose error response whose `Liferay.ThemeDisplay` JavaScript object revealed an internal private IP address along with detailed Apache Tomcat and Liferay module versions. Resolved, rated P5 informational.
+- Technique / pattern: Deliberately malform API requests and read the error page as data — including the JavaScript configuration objects a CMS injects client-side (`Liferay.ThemeDisplay` and equivalents). Those objects often hold internal hostnames, paths and exact module versions the rendered page never shows.
+- Takeaway: Strip internal infrastructure detail from client-side config objects and disable verbose error output in production; the version strings these leak are what turn a later CVE sweep into a precise hit.
+
+### 2026-10-18 — Blind SSRF escalated to unauthenticated arbitrary file read in NASA MMGIS via inline GDAL VRT (NASA VDP) — n/a (P1)
+- Source: [Bugcrowd #4712dd0d](https://bugcrowd.com/disclosures/4712dd0d-e913-412d-98e6-6a5de00fa5d2/escalated-f8f98208-efd6-4dfd-984c-2d8fae11ac19-informative-report-from-blind-ssrf-to-arbitrary-file-read)
+- Type: Exposed API / information disclosure — unvalidated path into a library's dataset opener, escalated from blind SSRF
+- Summary: Three MMGIS endpoints on a NASA JPL host passed a client-supplied path straight into GDAL's `gdal.Open()` with no authentication or validation. Because GDAL accepts inline VRT (Virtual Raster) XML in place of a filename, and a `VRTRawRasterBand` can map a local file's raw bytes onto pixel values, an attacker could use `POST /api/utils/getprofile` — which returns pixel values in its response — to read arbitrary local files as an anonymous user. Rated P1 and fixed.
+- Technique / pattern: The escalation is the lesson: a finding first triaged as informative blind SSRF became a critical read primitive once the researcher looked at what the *library* accepts rather than what the endpoint documents. Data-processing libraries routinely treat their filename argument as a mini-language — GDAL VRT and `/vsicurl/`, ImageMagick MSL and MVG, FFmpeg concat and HLS playlists, XML external entities, `libxslt` document functions, `pandas.read_*` URLs. Pair one of those with an endpoint that returns processed values to the caller and the blind primitive becomes an oracle. The hunt: identify the processing library and version, read its documentation for descriptor or indirection formats, then find the response field that carries data outward.
+- Takeaway: Never pass user input into a library's open or load entry point; resolve it to a server-side identifier and map that to a path. Disable the library's indirection features explicitly — for GDAL, restrict the allowed drivers and `GDAL_DISABLE_READDIR_ON_OPEN` — and authenticate utility endpoints. When triaging, re-examine "informative" blind findings for a response field that can be turned into a read channel.
+
+### 2026-10-18 — Publicly accessible conference attendee directory exposes extensive personnel contact data (NASA VDP) — n/a (P5)
+- Source: [Bugcrowd #68f5c5dd](https://bugcrowd.com/disclosures/68f5c5dd-ea6c-440c-a6d3-03580982d0a0/publicly-accessible-project-documentation-exposes-extensive-project-personnel-contact-information)
+- Type: Information disclosure — legacy document aggregating personal and organizational contact details, served without authentication
+- Summary: A project-documentation file reachable without authentication contained a conference attendee directory listing participants' names, organizational affiliations, mailing addresses, phone numbers, fax numbers and e-mail addresses. Reported to NASA's VDP, rated P5, accepted and fixed.
+- Technique / pattern: Aggregated contact lists are worth more than their severity rating suggests, because they are the raw material for targeted phishing and support-desk impersonation against the organization whose staff they name. Find them by searching indexed and unindexed document paths for the formats these artefacts take — attendee and participant lists, org charts, distribution lists, meeting minutes, proposal cover sheets, review-panel rosters — as `.pdf`, `.xlsx`, `.docx` and `.csv` under conference, project, programme and archive directories. Directory listings, sitemaps and web archives locate files the site no longer links.
+- Takeaway: Rate an exposure by what it enables downstream, not only by whether each field is individually sensitive: a roster is a ready-made target list. Give document repositories a retention and review cycle, unpublish event material once the event is over, and classify documents containing personal data at upload rather than auditing them years later.
+
+### 2026-10-18 — Sensitive, proprietary and predecisional documents served publicly from NASA.gov domains (NASA VDP) — n/a (P5)
+- Source: [Bugcrowd #ea4f630b](https://bugcrowd.com/disclosures/ea4f630b-f23a-4bc2-b3ac-51d3e684077a/public-disclosure-of-sensitive-proprietary-and-predecisional-documents-on-nasa-gov-domains)
+- Type: Information disclosure — internal documents reachable on public web domains
+- Summary: Documents described as sensitive, proprietary and predecisional were found publicly reachable on NASA.gov domains. The disclosure is brief and does not enumerate the files; the report was accepted and fixed, rated P5.
+- Technique / pattern: Markings such as "predecisional", "proprietary", "source selection sensitive", "pre-decisional draft", "FOUO" and "internal use only" are the useful pivot, because the documents label themselves. Search-engine operators scoped to the estate, plus content-grep over crawled documents, surface them quickly, and the same markings let the report argue sensitivity from the document's own classification rather than the researcher's judgement of the contents. Handle carefully: cite the marking, the path and the title, keep copies out of the report, and do not redistribute.
+- Takeaway: Classification markings inside a file are the cheapest signal for both attacker and defender. Build the marking list into automated scanning of what the public estate actually serves, and gate document publication on a classification check rather than on the author's choice of upload directory.
+
+### 2026-10-18 — Publicly editable OPAG collaboration spreadsheet linked from science.nasa.gov (NASA VDP) — n/a (P5)
+- Source: [Bugcrowd #18f49357](https://bugcrowd.com/disclosures/18f49357-f70c-4f60-b2d1-e43a0dcddf2f/data-integrity-risk-pii-exposure-publicly-editable-opag-collaboration-document-google-sheets-via-science-nasa-gov)
+- Type: Information disclosure / data-integrity risk — third-party collaboration document shared with anyone-can-edit permissions
+- Summary: A Google Sheets collaboration document for the OPAG group, linked from `science.nasa.gov`, was configured so that anyone with the link could edit it, raising both a personal-data exposure and a data-integrity concern. Reported to NASA's VDP, rated P5 and accepted as a business risk.
+- Technique / pattern: Externally hosted documents linked from an in-scope site are a surface the target's own hardening does not cover. Extract every link to a document-sharing provider from the estate's pages, then record for each file whether it is view-only or editable, whether comment or suggestion mode is open, whether revision history is visible, and whether the content names people. Checking *write* access is the step usually skipped, and an editable document linked from an authoritative page is also a content-injection channel, since visitors trust what the official page points to. Confirm the permission from the sharing metadata rather than by modifying anyone's data.
+- Takeaway: Shared-document permissions belong in the same review as application authorization. Default collaboration links to view-only, keep personal data out of link-shared files entirely, and audit an external document's permissions as part of publishing the page that links to it.
+
 ### 2026-10-16 — Private subforum content broadcast in full through the BuddyPress activity REST API (WordPress / bbPress) — n/a
 - Source: [HackerOne #4053546](https://hackerone.com/reports/4053546)
 - Type: Exposed API / information disclosure — unauthenticated leak of private content

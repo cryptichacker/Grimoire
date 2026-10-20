@@ -12,6 +12,62 @@ Disclosed **Insecure Direct Object Reference** reports. Core idea: an object ide
 
 ## Reports
 
+### 2026-10-20 — User can delete other users' Personal Access Tokens on Mozilla Pontoon (Mozilla) — n/a
+- Source: [HackerOne #3325582](https://hackerone.com/reports/3325582)
+- Type: IDOR / broken object-level authorization on a destructive route
+- Summary: Pontoon's token-deletion route accepted any token id and deleted it without checking the token belonged to the requesting user, so any authenticated user could destroy another user's personal access tokens. Triaged Low, classified `Improper Access Control - Generic`.
+- Technique / pattern: Find a destructive, state-changing route that takes a bare numeric id in the path (`/delete-token/<token_id>/`), then replay it from a second account using an id owned by the first. Deletion paths are routinely missed in authorization reviews because testing concentrates on read endpoints.
+- Takeaway: Authorization has to be re-asserted per verb, not per resource — a delete handler must resolve the object and confirm `object.owner == current_user` before acting.
+
+### 2026-10-20 — Arbitrary board preference injection via the Deck config API (Nextcloud) — $200
+- Source: [HackerOne #3599383](https://hackerone.com/reports/3599383)
+- Type: IDOR / broken object-level authorization on a settings endpoint
+- Summary: Nextcloud Deck's board configuration API let a user write preference keys against board identifiers they held no rights over, so board settings could be changed on boards owned by other users. Triaged Medium, classified `Improper Access Control - Generic`, $200 bounty.
+- Technique / pattern: Preference and config endpoints are a soft spot — they usually take an object id plus a free-form `key`/`value` pair, and the permission check is often only wired into the main CRUD routes. Capture a legitimate preference write, swap in a board id from another account, and see whether the key is accepted.
+- Takeaway: Treat settings writes as first-class mutations of the parent object: run the same permission check the parent's CRUD routes use, and allowlist which keys may be written.
+
+### 2026-10-20 — Hidden comments disclosed on the media section of hub.vroid.com (pixiv) — $500
+- Source: [HackerOne #2541962](https://hackerone.com/reports/2541962)
+- Type: IDOR (disclosure of hidden/moderated objects)
+- Summary: Comments hidden from VRoid Hub's media section were still resolvable through their own object lookup, so their content could be read by requesting them directly. Triaged Medium, classified `Insecure Direct Object Reference (IDOR)`, $500 bounty.
+- Technique / pattern: When a UI "hides" content — moderation, soft delete, a visibility flag — check whether the filter lives only in the rendering layer. Pull the same record through its own id or an adjacent API route and diff what comes back against what the page shows.
+- Takeaway: Visibility state belongs in the data-access layer, not the view: a hidden or soft-deleted record should fail to resolve for an unauthorized caller rather than merely be omitted from a list.
+
+### 2026-10-20 — Valid share tokens allow access to the share owner's temporary upload files (Nextcloud) — n/a
+- Source: [HackerOne #3483708](https://hackerone.com/reports/3483708)
+- Type: IDOR / capability-token scope too broad
+- Summary: Holding a valid share token for one resource was enough to reach temporary upload files belonging to the share owner, extending the token's reach well beyond the item it was issued for. Triaged Medium, classified `Improper Access Control - Generic`.
+- Technique / pattern: Treat a capability token (share link, signed URL, upload token) as a scope to probe rather than a key to one object: once you hold a legitimate token, walk sibling paths and staging/temporary locations behind the same handler and record which ones the token still authorizes.
+- Takeaway: Bind every capability token to the exact object and operation it was issued for, and put temporary/staging storage behind its own authorization check instead of letting it inherit the parent share's.
+
+### 2026-10-18 — Arbitrary read of another user's private repository without authorization (GitHub) — $10,000
+- Source: [HackerOne #3124517](https://hackerone.com/reports/3124517)
+- Type: IDOR / improper access control — cross-account private-repository read (High, Resolved)
+- Summary: An improper access control flaw in GitHub Enterprise Server allowed a user to read the contents of another user's private repository without holding any authorization on it. Reported through the GitHub Bug Bounty program, resolved, and awarded $10,000.
+- Technique / pattern: On a platform whose entire value rests on repository visibility, the authorization check is dense and well-tested on the obvious routes — so findings of this size live on the indirect ones: content APIs addressed by blob, tree or commit object identifier; raw and archive download paths; fork, network and compare views that legitimately span repositories; and caches or mirrors that answer before the permission layer. The method is to enumerate every route that can name a repository or an object inside one, then request each as a principal with no relationship to the target rather than as a downgraded collaborator.
+- Takeaway: Object-level authorization must be enforced at the data-access layer that every route shares, not re-implemented per controller, because a single unguarded path defeats the whole visibility model. When auditing a permission-heavy product, inventory routes by the object they can address rather than by the feature they belong to.
+
+### 2026-10-18 — Unauthenticated access to other users' bug-report attachments via a sequential attachment id (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #3259610](https://hackerone.com/reports/3259610)
+- Type: IDOR / broken access control — unauthenticated object read on an administrative route (High, Resolved)
+- Summary: A DoD application served bug-report attachments from `/BugReport/Admin/Attachment/{id}` without authenticating the requester or checking ownership, so anyone could iterate the identifier and download other users' attachments.
+- Technique / pattern: Two things make this shape common. First, attachment and file-serving routes are frequently implemented as thin streaming handlers that were never wired into the application's authorization middleware, because the developer reasoned the identifier was unguessable. Second, a path segment such as `Admin` often reflects which *UI* exposes the route rather than any server-side role check — so always request admin-named paths anonymously rather than assuming they are gated. The probe is to find one legitimate attachment identifier, then replay the request with no cookies or authorization header and walk the identifier space.
+- Takeaway: File download and attachment endpoints need the same object-level authorization as the records they belong to, enforced on the server for every request. Sequential identifiers are not a secret, a path name is not a permission, and "only the admin UI links here" is not access control.
+
+### 2026-10-18 — WebAuthn device entry updated by public key instead of by owner (Nextcloud) — n/a
+- Source: [HackerOne #3360354](https://hackerone.com/reports/3360354)
+- Type: IDOR — record resolved by an attacker-supplied credential identifier (CVE-2025-66558, Low 3.1)
+- Summary: Nextcloud's WebAuthn device management located the stored credential record using the submitted public key rather than scoping the lookup to the authenticated owner, so a registered device entry could be updated based on the key value supplied in the request.
+- Technique / pattern: A classic "wrong lookup key" IDOR, but on authentication metadata rather than business data. Whenever a handler resolves a row by something the client sends — a public key, a device fingerprint, a token value, an external identifier — instead of by the pair `(owner, id)`, the owner check is structurally absent. Security-settings screens (MFA devices, API tokens, recovery methods, trusted browsers) are high-value, because a write there changes who can log in.
+- Takeaway: Load records with the owning principal as part of the query, not as a check afterwards, and never treat a client-supplied credential value as a primary key. Give self-service security-settings routes the same object-level authorization review as the core data model.
+
+### 2026-10-18 — Public Collectives allowed non-members to create pages (Nextcloud) — n/a
+- Source: [HackerOne #3533697](https://hackerone.com/reports/3533697)
+- Type: IDOR / missing access control on a write endpoint reached through a read-only sharing mode
+- Summary: Nextcloud's Collectives app exposed collectives publicly for reading, but the page-creation endpoint did not require membership, so a non-member who could view a public collective could also add pages to it.
+- Technique / pattern: "Public" almost always means public *read*, and the bug is the write handler that inherited the same visibility gate. Enumerate the full verb set behind any publicly viewable object — create, rename, move, delete, comment, attach — and send each as an unauthenticated or non-member principal. The open view route is also what makes the object identifiers discoverable in the first place.
+- Takeaway: Read visibility and write capability need separate authorization decisions on separate checks. When a feature gains a "public" or "anyone with the link" mode, re-audit every mutating route in that feature rather than assuming the new mode only widened reads.
+
 ### 2026-10-16 — Improper authorization lets a project writer edit issue/PR metadata via Memex bulk update (GitHub) — n/a
 - Source: [HackerOne #3527788](https://hackerone.com/reports/3527788)
 - Type: IDOR / broken object-level authorization (CVE-2026-3306)

@@ -12,6 +12,27 @@ Disclosed **SQL injection** reports — error/boolean/time-based, UNION, blind, 
 
 ## Reports
 
+### 2026-10-20 — SQL injection on an ibm.com subdomain (IBM) — n/a
+- Source: [HackerOne #3662095](https://hackerone.com/reports/3662095)
+- Type: SQL injection
+- Summary: A parameter on an IBM subdomain passed user input into a SQL statement without separation, yielding injection against the backend database. Triaged Critical and classified `SQL Injection`; IBM discloses these with the technical detail redacted.
+- Technique / pattern: A breadth play on a very large corporate surface — enumerate subdomains, single out the small legacy or acquired apps that sit outside the main platform's review process, and fuzz every parameter that looks like it feeds a lookup or report query. Coverage finds these, not depth on the flagship app.
+- Takeaway: On a big program the critical SQLi usually lives on a forgotten host: inventory the whole subdomain estate, and force every query through parameterised statements including in apps nobody owns any more.
+
+### 2026-10-20 — Internal Solr query injection enabling local file inclusion and potential SSRF on trek.nasa.gov (NASA VDP) — n/a (P1)
+- Source: [Bugcrowd ef50e1dd](https://bugcrowd.com/disclosures/ef50e1dd-1cc5-4c85-908d-cdc384a89bd3/internal-solr-query-injection-enabling-local-file-inclusion-and-potential-ssrf-on-trek-nasa-gov)
+- Type: Query injection (Apache Solr) chained to LFI / SSRF
+- Summary: The front end built a `q` query for an internal Apache Solr instance out of a `uuid` request parameter; injecting an encoded ampersand (`%26`) appended attacker-chosen Solr parameters, and controlling Solr's `shards` parameter turned that into access to internal resources. Resolved, rated P1.
+- Technique / pattern: Wherever a parameter is interpolated into a URL the server then requests, an encoded separator (`%26`, `%3B`) splits one parameter into two and smuggles extra keys into the inner request. On Solr the high-value keys are `shards` and `stream.url`, because both make the search node fetch a location you choose.
+- Takeaway: Any user value that lands in a server-side URL is injectable — build the inner request from a strict allowlist of keys and re-encode each value instead of concatenating strings and trusting the inner service's parser.
+
+### 2026-10-18 — SQL injection on an ibm.com subdomain (IBM) — n/a
+- Source: [HackerOne #3730301](https://hackerone.com/reports/3730301)
+- Type: SQL injection (reported and resolved; affected host and parameter redacted in the disclosure)
+- Summary: A SQL injection vulnerability was identified on a subdomain of `ibm.com` and reported to IBM through its HackerOne program. The disclosed report confirms the class and the resolution but withholds the vulnerable host and parameter.
+- Technique / pattern: The reusable lesson here is attack-surface shape rather than payload craft. On mature vendor programs, injection findings cluster on peripheral subdomains — regional microsites, event registration, legacy product portals, acquired properties — because those run older stacks outside the main application's review and protective tooling. The workflow is subdomain enumeration, then parameter discovery on the small and forgotten hosts, then fuzzing every parameter including hidden form fields and any header the application reflects into a query, not only the obvious numeric identifier.
+- Takeaway: Breadth beats depth against a hardened flagship application: keep an inventory of peripheral hosts and test them first. Defensively, bring that long tail under the same parameterized-query standard, dependency patching and monitoring as the primary estate.
+
 ### 2026-10-16 — Unauthenticated error-based SQL injection in HEASARC W3Browse (NASA VDP) — n/a
 - Source: [Bugcrowd #e0f7b8d5](https://bugcrowd.com/disclosures/e0f7b8d5-b90a-4a50-b531-2da37e802c84/unauthenticated-error-based-sql-injection-in-heasarc-w3browse-w3hdprods-pl)
 - Type: SQL injection — error-based, unauthenticated (P1)

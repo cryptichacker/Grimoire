@@ -12,6 +12,62 @@ Disclosed **broken authentication & session management** reports — account tak
 
 ## Reports
 
+### 2026-10-20 — GRANT PROXY permits unauthorized authentication changes and administrator account takeover (MariaDB) — n/a
+- Source: [HackerOne #3876430](https://hackerone.com/reports/3876430)
+- Type: Broken authentication / privilege escalation via a delegation grant
+- Summary: MariaDB's `GRANT PROXY` privilege allowed its holder to make authentication changes it should not have been able to make, which led to takeover of an administrator account. Triaged High, classified `Improper Access Control - Generic`.
+- Technique / pattern: In database and IdP permission models, find the "act as another principal" privilege — proxy users, impersonation, `SET ROLE`, service-account delegation — and ask what it lets you *change*, not just what it lets you read. Delegation primitives are usually checked when the connection is established and not again on the administrative statements they unlock.
+- Takeaway: An impersonation privilege must be bounded by the target principal's own authority and must never permit changing authentication material; "can act as X" and "can modify X's credentials" are separate rights.
+
+### 2026-10-20 — Email verification bypass via the signup provisionuser endpoint (Insightly) — n/a
+- Source: [HackerOne #2718253](https://hackerone.com/reports/2718253)
+- Type: Broken authentication (email verification bypass)
+- Summary: Calling `accounts.insightly.com/signup/provisionuser` directly provisioned an account without the email verification step, so an address the attacker did not control could be registered as verified. Triaged Critical, classified `Improper Authorization`.
+- Technique / pattern: Multi-step signup flows expose each step as its own endpoint — capture the whole sequence, then replay the final provisioning call while skipping verification. The question is whether the server re-derives "verified" from state it owns or simply trusts that the client walked the steps in order.
+- Takeaway: Enforce flow order server-side: the provisioning step must itself consult a verification record for that address, because any endpoint reachable out of order will be reached out of order.
+
+### 2026-10-20 — DROP PACKAGE leaves the PACKAGE BODY grant in mysql.procs_priv, causing privilege escalation (MariaDB) — n/a
+- Source: [HackerOne #3908943](https://hackerone.com/reports/3908943)
+- Type: Broken authorization state (stale privilege row surviving object deletion)
+- Summary: Dropping a package left its `PACKAGE BODY` grant behind in `mysql.procs_priv`, so an object later created under the same name inherited the old grant and handed its creator more privilege than intended. Triaged High, classified `Improper Access Control - Generic`.
+- Technique / pattern: Hunt for privilege records that outlive the object they referenced — delete an object, re-create it with the same name, and check whether old grants, ACL rows, shares or API-key scopes reattach. Permission storage keyed on a reusable *name* rather than an immutable id is what makes this work.
+- Takeaway: Deleting an object must cascade to its authorization rows, and permissions should key on an immutable identifier — otherwise a name collision silently becomes a privilege grant.
+
+### 2026-10-20 — Restricted RPC policy bypass on ZMQ JSON-RPC allows unauthenticated remote admin actions (Monero) — n/a
+- Source: [HackerOne #3601469](https://hackerone.com/reports/3601469)
+- Type: Broken authentication (policy enforced on one transport only)
+- Summary: `monerod` started with `--restricted-rpc` applied the restricted-method list to its HTTP RPC but not to the ZMQ JSON-RPC interface, so admin-only methods such as `set_log_level` were accepted over ZMQ. Triaged High, classified `Improper Authentication - Generic`; the reporter demonstrated it against an unpatched daemon and verified a fix that propagates the restricted flag into the ZMQ handler.
+- Technique / pattern: When one service exposes the same API over several transports — HTTP, WebSocket, gRPC, ZMQ, a local socket — enumerate them all and replay a privileged call on each. Authorization is typically implemented inside one request pipeline while the second transport is wired straight to the handler.
+- Takeaway: Put the authorization decision in the shared handler rather than a per-transport front end, so a secondary transport cannot inherit the API without inheriting its policy.
+
+### 2026-10-18 — Phone-number change accepted 0000 as the one-time code, allowing any number to be bound to an account (inDrive) — $2,000
+- Source: [HackerOne #2588329](https://hackerone.com/reports/2588329)
+- Type: Broken authentication — verification bypass via a degenerate OTP value (Critical 9.8; Business Logic Errors)
+- Summary: inDrive's in-app phone-number change sent a four-digit confirmation code, but the validator accepted the literal value `0000` for any number. An attacker could attach an arbitrary phone number to their account, or attach a victim's number, with no access to the SMS. The researcher reproduced it in three steps from the account settings screen; the report was resolved and awarded $2,000.
+- Technique / pattern: Before attempting brute force or race conditions on a one-time code, test the degenerate inputs a validator may special-case or fail open on: `0000`, `000000`, all-same digits, an empty string, a null or omitted field, a whitespace value, the literals `null` and `true`, and a code harvested from a different account or flow. Placeholder values like this usually originate in test fixtures or a staging bypass that reached production. Note also that the vulnerable flow was not login — phone-change, e-mail-change, recovery-method and device-enrolment flows are separate validators and routinely weaker than the login path they protect.
+- Takeaway: One-time codes must be compared against a per-request secret with no accepted sentinel value, and the comparison must reject empty, missing and malformed input explicitly rather than falling through. Audit every flow that binds a new identifier to an account, not just sign-in, because binding an attacker-controlled identifier is equivalent to account takeover.
+
+### 2026-10-18 — Response manipulation lets an attacker add and verify an uncontrolled mobile number, leading to account takeover (MTN Group) — n/a
+- Source: [HackerOne #2762462](https://hackerone.com/reports/2762462)
+- Type: Broken authentication — client-side trust of the verification result (Critical; Authentication Bypass Using an Alternate Path or Channel)
+- Summary: MTN's add-a-mobile-number flow decided whether one-time-password verification had succeeded from the server response as interpreted by the client. By intercepting and rewriting that response an attacker could mark the check as passed and link a number they did not control to a victim's account, resulting in account takeover.
+- Technique / pattern: The signature of this class is that the failing and succeeding responses differ in something the client reads — a boolean, a status string, an HTTP code — while the server keeps no authoritative record that the factor was satisfied. Test it by submitting a deliberately wrong code, editing the response to match a known-good one, then continuing the flow and seeing whether the next request is accepted on its own merits. The alternate channel matters too: the bug sits on the "add and verify another identifier" path rather than on login, which is different code with a different author.
+- Takeaway: Verification state must live server-side and be re-checked by the endpoint that performs the privileged action; the client's view of a response can never be an authorization input. Where a flow spans several requests, bind them with a server-held, single-use token issued only after the factor genuinely verifies.
+
+### 2026-10-18 — Unvalidated country_isd parameter concatenated onto phone_number delivers the victim's OTP to the attacker (Eternal) — $2,000
+- Source: [HackerOne #990048](https://hackerone.com/reports/990048)
+- Type: Broken authentication — composite identity parameter allows OTP delivery to be redirected (Critical; Improper Authentication)
+- Summary: The partners login generated the one-time password for the `phone_number` parameter but appended the separately supplied `country_isd` parameter to that number before sending the SMS, with no strict validation of either field. An attacker could therefore have the victim's one-time code delivered to a number they controlled, while the code remained valid for the victim's account.
+- Technique / pattern: Look for any flow where the identity used to *issue* a secret and the destination used to *deliver* it are assembled from more than one request field — country code plus subscriber number, local part plus domain, user identifier plus callback URL, tenant plus address. Whenever two fields are concatenated or joined server-side, test whether the delivery half can be steered independently of the identity half: move digits between the fields, supply a full international number in the country-code field, add separators, and append a second comma- or semicolon-separated recipient.
+- Takeaway: Derive the delivery destination from the stored record for the identity being authenticated, never from request parameters, and validate each component of a composite identifier against a strict format before use. Treat "the code also reached an extra recipient" as full compromise of the factor, because a one-time code with two destinations is not a second factor at all.
+
+### 2026-10-18 — Omitting the code parameter entirely bypassed OTP verification during signup on hover.com (Tucows VDP) — n/a
+- Source: [HackerOne #3255473](https://hackerone.com/reports/3255473)
+- Type: Broken authentication — missing-parameter verification bypass at registration (Business Logic Errors; Resolved)
+- Summary: Registration on `hover.com` required an e-mail one-time code, but the backend completed signup and returned a valid session when the `code` parameter was omitted from the request altogether. An attacker could register accounts against any e-mail address without ever proving control of it.
+- Technique / pattern: Omitting a field is a distinct test from sending a wrong one, because the two take different branches — a wrong value reaches the comparison, a missing value may skip the block that performs it. For every verification step run the matrix: field absent, field present but empty, field null, field of the wrong type (array or object instead of string), and field duplicated; then watch for a valid session or a success state in the response. Registration and onboarding flows are the softest targets because they are written to minimise friction and are often the newest code in the authentication area.
+- Takeaway: Validate that required inputs are present before validating their contents, and fail closed when they are not. Account creation must prove control of the identifier it registers, since an unverified account bound to someone else's address is the foothold for support-channel impersonation, invitation and domain-join abuse, and name squatting.
+
 ### 2026-10-16 — Unicode dot normalization mismatch allows TLS wildcard-depth authentication bypass in Node.js (Node.js) — n/a
 - Source: [HackerOne #3688064](https://hackerone.com/reports/3688064)
 - Type: Broken authentication — TLS hostname verification bypass (CVE-2026-48618)

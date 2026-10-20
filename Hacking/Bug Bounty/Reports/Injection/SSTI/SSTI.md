@@ -12,6 +12,13 @@ Disclosed **Server-Side Template Injection** reports (often escalating to RCE). 
 
 ## Reports
 
+### 2026-10-20 — Management Console editor privilege escalation to root SSH on GitHub Enterprise Server via nomad template injection (GitHub) — n/a
+- Source: [HackerOne #2332551](https://hackerone.com/reports/2332551)
+- Type: Server-side template injection (Nomad job template) chained to local privilege escalation
+- Summary: A GitHub Enterprise Server Management Console user who could edit configuration was able to inject template syntax that was later expanded when Nomad job files were rendered, escalating from console editor to root SSH on the appliance. Triaged High, classified `Command Injection - Generic`; an older but widely cited disclosure kept here as reference.
+- Technique / pattern: On appliances, look for settings whose values are written into generated config files that an orchestrator or init system then renders — Nomad/Consul templates, systemd units, nginx snippets. An "editor" role that can write such a value inherits the privileges of whatever renders it, so the chain is config field → template render → root process.
+- Takeaway: Configuration supplied by a lower-privileged role must be escaped for the template language that will consume it, and the rendering step should run with the least privilege that still works — otherwise every config field is a root-level injection point.
+
 ### 2026-10-16 — Twine template injection in the Shopify Embedded App SDK modal gives XSS in the admin origin (Shopify) — $1,000
 - Source: [HackerOne #217790](https://hackerone.com/reports/217790)
 - Type: Client-side template injection (twine) leading to XSS in the admin context
