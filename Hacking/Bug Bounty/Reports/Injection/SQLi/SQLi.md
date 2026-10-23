@@ -12,6 +12,41 @@ Disclosed **SQL injection** reports — error/boolean/time-based, UNION, blind, 
 
 ## Reports
 
+### 2026-10-23 — Full database dump via SQL injection (NASA Vulnerability Disclosure Program) — n/a
+- Source: [Bugcrowd 5fd58c0a](https://bugcrowd.com/disclosures/5fd58c0a-2a45-47f6-9d98-d71792d19bd6/full-database-dump-with-sqli)
+- Type: SQL injection (P1, resolved; disclosed 4 Nov 2024)
+- Summary: A SQL injection flaw on a NASA web property allowed the backing database to be dumped in full. Bugcrowd rated it P1 and the program confirmed it was accepted and fixed; the public page carries the rating and status rather than the payload.
+- Technique / pattern: The instructive part is the severity mapping, not the payload. A single injectable parameter that reaches a database with broad read access collapses straight to P1/critical, because impact is measured by what the query can reach rather than by how clever the injection is.
+- Takeaway: When triaging your own injection finding, demonstrate reachable data scope (which schemas and tables the current DB user can read) rather than just proving the injection fires. That difference is what separates a medium from a P1.
+
+### 2026-10-22 — Blind NoSQL injection in a users.list query parameter leaking reset tokens (Rocket.Chat) — n/a
+- Source: [HackerOne #1130874](https://hackerone.com/reports/1130874)
+- Type: NoSQL injection (blind, post-authentication) chained to account takeover
+- Summary: The `users.list` API accepted a caller-supplied query object. The set of returned fields was restricted but the query itself was not sanitised, so operators could be injected to test conditions on fields the response never showed — including password-reset tokens and 2FA secrets. Extracting those allowed account takeover, and an admin takeover put remote code execution within reach.
+- Technique / pattern: Treat field-level output filtering as a side channel rather than a control — inject comparison operators (regex or prefix matches) into the query and read the answer from whether a record comes back at all, then walk the secret character by character. Field projection hides the value from the response body but still lets the database compare it.
+- Takeaway: Document-store query parameters are injection sinks with the same severity as SQL, and "we only return safe fields" is not a mitigation when the attacker controls the predicate. Any endpoint that accepts a serialized filter needs an allowlist of operators and fields, not an output filter.
+
+### 2026-10-22 — Arbitrary SQL executed from a base64 GET parameter in an admin module (ExpressionEngine) — n/a
+- Source: [HackerOne #149279](https://hackerone.com/reports/149279)
+- Type: SQL injection (arbitrary query execution, CSRF-assisted)
+- Summary: An ExpressionEngine module accepted a complete SQL statement over a GET request: the query was base64-encoded and passed in a parameter named `thequery`. An attacker could put a crafted link in front of a logged-in administrator and have arbitrary SQL run against the site database.
+- Technique / pattern: Read the control-panel source for parameters whose names suggest the application forwards data straight to the database layer, then check the transport — a state-changing query reachable by `GET` with no token is also a CSRF primitive, so the exploit reduces to getting an admin to load a URL.
+- Takeaway: The worst SQL-injection findings are often not injection at all but a debug or utility path designed to execute supplied SQL that then shipped to production. Grep for base64 or hex decoding applied to request parameters just before a query call, and always note the HTTP method — `GET` plus no CSRF token turns an authenticated-admin bug into a one-click bug.
+
+### 2026-10-21 — Drupal 7 pre-authentication SQL injection, aka Drupalgeddon (Internet Bug Bounty) — n/a
+- Source: [HackerOne #31756](https://hackerone.com/reports/31756)
+- Type: SQL injection (pre-auth, leading to code execution)
+- Summary: Drupal versions below 7.32 contained a SQL injection reachable with no user account and no prior knowledge of the target site, which the reporter noted could lead to code execution. The flaw sat in the database abstraction layer that builds prepared statements, specifically in how it expanded array arguments for `IN` clauses.
+- Technique / pattern: Audit the query builder, not just the call sites. Drupal did use prepared statements, but the layer that expanded an array into a placeholder list derived placeholder names from attacker-controlled array keys, so a crafted key injected structure into the SQL text before binding happened. The general pattern is to look for the one place a "safe" abstraction must concatenate — placeholder generation, `IN` list expansion, dynamic table/column names, `ORDER BY` handling.
+- Takeaway: Parameterized queries are a property of a code path, not of a framework. The highest-value SQLi in a mature codebase is usually in the abstraction everyone trusts, and a pre-auth bug in a widely deployed CMS is why this classic remains the reference case for the pattern.
+
+### 2026-10-21 — SQL injection in a DoD web application via a crafted URL (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #202619](https://hackerone.com/reports/202619)
+- Type: SQL injection
+- Summary: A DoD website passed a URL parameter into a database query without sanitization, which the report describes as allowing an attacker to execute arbitrary SQL commands and reach sensitive data. The reporter demonstrated the flaw with a specially formatted URL.
+- Technique / pattern: The low-ceremony path still works on large legacy estates: enumerate query-string parameters that look like they feed a lookup (identifiers, filters, sort keys), probe each with syntax-breaking and boolean-equivalent payloads, and read error text or response-length differences as the oracle. Demonstrating via a single GET URL also makes the report trivially reproducible for triage.
+- Takeaway: On broad government and enterprise scopes, breadth of parameter coverage beats payload cleverness — and a proof of concept that is one URL long gets validated faster than one that needs a scripted multi-step setup.
+
 ### 2026-10-20 — SQL injection on an ibm.com subdomain (IBM) — n/a
 - Source: [HackerOne #3662095](https://hackerone.com/reports/3662095)
 - Type: SQL injection

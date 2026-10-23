@@ -12,6 +12,82 @@ Disclosed **Insecure Direct Object Reference** reports. Core idea: an object ide
 
 ## Reports
 
+### 2026-10-23 — IDOR allowing modification of other users' order renewal period (Hostinger) — n/a
+- Source: [HackerOne #837349](https://hackerone.com/reports/837349)
+- Type: IDOR / missing object ownership check
+- Summary: An order identifier in Hostinger's order-management flow was honoured without verifying that the authenticated session owned that order, so a user could alter the renewal period of other customers' orders. The fix added validation that the requesting user owns the order being changed.
+- Technique / pattern: Exercise a settings-change action on an object you legitimately own, capture the request, then resubmit it with another account's order identifier. Billing and subscription objects are good targets because the mutation endpoint is usually separate from the read endpoint that does enforce ownership.
+- Takeaway: Ownership checks are frequently implemented on the page that *renders* an object and forgotten on the endpoint that *mutates* it. Test read and write paths for the same object separately; never assume one implies the other.
+
+### 2026-10-23 — IDOR via responder_user_id lets an attacker act on users in another organization (Automattic) — n/a
+- Source: [HackerOne #725569](https://hackerone.com/reports/725569)
+- Type: IDOR / missing authorization on a cross-tenant action
+- Summary: A request in Automattic's Happy Tools platform lacked authorization checks, so changing the `responder_user_id` parameter let an attacker approve or decline an "afk" request belonging to users in a different organization.
+- Technique / pattern: Create two tenants (organizations) you control, perform the action as a legitimate member of the first, then swap the user-reference parameter in the request body for an identifier belonging to the second tenant. A single parameter such as `responder_user_id` that names *whose* record is acted on is a classic cross-tenant boundary to probe.
+- Takeaway: In multi-tenant products the authorization question is two-layered: does the caller have the right role, and does the target object belong to the caller's tenant? A role check alone passes happily while the tenant boundary is crossed.
+
+### 2026-10-23 — Unprivileged staff could change a store's customer-facing email via an undocumented GraphQL mutation (Shopify) — n/a
+- Source: [HackerOne #980511](https://hackerone.com/reports/980511)
+- Type: Broken access control via an undocumented GraphQL mutation
+- Summary: A staff member with no permissions could change the customer-facing sender email address of a store they had no access to. The reporter identified `emailSenderConfigurationUpdate` as an undocumented GraphQL mutation that applied the change without a permission check.
+- Technique / pattern: Enumerate the GraphQL schema for mutations that the web UI never calls, then invoke them from a deliberately under-privileged account. Undocumented or internal-only mutations often predate the permission framework that guards the documented ones.
+- Takeaway: A GraphQL endpoint's real attack surface is its schema, not its UI. Any mutation reachable from a low-privilege session needs its own authorization check — and the ones nobody documented are the ones nobody reviewed.
+
+### 2026-10-22 — Non-supermarket products accepted into a supermarket-only cart (Skroutz) — n/a
+- Source: [Bugcrowd f9f73dcb](https://bugcrowd.com/disclosures/f9f73dcb-2d3a-4074-a1a1-b04e53db135c/exploiting-supermarket-section-for-non-supermarket-products)
+- Type: Broken object-level validation / business-logic flaw (P4)
+- Summary: Skroutz's cart did not verify that items added through the supermarket flow actually belonged to the supermarket catalogue, so ordinary products could be pushed into supermarket orders. Affected orders had to be cancelled and refunded manually.
+- Technique / pattern: Take an identifier the UI only ever populates from one restricted set — here a product reference inside the supermarket add-to-cart request — and submit a reference drawn from a different set. The server trusted the client to send only category-appropriate objects.
+- Takeaway: Wherever one flow is a filtered view of a larger object space, the filter usually lives in the front end. The check worth hunting is not only "do I own this object" but "is this object of the kind this endpoint is allowed to accept"; low-severity on paper, it still generates real operational cost.
+
+### 2026-10-22 — Missing role check lets a lower admin demote a global admin (Abnormal Security) — n/a
+- Source: [Bugcrowd b2406123](https://bugcrowd.com/disclosures/b2406123-c02d-47cf-bcf1-8af57e1de526/no-rbac-validation-on-api-requests-user-management)
+- Type: IDOR / broken function-level authorization (P3)
+- Summary: The user-management endpoint `/v1.0/rbac/users_v2/<USER_ID>/` accepted attribute changes, roles and permissions included, without checking that the caller outranked the target. A Portal Tenant Admin could therefore downgrade a Portal Global Admin.
+- Technique / pattern: Enumerate the admin API's own role-management calls, then test each direction of the privilege lattice separately with a crafted `PUT`. Escalation upward was blocked but the downward path was not — the reporter probed both rather than assuming one validation covered the whole endpoint.
+- Takeaway: RBAC is relational, so test it as a matrix rather than a toggle. "Can I raise my own privileges" and "can I lower someone else's" are different checks in the code and frequently only one exists; destructive downward abuse alone is enough to lock an organisation out of its own tenant.
+
+### 2026-10-22 — Customer records readable by changing the id in a mini-program profile API (Shopify) — n/a
+- Source: [HackerOne #975047](https://hackerone.com/reports/975047)
+- Type: IDOR (horizontal, authenticated)
+- Summary: The Shopify guide mini-program on WeChat loaded the signed-in user's profile from an API path of the form `/api/sp/customer/<id>`. Substituting another customer's identifier returned that customer's information.
+- Technique / pattern: Proxy the mini-program client rather than only the web app, open the least interesting screen that loads personal data (the edit-profile view), and inspect what the client sends — the identifier sat in the path, so the test was simply to replace it. The authorization decision was made from the path segment instead of the session.
+- Takeaway: Companion surfaces — mini-programs, mobile apps, partner SDKs — often call a different API tier than the audited web front end and inherit none of its access-control review. Intercepting the client the vendor expects nobody to intercept remains one of the cheapest ways to find an IDOR.
+
+### 2026-10-22 — Fare manipulation on another customer's ride via unauthenticated trip endpoints (Bykea) — n/a
+- Source: [HackerOne #2861888](https://hackerone.com/reports/2861888)
+- Type: IDOR (unauthenticated, horizontal) / business-logic flaw
+- Summary: Two Bykea ride endpoints accepted a trip identifier with no authentication, letting a third party raise the fare on a ride belonging to another customer. The inflated bid then surfaced on the driver's side of the trip.
+- Technique / pattern: Chain two unauthenticated endpoints that share an object identifier — `GET /v1/config?trip_id=XXX` returned a hash derived from the trip, and that hash was replayed into a forged `PUT /v1/bidding` request. The hash was treated as proof of authorization even though anyone who knew the `trip_id` could obtain one.
+- Takeaway: A server-generated token is not an authorization check if an unauthenticated endpoint will hand it to anybody who asks. When a request carries a derived value, test whether that value is obtainable without a session — a signed parameter that an open endpoint will sign on demand is just an object identifier with extra steps.
+
+### 2026-10-21 — Unauthenticated IDOR enabling mass account takeover on a DoD-controlled host (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #685338](https://hackerone.com/reports/685338)
+- Type: IDOR (unauthenticated, horizontal)
+- Summary: While sweeping a network range the reporter found a virtual host inside a DoD-controlled ASN whose account pages were addressed by a plain numeric identifier. Incrementing that identifier returned other users' accounts with no session check, across a population the reporter estimated at roughly 320,000 accounts.
+- Technique / pattern: Asset discovery first (ASN and IP-range sweep for a device/service fingerprint, then virtual-host enumeration), then the classic numeric-identifier walk on the account endpoint — request a record you do not own and see whether the server authorizes on the identifier alone. Unauthenticated reach makes the walk trivially scriptable.
+- Takeaway: Scope is defined by ownership, not by domain name: a host on a third-party domain sitting in the target's ASN can still be in scope. And an IDOR on an unauthenticated endpoint scales to the whole table, so impact should be argued from the size of the enumerable id space.
+
+### 2026-10-21 — Unauthenticated profile-management page exposes name, email and EDIPI (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #2858876](https://hackerone.com/reports/2858876)
+- Type: IDOR / missing authentication on a management function
+- Summary: A profile-management page was reachable without logging in and rendered a user's name, email address and 10-digit EDIPI (the DoD personnel identifier). The same page carried an update function, so the exposure was not read-only.
+- Technique / pattern: Request a management or settings page directly rather than through the UI flow, with no session cookie attached. Where the page still renders, check whether its write actions (the update or save handler) are equally unauthenticated — a missing gate on the view usually means a missing gate on the mutation behind it.
+- Takeaway: Test the write side of every unauthenticated read you find. A government personnel identifier like an EDIPI raises severity well above "an email address leaked", because it is a stable cross-system key.
+
+### 2026-10-21 — IDOR in a CSV export endpoint exposes other users' quiz results (U.S. General Services Administration) — n/a
+- Source: [HackerOne #1118638](https://hackerone.com/reports/1118638)
+- Type: IDOR (horizontal, authenticated) via a path-segment identifier
+- Summary: The report endpoint `/reports/quizzes-taken-by-user.csv/USERID` carried the target user's identifier as a path segment and returned that user's quiz results without checking the requester was authorized for them. Changing the identifier let any user download another user's results.
+- Technique / pattern: Drive the feature normally — open the report view and click Download CSV — then intercept the request in a proxy and vary only the identifier. Export and download handlers are worth testing separately from the screens they sit behind: the UI gates who sees the button, while the file route is often a thin wrapper with its own missing authorization check. Note the identifier lives in the *path*, not a query parameter, so parameter-only fuzzing misses it entirely.
+- Takeaway: Every report, export and download route needs the same ownership check as the page that links to it, and the id to tamper with is frequently a path segment or a filename rather than a `?param`.
+### 2026-10-21 — IDOR chained with CSRF and XSS on a TikTok SMB subdomain leading to account takeover (TikTok) — n/a
+- Source: [HackerOne #1404612](https://hackerone.com/reports/1404612)
+- Type: IDOR chained with CSRF and XSS
+- Summary: A TikTok SMB subdomain had an IDOR caused by a missing authorization check that let an attacker modify another user's details, alongside a CSRF weakness and an XSS. The reporter chained the issues toward account takeover.
+- Technique / pattern: Treat a write-capable IDOR as a chain primitive rather than a standalone finding: if the vulnerable mutation can change an identity-bearing field and a CSRF gap lets it be triggered from an attacker page, the pair upgrades from "edit someone's profile" to takeover. Secondary subdomains for business or SMB tooling are a productive hunting ground because they often reuse the main app's session but not its authorization middleware.
+- Takeaway: Report the chain, not the parts. An IDOR that writes plus a missing anti-CSRF token plus script execution in origin is an account-takeover narrative, and that framing is what moves severity.
+
 ### 2026-10-20 — User can delete other users' Personal Access Tokens on Mozilla Pontoon (Mozilla) — n/a
 - Source: [HackerOne #3325582](https://hackerone.com/reports/3325582)
 - Type: IDOR / broken object-level authorization on a destructive route

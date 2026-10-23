@@ -12,6 +12,48 @@ Disclosed **Cross-Site Scripting** reports — reflected, stored, and DOM-based.
 
 ## Reports
 
+### 2026-10-23 — Stored XSS through an HTML-embedding feature that accepted eval() (Statuspage / Atlassian) — n/a
+- Source: [Bugcrowd 1357c3ce](https://bugcrowd.com/disclosures/1357c3ce-cc7e-4ce9-b53b-a943deabccbe/application-is-vulnerable-to-stored-xss)
+- Type: Stored XSS via an intentional HTML-embed feature (P5, informational; disclosed 5 Oct 2023)
+- Summary: Statuspage lets users build status pages with embedded HTML, and the reporter found that JavaScript using `eval()` was accepted and stored. The injected payload came back in the server response and executed in the browser; the reporter demonstrated loading an external script and capturing cookies and the viewer's IP, hosting the page on a trusted-looking `*.statuspage.io` subdomain. The program classified it as an accepted business risk.
+- Technique / pattern: Where a product deliberately offers HTML embedding, the test is not whether script runs but whether any filter exists on dangerous sinks such as `eval()`, and whether the resulting page inherits a trusted origin. A payload on a vendor subdomain is far more credible to a victim than the same payload on attacker infrastructure.
+- Takeaway: "Feature, not bug" is a defensible triage outcome for intentional HTML embedding — but the origin it executes on is a separate decision. Argue impact from the trusted subdomain and the shared cookie scope, not from the alert box.
+
+### 2026-10-23 — Reflected XSS in the site search of a NASA SEWP subdomain (NASA Vulnerability Disclosure Program) — n/a
+- Source: [Bugcrowd d41b7436](https://bugcrowd.com/disclosures/d41b7436-afb2-436e-8653-5d9d24347381/rxss-on-https-www1-2-pz-sewp-nasa-gov)
+- Type: Reflected XSS in a search parameter (P5, informational; disclosed 30 May 2025)
+- Summary: Input submitted to the search function on `www1-2-pz.sewp.nasa.gov` was reflected into the results page without adequate encoding and executed in the visitor's browser in the site's context. The program assessed it as self-inflicted XSS with very limited risk and accepted the business risk.
+- Technique / pattern: Search fields remain the highest-yield reflected-XSS surface because the query is echoed back by design. The deciding factor for severity is deliverability: whether the search can be driven by a GET parameter in a link, or only by typing into the form.
+- Takeaway: A reflected XSS that cannot be triggered by a crafted URL gets written off as self-XSS. Before reporting, confirm the sink is reachable via a `GET` parameter and show the one-click link — otherwise expect a P5.
+
+### 2026-10-22 — Reflected DOM XSS in the SEWP provider lookup tool (NASA VDP) — n/a
+- Source: [Bugcrowd efc41ef8](https://bugcrowd.com/disclosures/efc41ef8-b094-4ab5-a958-114e4e8c37f1/reflected-xss-vulnerability-in-sewp-provider-lookup-tool-www-sewp-nasa-gov)
+- Type: XSS (reflected, DOM-based) — P5, closed as accepted business risk
+- Summary: A provider lookup tool on `www.sewp.nasa.gov` wrote user-supplied input into the DOM without sufficient sanitisation or output encoding, letting arbitrary JavaScript execute in the context of the NASA domain. The program classified it as an accepted business risk rather than remediating.
+- Technique / pattern: Search-and-lookup widgets are a reliable DOM-XSS surface because result rendering happens client side — supply a marker through the search field or query string, then trace in the debugger whether it reaches a sink such as `innerHTML` or `document.write` instead of a text node. The sink, not the reflection, is what makes it exploitable.
+- Takeaway: A DOM sink means the server-side templating review would have found nothing, so read the JavaScript that paints results. Also useful as reporting practice: a legitimate finding can still be closed as informational, so lead with concrete impact (session reach on the parent domain) rather than the payload.
+
+### 2026-10-21 — Stored XSS in driver-exam comments field of a third-party app (Grab) — n/a
+- Source: [HackerOne #274443](https://hackerone.com/reports/274443)
+- Type: Stored XSS (third-party/vendor application)
+- Summary: The reporter found a stored cross-site scripting flaw in the comments field of a driver-exam feature belonging to a third-party web application that Grab used. The app was outside the stated bug bounty scope, but Grab accepted the report because it judged the flaw a real risk to customers, and the vendor fixed it with the reporter's help.
+- Technique / pattern: Map the third-party and vendor-hosted apps that a target's staff and partners actually use, then test the free-text fields in their workflow forms (comments, notes, remarks) which are often rendered back to a reviewer with weaker escaping than the main product. Stored payloads in a review queue fire in a privileged viewer's session.
+- Takeaway: Out-of-scope is not the same as not-worth-reporting. A well-argued customer-risk case can get an exception, and coordinating the fix with the upstream vendor is part of the value delivered.
+
+### 2026-10-21 — CSRF and reflected XSS in a Confluence page-template action (Atlassian) — 20 points (P2)
+- Source: [Bugcrowd #b8bf4457](https://bugcrowd.com/disclosures/b8bf4457-d2bb-4958-b8ae-baea33922bd0/csrf-and-reflected-xss-on-confluence-templates-pages-templates2-docreatepagetemplate-action)
+- Type: Reflected XSS chained with CSRF
+- Summary: Atlassian's published summary describes a CSRF and XSS vulnerability in Confluence templates, reported against the `/pages/templates2/docreatepagetemplate.action` endpoint. It was rated P2 and resolved; the public page carries only the summary and timeline, not the payload.
+- Technique / pattern: Legacy action-style endpoints (`*.action` handlers in Struts-based apps) are worth enumerating directly, since they frequently accept parameters by GET and reflect them into the response. A reflection on a state-changing action that also lacks an anti-CSRF token is a stronger finding than either half: one attacker-controlled link both executes script in origin and performs the action as the victim.
+- Takeaway: Pair the two checks on every legacy action handler — does it reflect input, and does it enforce a CSRF token. Finding one often means finding both, and the combination is what carries the severity.
+
+### 2026-10-21 — Stored self-XSS via SVG upload in Atlassian Identity profile header collection (Atlassian) — n/a (P5, Informational)
+- Source: [Bugcrowd #9a05f0d6](https://bugcrowd.com/disclosures/9a05f0d6-e0ad-40d8-8475-5614b8f1465e/xss-vulnerability-of-upload-svg-files-in-a-collection-section-that-triggers-xss)
+- Type: Stored XSS (self), via SVG file upload
+- Summary: The reporter uploaded an SVG file into the profile header image collection on Atlassian Identity and embedded a `<script>` tag calling `alert(document.domain)` inside it. Opening the image directly executed the script. Atlassian triaged it P5/Informational as an accepted business risk, in part because the payload only fired in the uploader's own context.
+- Technique / pattern: SVG is an XML document that the browser will execute script from when served as `image/svg+xml` and navigated to directly, so any upload field that accepts SVG and serves it from an application origin is an XSS candidate. The decisive follow-up is whether the file is served from the app origin or an isolated sandbox domain, and whether another user can be made to view it — that is the line between self-XSS and a real stored finding.
+- Takeaway: Always check the serving origin and the `Content-Disposition` of an uploaded SVG before writing the report. Without a cross-user delivery path, SVG upload XSS lands as informational, so the research effort belongs in finding the delivery, not in the payload.
+
 ### 2026-10-20 — Reflected XSS in AI chat bot greetings at help.shopify.com via Markdown image rendering (Shopify) — $1,600
 - Source: [HackerOne #2509022](https://hackerone.com/reports/2509022)
 - Type: Reflected XSS (Markdown rendering sink)

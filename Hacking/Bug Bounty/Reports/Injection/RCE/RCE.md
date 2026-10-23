@@ -12,6 +12,41 @@ Disclosed **Remote Code Execution** reports reached via injection chains — **O
 
 ## Reports
 
+### 2026-10-23 — Command injection in the create-git npm module via unsanitized input to exec() (Node.js third-party modules) — n/a
+- Source: [HackerOne #694471](https://hackerone.com/reports/694471)
+- Type: OS command injection in a developer-tooling dependency
+- Summary: The `create-git` npm module concatenated caller-supplied values into an `exec()` call without adequate validation, so input intended to name a repository could run arbitrary shell commands instead of the intended `git` invocation. The report included a short proof-of-concept script that required the module and called its exported function with a crafted option.
+- Technique / pattern: In a JavaScript dependency, grep for `child_process` and specifically `exec`/`execSync`, which spawn a shell, then trace backwards to find which exported parameters reach the command string. Shell metacharacters (`;`, backticks, `$()`) in those parameters are the whole exploit.
+- Takeaway: `exec()` runs through a shell, `execFile()`/`spawn()` with an argument array does not. A library that builds a command string from caller input is a supply-chain RCE whose blast radius is every project that installs it.
+
+### 2026-10-23 — Remote code execution on a Department of Defense web server (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #212985](https://hackerone.com/reports/212985)
+- Type: Remote code execution (injection chain)
+- Summary: A researcher reported a flaw on a DoD website that could have let an attacker execute remote commands on the web server. As with most DoD disclosures the host and the request details are redacted on the public page, which carries the vulnerability class and impact rather than the payload.
+- Technique / pattern: The reusable lesson from redacted government disclosures is the reporting shape: a server-side execution finding is accepted on evidence of command output returning in the response, with the affected host and parameter named precisely, even when the public record later strips both.
+- Takeaway: On programs that redact heavily, assume the write-up is the only artifact that survives. Pin the exact host, parameter and a minimal non-destructive command (`whoami`, `id`) in the original submission — never a payload that changes state on the target.
+
+### 2026-10-22 — OGNL injection in Confluence reaching remote code execution (Atlassian) — n/a
+- Source: [Bugcrowd 23c836a5](https://bugcrowd.com/disclosures/23c836a5-44aa-4f3d-ae25-14555076cce9/confluence-ognl-injection-lead-to-rce)
+- Type: RCE via expression-language (OGNL) injection — P3
+- Summary: A researcher reported a limited remote code execution path in Confluence that Atlassian recorded as a remote code execution vulnerability in Confluence OGNL. The finding came out of automated API fuzzing rather than manual review, and was accepted and fixed.
+- Technique / pattern: Model-based API fuzzing (the reporter used the MOREST tool) against the documented API surface, watching for responses showing that an injected expression was evaluated server side. In OGNL-backed frameworks a parameter that reaches the expression evaluator turns template syntax into Java method calls, which is why expression injection and RCE collapse into the same bug class.
+- Takeaway: Expression-language injection is the shortest path from a single unsanitised parameter to code execution, and it is one of the few classes where an API fuzzer driven by a spec genuinely outperforms hand testing — give the tool the schema and let it hit every parameter with evaluation probes.
+
+### 2026-10-21 — 1-click remote code execution via a Twitch embed chain in an Electron desktop client (Engagement undisclosed) — $5,500 (P1)
+- Source: [Bugcrowd #63864b55](https://bugcrowd.com/disclosures/63864b55-10d6-4e82-a619-192b8c0c99ad/1-click-remote-code-execution-via-twitch-embed)
+- Type: RCE via chained parser abuse, memory corruption and a TOCTOU race
+- Summary: Disclosed 14 Oct 2026, this chain turned a rich Twitch embed in a chat message into native code execution on the victim's machine. A parser gap in Twitch's `force_manifest_node` handling let an inline HLS master manifest point at an attacker-controlled media playlist, which could set a custom ad-verifier script and so gain JavaScript execution inside a client popout that inherited the attacker's origin. From there a V8 RegExp use-after-free gave read/write over compressed-cage memory, a leaked native pointer plus stack control enabled a ROP chain into the Electron IPC wrapper, and a time-of-check/time-of-use race in the client's clip-file handling redirected control of the updater executable to run an attacker command.
+- Technique / pattern: Chain across trust boundaries rather than hunting one critical bug. The entry point is a third-party embed whose manifest format permits a script reference; the escalation is a renderer memory bug; the persistence and privilege step is a file-handling race against a signed updater path. Note the supporting moves too: using a file dialog's WebDAV path to demand-start the Windows WebClient service, and driving a sequence of internal IPC calls to win the race deterministically.
+- Takeaway: In a desktop app built on web technology, an embed parser, the JavaScript engine and the updater are one attack surface. Any place where embedded third-party content can nominate a script URL, and any updater that validates a file before using it in a separate step, are the two ends worth testing together.
+
+### 2026-10-21 — Host docker binary overwrite from a Kata Containers VM in Bitbucket Pipelines (Atlassian) — 40 points (P1, CVE-2020-28914)
+- Source: [Bugcrowd #7bf77429](https://bugcrowd.com/disclosures/7bf77429-2b94-44ea-b6f9-c1fc59b2fd17/host-docker-binary-overwrite-from-kata-vm)
+- Type: Container escape to host RCE (improper file permissions on host mounts)
+- Summary: Kata Containers, used to isolate Bitbucket Pipelines builds, allowed a guest VM to write to `hostPath` mount points that should have been read-only. The reporter used this to overwrite the host `docker` binary (reported as `/usr/bin/docker`) from inside the Kata VM, which hands code execution on the build host to anyone who can run a pipeline. The fix was assigned CVE-2020-28914.
+- Technique / pattern: From inside a CI container, inventory the mounts (`/proc/self/mountinfo`) and test each supposedly read-only host path by actually attempting a write rather than trusting the flag. Where a write succeeds, the highest-value target is a host binary or script the host itself will execute next — a container runtime client, a hook, a wrapper on the build path.
+- Takeaway: "Read-only mount" is a claim to verify, not a guarantee, and in CI the escape payload is usually not an exploit but a file replacement. Also a reminder to keep proof of concept non-destructive: the reporter's overwrite corrupted the original binary and had to be repaired.
+
 ### 2026-10-20 — Command injection via unsanitized filename in NASA OCSSW matchup tools (NASA VDP) — n/a (P1)
 - Source: [Bugcrowd 10cb4a9f](https://bugcrowd.com/disclosures/10cb4a9f-9173-4aca-9429-1b994a6233e6/command-injection-via-unsanitized-filename-in-nasa-ocssw-matchup-tools)
 - Type: OS command injection leading to RCE

@@ -12,6 +12,90 @@ Disclosed **broken authentication & session management** reports — account tak
 
 ## Reports
 
+### 2026-10-23 — Session cookie accepting a user ID enabled full account takeover (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #215859](https://hackerone.com/reports/215859)
+- Type: Broken authentication / unauthenticated session identity forgery
+- Summary: The `PROD_CAS_SESSION` session cookie accepted a user ID as input, so placing a victim's user ID into the cookie granted access to that victim's account. The reporter noted the user IDs were only six digits long, making them guessable or enumerable and widening the attack to arbitrary accounts.
+- Technique / pattern: Decode and then tamper with session cookies rather than only replaying them. If any component of the cookie is a user-identifying value instead of an unguessable, server-verified token, substitute another identifier and see whose session you get. Short numeric identifiers then make it exhaustively enumerable.
+- Takeaway: A session token must be unguessable *and* cryptographically bound to the server's own session record. The moment identity is read from a client-controlled field, authentication reduces to knowing someone's user ID — and a six-digit ID space is no secret at all.
+
+### 2026-10-23 — No rate limiting on the WordPress login page fronting the site (Nextcloud) — n/a
+- Source: [HackerOne #341074](https://hackerone.com/reports/341074)
+- Type: Missing rate limiting / credential brute force
+- Summary: The reporter found that the WordPress login endpoint at `nextcloud.com/wp-login.php` applied no rate limiting, leaving it open to brute-force password guessing that could lead to admin-panel access. The recommended fix was to add rate limiting on that endpoint.
+- Technique / pattern: Marketing sites and blogs on a vendor's main domain are frequently a separate CMS from the product, with their own authentication and none of the product's brute-force protections. Enumerate well-known CMS login paths (`/wp-login.php`, `/administrator`, `/admin`) on in-scope domains and measure whether repeated failures are throttled or locked out.
+- Takeaway: The weakest authentication on a domain is rarely the product's own. A CMS login on the primary hostname inherits the brand's trust and the domain's cookie scope while being maintained by a different team entirely.
+
+### 2026-10-23 — Login CAPTCHA bypass by replaying a captured CAPTCHA value (Tesla) — $150
+- Source: [Bugcrowd 55b40919](https://bugcrowd.com/disclosures/55b40919-2c02-402c-a2cc-7184349926d7/login-capctha-bypass)
+- Type: CAPTCHA bypass / missing server-side session binding (P4, resolved; disclosed 10 May 2023)
+- Summary: During registration the reporter solved a CAPTCHA legitimately and observed that the server's JSON response disclosed the expected CAPTCHA text, which they saved. In a fresh registration attempt with a deliberately wrong answer, they intercepted the rejected submission, substituted the previously saved value, and the check passed and the account was created. The reporter attributed the root cause to the finalizing request lacking a proper session check.
+- Technique / pattern: Two distinct bugs compound here: the challenge's answer is disclosed in the response body, and the verification is not bound to the issuing session. Always read the full response to a challenge for the answer or a reusable token, then test whether that value still validates in a different session or on a second attempt.
+- Takeaway: A human-verification control is only as strong as its server-side binding. The answer must never appear in a response, and each challenge must be single-use and tied to the session that was issued it — otherwise the CAPTCHA becomes a replayable constant.
+
+### 2026-10-23 — Full account takeover chain reported against Dropbox (Dropbox) — n/a (20 points)
+- Source: [Bugcrowd c4b1f9de](https://bugcrowd.com/disclosures/c4b1f9de-aacd-4480-9c92-42be18850e74/full-account-takeover-on-dropbox)
+- Type: Account takeover via a phishing-assisted chain (P2, resolved)
+- Summary: Dropbox accepted and fixed a P2 report titled "Full Account Takeover on Dropbox." The program's own summary characterises the issue as a type of phishing attack that could lead to account takeover, and states the fix was applied for existing users through an automatic client update.
+- Technique / pattern: Account-takeover chains that begin with a user-interaction step are often dismissed as "just phishing." What made this one actionable is that an application behaviour amplified the phishing into a full takeover — so the report has to isolate the product-side defect that converts a lure into session or credential compromise.
+- Takeaway: When user interaction is unavoidable, shift the argument to the application flaw that makes the interaction catastrophic rather than the lure itself. A fix shipped as a client auto-update is a strong signal the defect was server- or client-side, not purely human.
+
+### 2026-10-22 — Non-member self-joins an invite-only workspace through the Slack integration (Trello) — $1,200
+- Source: [Bugcrowd 9f625aae](https://bugcrowd.com/disclosures/9f625aae-cc37-4b06-9552-d049c2a5c1b9/privilege-escalation-vulnerability-a-non-workspace-member-can-self-join-other-users-trello-workspace-through-slack-integration-even-when-self-join-is-diabled-by-owner)
+- Type: Broken access control / privilege escalation via third-party integration — P3, CVSS 6.5 as reported
+- Summary: Trello's Invite Only workspace setting did not hold across its Slack integration. A member of the linked Slack workspace who was not in the Trello workspace could link a personal Trello account and accept a join prompt through the integration, and the reporter stated the same join could be driven by a crafted request to the Slack API without touching the UI.
+- Technique / pattern: Enumerate every path that can add a principal to a tenant — the UI, the public API, and each installed integration — then re-test the restrictive setting through each one. Integrations often call an internal join routine that predates the setting, and sending the request directly bypasses whatever gating the UI applied.
+- Takeaway: An authorization setting is only as strong as its least-checked entry point, and integrations are usually that point. When testing tenancy controls, treat each connected app as a separate, equally privileged client and verify the policy is enforced server side rather than in the flow that happens to be documented.
+
+### 2026-10-22 — Reset tokens not bound to the address they were sent to (Weblate) — n/a
+- Source: [HackerOne #244287](https://hackerone.com/reports/244287)
+- Type: Broken authentication (password-reset token scoping)
+- Summary: A further bypass in the same Weblate reset flow. With several email addresses attached to one account, a reset requested for any of those addresses produced a link that could change the account password — the tokens were tied to the account rather than to the specific address that received them.
+- Technique / pattern: Exercise the multi-identifier case that single-email testing cannot reach — attach additional addresses to an account, request a reset per address, and check whether each emailed token is accepted interchangeably. The bug only surfaces once the account has more than one claimed identifier.
+- Takeaway: A reset token should name both the account and the address it was delivered to, or a weakly verified secondary address becomes a full path to the primary identity. When reviewing an authentication flow, ask which objects can legitimately exist more than once per account — those are where scoping assumptions break.
+
+### 2026-10-22 — Superseded password-reset link remains valid after a newer reset (Weblate) — n/a
+- Source: [HackerOne #243842](https://hackerone.com/reports/243842)
+- Type: Broken authentication (password-reset token lifecycle)
+- Summary: Filed as a bypass of the fix for an earlier report, this showed an older reset link still worked after a second reset had been requested and used. The reporter demonstrated it with two browsers, completing the password change in the second and then returning to the first link.
+- Technique / pattern: Test reset-token invalidation as a state machine across two independent sessions — issue token A, issue token B, consume B, then replay A. Single-browser testing hides the bug because the newer flow overwrites the session state the older link depended on.
+- Takeaway: Issuing a new reset token must invalidate every outstanding one, and consuming any token must invalidate the rest. Re-test a fixed reset flow by varying the order of issue and consume; bypasses of reset fixes are common precisely because the patch usually handles only the sequence the original report described.
+
+### 2026-10-22 — Account takeover through Google One Tap on unverified email addresses (Priceline) — n/a
+- Source: [HackerOne #671406](https://hackerone.com/reports/671406)
+- Type: Broken authentication (federated login, unverified email trust)
+- Summary: Knowing only a Priceline user's email address was enough to take over the account, provided that address was not on a domain registered with Google Workspace. The backend never checked that an email address had been confirmed as belonging to the person presenting it.
+- Technique / pattern: Attack the account-linking step of a social-login flow rather than the password flow — register with the victim's address, then let the identity provider's one-tap path assert that address and watch whether the application merges the two identities. The pivot is that an unverified local account and a federated assertion for the same address collapse into one record.
+- Takeaway: Email addresses are only identities once somebody has proved control of them. Federated login turns "is this email verified" from a hygiene question into the authentication decision itself, and the test is always whether an unverified pre-registration can be upgraded by an assertion the attacker can obtain.
+
+### 2026-10-21 — Password reset tokens not expiring after a newer token is issued (Yelp) — n/a
+- Source: [HackerOne #170161](https://hackerone.com/reports/170161)
+- Type: Broken authentication — password reset token lifecycle
+- Summary: Old, unused password reset tokens remained valid on yelp.com after a new token was issued. The reporter's example showed a token issued at 09:00 still usable after a second token was issued at 09:04.
+- Technique / pattern: Test the reset token as a lifecycle, not a single value. Request a reset, request a second one, then try the first link; separately, try a link after a successful password change, after a logout, after an email change, and well past its nominal expiry. Each of those is a distinct invalidation hook a backend can forget.
+- Takeaway: Issuing a new reset token must revoke all earlier ones. A stale-but-valid token widens the window for anyone who later gains read access to an old inbox or an intercepted link, which is why this stays a reportable finding despite looking minor.
+
+### 2026-10-21 — Design flaw in password-reset session management that bypassed two earlier fixes (Weblate) — n/a
+- Source: [HackerOne #229417](https://hackerone.com/reports/229417)
+- Type: Broken authentication — session/reset design flaw, fix bypass
+- Summary: The reporter combined two previously resolved Weblate reports (the logout CSRF fix and a related session issue) and bypassed both patches. The chain began with logging in as one user and then requesting a password reset token for a second user, exploiting the fact that reset state was tied to the browser session rather than strictly to the target account.
+- Technique / pattern: Revisit a program's own resolved reports and attack the patch, not the original bug — the fix is usually narrower than the design flaw behind it. For reset flows specifically, test whether reset state (token, target account, confirmation step) is bound to the authenticated session: requesting a reset for account B while logged in as account A is the probe that exposes the confusion.
+- Takeaway: Published patches are a map of weak subsystems. Reset and logout flows that keep state in the session are a recurring source of cross-account confusion, and a demonstrated fix bypass is typically treated as a fresh, higher-severity finding.
+
+### 2026-10-21 — Unauthenticated Connect install overwrites a tenant's shared secret, causing unrecoverable DoS (Atlassian) — $1,200 (P3)
+- Source: [Bugcrowd #bdd81798](https://bugcrowd.com/disclosures/bdd81798-1fed-4f4e-8178-4e6cef9bb828/automation-for-jira-allows-unauthenticated-install-with-same-cloudid-leading-to-unrecoverable-dos-by-any-logged-in-user)
+- Type: Broken authentication — unauthenticated install endpoint overwrites tenant credentials
+- Summary: The installation webhook for the Automation for Jira Connect app accepted an undocumented `cloudId` parameter. Supplying a `cloudId` that matched an existing cloud site overwrote that site's record and set its shared secret to an attacker-chosen value, with no authentication required. After the request returned "INSTALLED OK", all legitimate requests from that tenant to Automation were rejected with 403, which the reporter described as unrecoverable. A verbose error message disclosed that `cloudId` was required, which made the attack easier to discover.
+- Technique / pattern: Integration lifecycle endpoints (install, uninstall, enable, licence callbacks) are a distinct authentication surface from the product API and are often reachable unauthenticated by design. Probe them with undocumented parameters taken from error messages, then check whether supplying an existing tenant identifier updates rather than rejects — an upsert on a tenant key with no proof of ownership is credential overwrite. Tenant identifiers like `cloudId` are frequently discoverable from an admin console URL, so they are not a secret.
+- Takeaway: Treat verbose validation errors as parameter discovery, and test tenant-scoped writes for upsert behaviour. An install handler that trusts a client-supplied tenant id can rotate another tenant's shared secret, which is both a denial of service and a credential-integrity failure.
+
+### 2026-10-21 — Sensitive data leakage and session hijacking report (Deutsche Bank Vulnerability Disclosure Program) — n/a (P5, Informational)
+- Source: [Bugcrowd #bd7dd68a](https://bugcrowd.com/disclosures/bd7dd68a-937c-42af-85ff-5dabf2b798b2/leakege-of-senstive-data-and-hijack-sessions)
+- Type: Broken authentication / session handling (reported; closed Informational)
+- Summary: Submitted to the Deutsche Bank VDP and disclosed 16 May 2025. The report concerns sensitive data leakage and session hijacking, but it was closed P5/Informational as an accepted business risk and the public page publishes no technical detail beyond the title and status.
+- Technique / pattern: A useful reference point for the triage boundary rather than for a technique. Session-handling observations — a cookie missing `Secure` or `HttpOnly`, a token visible in a URL or referrer, a session that survives logout — need a demonstrated path by which an attacker actually obtains the session before they clear informational. The demonstration, not the observation, is the work.
+- Takeaway: In financial VDPs especially, "sensitive data" and "session hijacking" claims are judged on the concrete acquisition path. Build the report around how the session is obtained and what is then done with it, or expect P5.
+
 ### 2026-10-20 — GRANT PROXY permits unauthorized authentication changes and administrator account takeover (MariaDB) — n/a
 - Source: [HackerOne #3876430](https://hackerone.com/reports/3876430)
 - Type: Broken authentication / privilege escalation via a delegation grant

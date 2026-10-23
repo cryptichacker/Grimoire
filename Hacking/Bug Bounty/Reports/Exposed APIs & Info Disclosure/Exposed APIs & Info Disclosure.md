@@ -12,6 +12,83 @@ Disclosed **exposed API / sensitive information disclosure** reports — leaked 
 
 ## Reports
 
+### 2026-10-23 — Valid API keys recoverable from archived snapshots of API endpoints (Planet Labs) — n/a
+- Source: [HackerOne #1639011](https://hackerone.com/reports/1639011)
+- Type: Credential exposure via third-party web archives
+- Summary: The reporter found sensitive API keys exposed through archived copies of Planet's API endpoints held by the Wayback Machine, and stated that some of the recovered keys were still valid and exploitable. The exposure came from historical snapshots cached by the Internet Archive's crawler rather than from the live site.
+- Technique / pattern: Query `web.archive.org`'s CDX index for every URL ever recorded under a target domain, then grep the archived responses for key material and token patterns. Secrets that were removed from the live site months ago persist indefinitely in archives, so the live-site clean bill of health proves nothing.
+- Takeaway: Rotation, not deletion, is the only remediation for a leaked credential. Removing a secret from the current response leaves it readable in third-party archives forever — and archives are an unauthenticated, in-scope-adjacent source worth checking on every engagement.
+
+### 2026-10-23 — Flickr API key committed to a public GitHub repository (Mozilla) — n/a (out of scope, no bounty)
+- Source: [HackerOne #1992261](https://hackerone.com/reports/1992261)
+- Type: Hardcoded credential in a public source repository
+- Summary: A researcher found a Flickr API key in a public Mozilla GitHub repository. Mozilla assessed that the key only retrieved public Flickr data, judged it to pose no security risk, revoked it anyway, resolved the report as out of scope for a bounty, and said similar reports would be closed as informative.
+- Technique / pattern: Scanning an organization's public repositories and full commit history for key material is cheap and high-volume, but the value of a hit depends entirely on what the key authorizes. Before reporting, determine the key's scope by exercising a read-only call and establishing whether it reaches non-public data, a paid quota, or a writable resource.
+- Takeaway: "A key was leaked" is not by itself a vulnerability. Triage turns on demonstrated capability — a credential limited to already-public data is informative, so spend the effort on scope evidence rather than on volume of findings.
+
+### 2026-10-23 — Public exposure of personnel and stakeholder PII in documents on NASA subdomains (NASA Vulnerability Disclosure Program) — n/a
+- Source: [Bugcrowd 7d10efbc](https://bugcrowd.com/disclosures/7d10efbc-a774-4b42-9f7d-cb76dfc19127/public-exposure-of-pii-of-nasa-meeting-registrations)
+- Type: Sensitive information disclosure via publicly reachable documents (P4, resolved; disclosed 25 Sep 2025)
+- Summary: The reporter identified multiple publicly accessible documents on NASA subdomains containing personally identifiable information of staff, collaborators and stakeholders, including names, email addresses, phone numbers and addresses. The files were not access-controlled, and the reporter states the work used only publicly available archival resources and manual inspection.
+- Technique / pattern: Document-hunting across subdomains — search-engine `filetype:` queries, archived URL indexes, and open directory listings — surfaces attachments that were published for one small audience and never restricted. No intrusive testing is required, which keeps the activity comfortably inside most VDP rules of engagement.
+- Takeaway: PII exposure findings are won by coverage and careful handling, not by exploitation. Report the locations and the categories of data, quantify the number of affected individuals, and never redistribute the files or the records themselves.
+
+### 2026-10-23 — Sensitive information including contact data and infrastructure detail in public PDFs (NASA Vulnerability Disclosure Program) — n/a
+- Source: [Bugcrowd d3bb7067](https://bugcrowd.com/disclosures/d3bb7067-4d21-4708-82ce-85c7169eb9e7/sensitive-information-disclosure)
+- Type: Sensitive information disclosure in published documents (P3, informational; disclosed 18 Nov 2024)
+- Summary: The reporter found publicly reachable PDF files exposing a combination of personal data — phone numbers, names and addresses — alongside a detailed diagram describing how a firewall was configured. The program rated it P3 and recorded it as an accepted business risk.
+- Technique / pattern: Treat published documents as a reconnaissance corpus rather than only a privacy problem. Architecture diagrams, runbooks and network drawings inside PDFs name internal hostnames, product versions and security-control placement — material that shapes every later test against that estate.
+- Takeaway: The P3 rating here reflects the architecture detail, not the contact data. When a document leak includes infrastructure design, argue the finding as attack-surface disclosure that enables targeting, which is consistently rated above a plain PII listing.
+
+### 2026-10-22 — Endpoint revealing whether another researcher was invited to the same private program (Bugcrowd) — $900
+- Source: [Bugcrowd 66b2fe17](https://bugcrowd.com/disclosures/66b2fe17-fd5d-4eb5-a3df-7a4f13b9b6ca/endpoint-is-showing-whether-the-researcher-has-been-in-particular-private-program-or-not-leads-to-sensitive-info-disclosure)
+- Type: Exposed API / information disclosure (membership oracle) — P3
+- Summary: An endpoint on Bugcrowd's own platform could be used to confirm whether a given researcher had been invited to a particular private program, turning a confidential membership list into something queryable from outside.
+- Technique / pattern: Hunt for oracles rather than dumps — find a request whose response differs measurably depending on a fact you should not know, such as a lookup or autocomplete that only resolves for principals inside a scope. Repeating the query across identifiers reconstructs the hidden set one answer at a time.
+- Takeaway: Confidentiality can be broken without any record ever being returned; a reliable yes/no is enough to rebuild a private roster. Endpoints that merely resolve identifiers need the same authorization as endpoints that return data, and differential responses, error-message variance and timing all count as disclosure.
+
+### 2026-10-22 — Browser extension's geolocation spoofing disabled by a crafted page message (ExpressVPN) — $1,250
+- Source: [Bugcrowd a3ece17b](https://bugcrowd.com/disclosures/a3ece17b-5da7-452d-a6dc-04398700c71d/expressvpn-browser-extension-html5-geolocation-spoof-bypass-client-physical-location-leak)
+- Type: Sensitive data exposure / client location leak — P2
+- Summary: The ExpressVPN browser extension spoofs HTML5 geolocation so sites see the VPN exit location. Its `gps.js` content script listened for messages while checking only that the event originated from the same window, so a page could send a crafted message that switched the spoofing off and exposed the user's real coordinates.
+- Technique / pattern: Read the extension's content scripts and audit each `message` listener for sender validation — a same-window origin check does not authenticate the sender, because the page under test shares that window. Reachable through a site the user grants location permission to, or through an XSS on a site they already trust.
+- Takeaway: Content scripts run alongside the page, so any `postMessage` handler they expose is attacker-reachable and must validate the sender, not just the origin. For privacy tooling the severity argument is about who relies on the guarantee — this report framed impact around users for whom a location leak is a physical-safety matter.
+
+### 2026-10-22 — WordPress REST API exposing administrator account details to anonymous users (Yoti) — n/a
+- Source: [HackerOne #727870](https://hackerone.com/reports/727870)
+- Type: Exposed API / information disclosure (user enumeration)
+- Summary: The WordPress install behind Yoti's marketing site left a REST API endpoint reachable without authentication that returned administrator account information, usernames included, to any anonymous requester.
+- Technique / pattern: On a WordPress target, request the users collection of the REST API directly instead of scraping author pages — the route is enabled by default, is not linked from the site, and returns the account list as JSON. Harvested admin usernames then feed credential stuffing and targeted phishing.
+- Takeaway: Default-on API surfaces of a CMS are part of the attack surface even when the real application lives elsewhere; a marketing subdomain shares the brand's trust without sharing its security review. Enumeration findings read strongest when reported as the first stage of a named follow-on attack rather than as a standalone leak.
+
+### 2026-10-22 — Debug endpoint returning environment variables including AWS S3 credentials (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #1720278](https://hackerone.com/reports/1720278)
+- Type: Sensitive information disclosure (debug / introspection endpoint)
+- Summary: An endpoint at `/api/getEnvVars` on a DoD host returned the process environment. AWS S3 credentials, `PATH` values, and internal IP addresses and ports were all included in the response.
+- Technique / pattern: Brute-force the API namespace with diagnostic verbs and nouns — `env`, `getEnvVars`, `config`, `debug`, `health`, `actuator`, `info` — rather than only the business endpoints a crawler can see. Introspection routes are written for a developer, carry no authorization, and are rarely stripped from the production build.
+- Takeaway: Environment-variable dumps are among the highest-yield single responses in an engagement, since they hand over cloud credentials and internal network layout at once. Any route that reflects server state back to the caller is a secret-disclosure sink, and the internal hostnames and ports are worth as much as the keys for the next stage.
+
+### 2026-10-21 — New GraphQL team_profile field exposes restricted report metadata (HackerOne) — n/a
+- Source: [HackerOne #389600](https://hackerone.com/reports/389600)
+- Type: Exposed API — GraphQL field-level information disclosure
+- Summary: The reporter noticed a newly added `team_profile` field on the GraphQL schema and queried it to retrieve data that should have been restricted, including the latest report marked serious and the reports a team had received over the previous three months.
+- Technique / pattern: Diff the GraphQL schema over time. Introspection (or watching the fields the front end starts requesting after a release) surfaces newly added types and fields, and a new field is the most likely place for an authorization check to be missing because the resolver is newer than the policy layer around it. Query the field directly as a low-privilege or unrelated user rather than through the UI that normally gates it.
+- Takeaway: In GraphQL, authorization lives per resolver, so schema additions are the recurring regression point. A habit of re-running introspection after each deploy turns release notes into a finding pipeline.
+
+### 2026-10-21 — Hidden profile feedback still retrievable through a single GraphQL POST (HackerOne) — n/a
+- Source: [HackerOne #1264725](https://hackerone.com/reports/1264725)
+- Type: Exposed API — client-side-only privacy control
+- Summary: After the reporter unchecked the "Show this blurb on my profile" option for their feedback settings, the feedback was no longer displayed in the UI but could still be retrieved with a single POST request to the `/graphql` endpoint. The privacy preference suppressed rendering without filtering the data at the resolver.
+- Technique / pattern: For every privacy or visibility toggle, flip it off and then re-issue the underlying API call directly instead of reloading the page. Capture the request while the content is visible, toggle the setting, and replay — identical data in the response proves the control is presentational only. Profile, feedback, activity and "who can see this" settings are the highest-yield places to try it.
+- Takeaway: A visibility setting that is enforced in the client is not enforced. Every user-facing privacy control should be tested by replaying the API request it is supposed to govern, which is a repeatable check rather than a lucky find.
+
+### 2026-10-21 — Path traversal on a NASA host (NASA Vulnerability Disclosure Program) — n/a (P1)
+- Source: [Bugcrowd #c209da9f](https://bugcrowd.com/disclosures/c209da9f-651f-4efc-a61d-1c12c1379f95/path-traversal)
+- Type: Exposed files — path traversal
+- Summary: A path traversal reported to the NASA VDP, rated P1 and resolved, disclosed 25 Oct 2024. The reporter chose a restricted disclosure and explicitly withheld the technical details, so the public page records the class, the priority and the outcome only.
+- Technique / pattern: Traversal still earns top priority when it reaches server-side files, so the surfaces worth testing are the ones that take a filename rather than a URL: download and export handlers, template or locale selectors, archive extraction, and image or document resizers. Test encoded and double-encoded separators, absolute paths, and null or extension-suffix tricks, and judge impact by what the reachable file contains — configuration, credentials, source, or keys.
+- Takeaway: A P1 traversal on a public-sector estate is a reminder that file-path parameters deserve the same scrutiny as database parameters. It also illustrates restricted disclosure: the finding is public, the exploit is not, which is a legitimate choice for a sensitive target.
+
 ### 2026-10-20 — Server fully exposed with database credentials (Essity) — n/a
 - Source: [HackerOne #3584078](https://hackerone.com/reports/3584078)
 - Type: Sensitive information disclosure (directory listing exposing credentials)

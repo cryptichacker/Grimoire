@@ -12,6 +12,97 @@ Disclosed **security misconfiguration** reports — permissive CORS, default/exp
 
 ## Reports
 
+### 2026-10-23 — Exposed Slinky admin panel allowing modification of trusted URL redirects (Shopify) — n/a
+- Source: [HackerOne #808762](https://hackerone.com/reports/808762)
+- Type: Exposed administrative interface / missing authentication
+- Summary: The reporter noticed a Shopify Slinky host that had been returning 404 start returning 200, and found an unauthenticated admin panel that allowed creating and modifying URL redirects. The reported impact was the ability to alter redirects that users would treat as trusted Shopify links.
+- Technique / pattern: Keep a monitored list of in-scope hosts and alert on HTTP status changes over time. A host flipping from 404 to 200 marks a newly deployed or newly misrouted service, and newly deployed admin interfaces are the ones most likely to still be missing their auth layer.
+- Takeaway: Recon is a time series, not a snapshot. The finding here was not a clever payload but noticing a status-code change overnight — and the impact argument was redirect trust on a first-party domain, not the panel itself.
+
+### 2026-10-23 — Unauthenticated access to an administrative panel and all its functions (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #1394910](https://hackerone.com/reports/1394910)
+- Type: Missing authentication on an administrative interface
+- Summary: An administrative panel belonging to a management system was reachable without logging in, and the reporter stated that its functions were usable too, allowing files to be uploaded, deleted or modified. The host and the product name are redacted on the public page.
+- Technique / pattern: Reaching an admin panel's login-free landing page is only half the finding. Enumerate the panel's own action endpoints and confirm at least one performs a privileged operation unauthenticated — many panels render without a session but still reject the actions behind them.
+- Takeaway: Severity hinges on whether the exposure is cosmetic (a visible dashboard) or functional (an action that executes). Demonstrate one benign functional call, and note an upload capability explicitly, since file upload on an unauthenticated panel is a direct path to code execution.
+
+### 2026-10-23 — Header-based open redirect on the identity-verification settings endpoint (Bugcrowd) — n/a
+- Source: [Bugcrowd 8a036dce](https://bugcrowd.com/disclosures/8a036dce-d5ee-406d-a35f-a91df1cc57d1/open-redirect-on-https-bugcrowd-com-settings-identity_verification)
+- Type: Unvalidated redirect / open redirect, header-based (P5, informational; disclosed 16 Apr 2020)
+- Summary: The reporter stated that `POST /settings/identity_verification` redirected the user to an arbitrary external site based on the request's `Referer` header, demonstrating it by intercepting the request and substituting an external domain. The proof-of-concept request also carried an `X-Forwarded-Host` header. It was triaged P5 and treated as an accepted business risk.
+- Technique / pattern: When no `url`/`next`/`redirect` parameter is present, test whether the redirect target is derived from a request *header* instead — `Referer`, `X-Forwarded-Host`, `Host`. Header-driven redirects are easy to miss because parameter-focused scanners never look there.
+- Takeaway: A redirect sourced from `Referer` is usually rated low precisely because the attacker cannot set that header in a victim's browser cross-site. Check deliverability before reporting: if the only way to set the header is an intercepting proxy on your own traffic, it is self-inflicted.
+
+### 2026-10-23 — Server-side request forgery in an image-import feature (engagement undisclosed) — n/a
+- Source: [Bugcrowd 3b725bac](https://bugcrowd.com/disclosures/3b725bac-d2b8-49eb-842d-f73c32631cab/ssrf)
+- Type: Server-Side Request Forgery (P4, informational; disclosed 23 Nov 2023)
+- Summary: The program's summary records server-side request forgery in an image-import function: a feature that fetches a user-supplied URL server-side could be pointed at destinations of the submitter's choosing. It was rated P4 and accepted as a business risk; the engagement name is withheld on the public page.
+- Technique / pattern: Any "import from URL" feature — avatars, image import, link previews, webhooks — is an SSRF candidate because the server is designed to fetch an address you control. Severity then depends on what the fetch can reach: cloud instance metadata and internal-only services turn a P4 into a critical.
+- Takeaway: Finding the SSRF is the easy half. The rating is decided by the follow-on evidence — a response from an internal host or metadata endpoint — so a report that only proves an outbound callback to your own listener lands as low severity.
+
+### 2026-10-22 — Outdated WordPress plugin carrying a known Contributor-level stored XSS (NASA VDP) — n/a
+- Source: [Bugcrowd b8cacace](https://bugcrowd.com/disclosures/b8cacace-a46d-455b-9718-d351a1f98de2/wordpress-plugin-vulnerability)
+- Type: Security misconfiguration (outdated third-party component) — P5, informational
+- Summary: The report flagged Popup Maker below version 1.20.5, which carries a known stored XSS reachable by any Contributor-or-above user through its `popupID` parameter. The program verified the site was already running the fixed 1.20.5 and closed the finding as informational.
+- Technique / pattern: Fingerprint the CMS, enumerate installed plugin and theme versions from their own readme and asset paths, then map each version against public advisories to find components below a known-vulnerable boundary. The work is in establishing the exact version, since the advisory supplies the impact.
+- Takeaway: Version fingerprinting is cheap, but the claim has to be verified against the live install before reporting — a scanner-grade "plugin X below Y" finding on a site already running Y is noise. The credible version of this report proves the vulnerable code path is actually reachable on the target.
+
+### 2026-10-22 — Exposed credentials for a Jira account with full Admin permissions (ISC2) — n/a
+- Source: [Bugcrowd 43b31ad4](https://bugcrowd.com/disclosures/43b31ad4-c1b1-458f-95fb-e81ed0455014/found-username-and-password-of-your-account-jira-with-full-permission-admin)
+- Type: Security misconfiguration (exposed credentials / administrative access) — P1
+- Summary: A researcher recovered a working username and password for an ISC2 Jira account carrying full Admin permissions. It was triaged P1, accepted and fixed; the public report does not record where the credentials were found.
+- Technique / pattern: Credential hunting against internal collaboration tooling rather than the flagship product — Jira, Confluence, CI dashboards and wikis are frequently stood up outside the asset inventory, keep weak or shared logins, and hold the tickets and attachments that describe the rest of the estate.
+- Takeaway: Valid credentials to an admin-level issue tracker are usually a P1 on their own, because the tracker's contents map the organisation's infrastructure and its unfixed vulnerabilities. Internal SaaS belongs inside the scope sweep, not treated as out of band.
+
+### 2026-10-22 — Dangling S3 bucket name referenced by a CI dependency script (Reddit) — n/a
+- Source: [HackerOne #1285598](https://hackerone.com/reports/1285598)
+- Type: Security misconfiguration (S3 bucket takeover / dependency-source hijack)
+- Summary: A dependency-installation script in Reddit's `rpan-studio` repository pulled build inputs from an S3 bucket named `obs-nightly` in `us-west-2` that no longer existed. Because bucket names are globally allocated and reusable once released, anyone could register the name and control what the build downloaded.
+- Technique / pattern: Read the CI and dependency scripts in a target's public repositories for every external fetch, then check whether each named bucket, package or domain is still owned by the target. An unresolved name is a claimable name, and creating the bucket in the stated region is the whole proof of concept.
+- Takeaway: Supply-chain takeover starts in source control, not on the web app — grep public repos for hardcoded bucket, registry and host names and resolve each one. The impact argument is build-time code execution for whoever claims the name, which is why these are worth more than the "it is just a 404" framing suggests.
+
+### 2026-10-22 — AWS credentials served in a publicly readable config.json (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #1704035](https://hackerone.com/reports/1704035)
+- Type: Security misconfiguration (exposed configuration file / hardcoded cloud credentials)
+- Summary: A `config.json` file holding sensitive AWS material was reachable over HTTP from the web root of a DoD host. The proof of concept was nothing more than requesting the file by its path.
+- Technique / pattern: Content discovery against the deployed application directory for build-time configuration artefacts — `config.json`, `.env`, `appsettings.json`, `settings.py` and friends — which get bundled by the deploy pipeline and then served as static files because the web server has no rule excluding them.
+- Takeaway: Secrets in a config file are only as protected as the directory they sit in, and front-end build steps routinely copy server config into the public bundle. Any file the application reads at startup should be verified as unreachable from outside, and credentials found this way should be treated as potentially live rather than assumed stale.
+
+### 2026-10-21 — Stealing users' OAuth tokens via an unvalidated redirect_uri on a .gov login flow (GSA Bounty) — n/a
+- Source: [HackerOne #665651](https://hackerone.com/reports/665651)
+- Type: Security misconfiguration — OAuth open redirect / token leak
+- Summary: A crafted link to the cloud.gov login OAuth authorize endpoint used `response_type=token` with `redirect_uri` pointing at an attacker-controlled external domain. After the user selected a .gov account to sign in with, the authorization flow delivered the access token to that external site.
+- Technique / pattern: On any authorize endpoint, test `redirect_uri` against the registered allowlist: a fully external host, a subdomain of an allowed host, an open-redirect chain on an allowed host, and path or fragment variations. The implicit flow (`response_type=token`) raises impact because the credential is returned in the URL fragment, so a single navigation hands it over with no code-exchange step to intercept.
+- Takeaway: Redirect-URI validation must be an exact match against registered values, not a prefix or substring check. Where a provider still supports the implicit flow, a weak allowlist is a direct credential leak rather than a mere redirect nuisance.
+
+### 2026-10-21 — Open redirect on an 8x8 subdomain via IP-plus-path URL confusion (8x8) — n/a
+- Source: [HackerOne #1637571](https://hackerone.com/reports/1637571)
+- Type: Security misconfiguration — open redirect
+- Summary: The reporter found that a URL built from a raw IP address followed by a path ending in a lookalike suffix caused the application to redirect users to a hostname that merely appeared to sit under the target's domain — the demonstration landed on `https://www.8x8.com.example.com`. The issue was fixed.
+- Technique / pattern: Attack the host-matching logic rather than the redirect parameter alone. Suffix-confusion payloads (`target.com.attacker.com`), raw-IP forms, and path segments crafted to be parsed as authority are the standard set, because validators that use "contains" or "endswith" on an unparsed string accept all of them.
+- Takeaway: Any redirect allowlist must parse the URL and compare the resolved host, never pattern-match the raw string. A domain that is a prefix of the attacker's host is the single most common bypass of a naive check.
+
+### 2026-10-21 — HTML injection in Confluence redirects searches to an arbitrary page (Atlassian) — 2 points (P3)
+- Source: [Bugcrowd #f91f6ee5](https://bugcrowd.com/disclosures/f91f6ee5-9400-468d-a75a-509c9eec67ba/critical-html-injection-redirect-csrf)
+- Type: Security misconfiguration — HTML injection leading to forced redirect
+- Summary: Disclosed 21 Jul 2023 and resolved. Injected markup placed in a Confluence document body caused a user who searched for certain keywords to be redirected to an attacker-chosen URL. The reporter listed running JavaScript on the destination page, using the redirect as a CSRF delivery vehicle, and sending users to a fake login page to capture credentials as the downstream impacts.
+- Technique / pattern: Where a wiki or CMS sanitizer strips `<script>` but still permits layout or meta-level markup inside stored content, test the markup that redirects without scripting — meta refresh, base-tag rewriting, and framing constructs. The search-results renderer is a good place to look because it re-renders fragments of stored documents through a different code path than the page view.
+- Takeaway: HTML injection is not a weaker XSS; a sanitizer that only blocks script tags can still be driven into navigation control. Test every secondary renderer (search snippets, previews, exports, notification emails) separately from the primary page view.
+
+### 2026-10-21 — Blind SSRF on gofundme.com (GoFundMe) — n/a (P4)
+- Source: [Bugcrowd #05a760c6](https://bugcrowd.com/disclosures/05a760c6-21c5-45eb-80b4-6760dc71fed1/blind-ssrf-on-gofundme-com)
+- Type: Security misconfiguration — blind server-side request forgery
+- Summary: A blind SSRF was reported against gofundme.com, triaged P4, and resolved in a product release before disclosure on 26 Mar 2021. The public page publishes only the summary and timeline, so no endpoint or payload is given.
+- Technique / pattern: Blind SSRF is confirmed by out-of-band interaction rather than by response content: point any server-fetched URL field (avatar or image import, webhook, link preview, PDF or thumbnail generator, feed importer) at a collaborator host and watch for the DNS or HTTP callback. Once a callback lands, the escalation questions are whether redirects are followed, whether internal addresses and cloud metadata endpoints are reachable, and which schemes besides HTTP are honored.
+- Takeaway: Keep an out-of-band listener in the default workflow so blind classes get caught at all — and when a program resolves quietly, the disclosure may be summary-only, which is still worth logging as a surface reminder even without technical detail.
+
+### 2026-10-21 — Clickjacking in a NASA web application (NASA Vulnerability Disclosure Program) — n/a (P5, Informational)
+- Source: [Bugcrowd #36b7176e](https://bugcrowd.com/disclosures/36b7176e-2fbd-4e6d-a2d1-917e91c8bbc6/vulnerability-report-clickjacking-in-nasa-application)
+- Type: Security misconfiguration — missing framing protection (clickjacking)
+- Summary: Disclosed 15 Jan 2025 against the NASA VDP. NASA's published note is simply that the site was updated to resolve the finding; the report was classified Informational, meaning an accepted business risk. The public page carries no technical detail.
+- Technique / pattern: Framing checks are cheap and belong in a first-pass sweep of any new host: look for a missing `X-Frame-Options` header and the absence of a `frame-ancestors` directive in `Content-Security-Policy`, then confirm by actually loading the page in an iframe. Severity depends entirely on what a framed click can accomplish, so the research effort goes into finding a one-click state-changing action behind it.
+- Takeaway: Clickjacking with no sensitive single-click action attached is routinely closed as informational. Log the header gap, but only write it up when a specific consequential action can be driven through the frame.
+
 ### 2026-10-20 — HTTP request smuggling via unsanitized hop-by-hop headers (Cloudflare Public Bug Bounty) — $1,500
 - Source: [HackerOne #3622877](https://hackerone.com/reports/3622877)
 - Type: Security misconfiguration / HTTP request smuggling (proxy header handling)
