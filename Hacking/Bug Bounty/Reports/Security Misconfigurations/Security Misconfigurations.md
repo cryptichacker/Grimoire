@@ -12,6 +12,34 @@ Disclosed **security misconfiguration** reports — permissive CORS, default/exp
 
 ## Reports
 
+### 2026-10-26 - Administrator password hardcoded in client-side JavaScript on an Uber vendor site (Uber) - n/a
+- Source: [HackerOne #344566](https://hackerone.com/reports/344566)
+- Type: Misconfiguration / secret embedded in client-side code
+- Summary: `desafio5estrelas.com`, a vendor-built and vendor-managed site Uber used in Portugal to help low-rated drivers improve their ratings, exposed an administrator login password in its JavaScript source. Anyone reading the source could sign into the admin panel, which exposed in-app survey data and user IDs.
+- Technique / pattern: Pull every script a page loads and grep for credential-shaped strings - `password`, `passwd`, `token`, `secret`, basic-auth blobs. Vendor-run marketing and campaign microsites are the richest ground: they carry the brand's name and users' trust while sitting outside the main security review.
+- Takeaway: Enumerate third-party and campaign domains as part of the target's attack surface. "Managed by a vendor" predicts weaker controls, not stronger ones, and client-side JavaScript is not a place to keep a password.
+
+### 2026-10-26 - Administrative interface exposed to the public internet on a government host (U.S. Dept Of Defense) - n/a
+- Source: [HackerOne #223948](https://hackerone.com/reports/223948)
+- Type: Misconfiguration / administrative interface reachable from the internet
+- Summary: A researcher found an administrative interface reachable from the public internet on an `nsa.gov` host. The disclosed report is heavily redacted and documents the exposure itself rather than any exploitation of it.
+- Technique / pattern: Content discovery against known admin paths, combined with certificate-transparency and DNS enumeration to surface hosts that were never meant to be public. On large estates the finding is usually the reachability - an admin console that should sit behind a VPN or an IP allowlist answering from the open internet.
+- Takeaway: Exposure alone is a valid report; you do not need to authenticate to show impact. Record the host, the path and the fact that it responds, and stop there rather than attempting access.
+
+### 2026-10-26 - Open redirect via `redirecturl` on a SAP Fiori logoff endpoint (Village Roadshow) - n/a (P4)
+- Source: [Bugcrowd #8ad32ee1](https://bugcrowd.com/disclosures/8ad32ee1-85a6-4810-9a1a-33be69c5a921/open-redirect-on-https-fiori-vrl-com-au)
+- Type: Unvalidated redirect (CWE-601), GET-based
+- Summary: The logoff endpoint on `fiori.vrl.com.au` accepted a `redirecturl` parameter and sent the user to whatever external address it named, letting an attacker bounce victims off a trusted host onto a malicious site. Submitted February 2025, disclosed June 2025, resolved.
+- Technique / pattern: Logout and logoff routes are a standard open-redirect hotspot, because the post-logout destination is deliberately configurable. Test every parameter whose name contains `url`, `redirect`, `return`, `next`, `continue` or `dest` with an absolute external URL, a protocol-relative `//evil.example`, and a value that merely prefixes the allowed host.
+- Takeaway: Redirect destinations belong on an allowlist of relative paths or known hosts. Framework-provided logoff endpoints ship this parameter by default, so check the vendor route even when the application's own code looks clean.
+
+### 2026-10-26 - Open redirect on a NASA asset (NASA VDP) - n/a (P4)
+- Source: [Bugcrowd #53007ed9](https://bugcrowd.com/disclosures/53007ed9-d4b4-4b28-98ee-1ce5c2a613ad/open-redirect-on-nasa)
+- Type: Unvalidated redirect
+- Summary: An open redirect on a NASA asset, reported December 2023, accepted and fixed at P4. The public page records only the classification and the outcome - the reporter's description is a single word, so no endpoint or payload is documented.
+- Technique / pattern: Nothing new technically; logged as a data point that even P4 unvalidated redirects on a large government estate get accepted and fixed, which makes them a reasonable opening finding when mapping a wide VDP scope.
+- Takeaway: A disclosed report with no writeup is still evidence of what a program accepts. When budgeting time on a VDP, the distribution of resolved low-severity classes tells you where effort is likely to be rewarded.
+
 ### 2026-10-23 — Exposed Slinky admin panel allowing modification of trusted URL redirects (Shopify) — n/a
 - Source: [HackerOne #808762](https://hackerone.com/reports/808762)
 - Type: Exposed administrative interface / missing authentication

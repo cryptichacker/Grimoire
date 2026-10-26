@@ -12,6 +12,41 @@ Disclosed **broken authentication & session management** reports — account tak
 
 ## Reports
 
+### 2026-10-26 - Password reset link hijacking via Host header injection (Concrete CMS) - n/a
+- Source: [HackerOne #226659](https://hackerone.com/reports/226659)
+- Type: Host header injection - password reset token leakage - account takeover
+- Summary: Concrete CMS (Concrete5) built password-reset links from the incoming HTTP `Host` header, so an attacker who triggered a reset for a victim while supplying a forged host value caused the victim's email to contain a link pointing at attacker-controlled infrastructure. Clicking it handed the reset token to the attacker.
+- Technique / pattern: Submit the forgot-password form with a modified `Host`, or with `X-Forwarded-Host`, `X-Host` or `X-Forwarded-Server`, then read the resulting email for the host used in the link. Variants worth trying include a duplicated `Host` header, an appended port, and an absolute-URI request line when a proxy normalizes the first header.
+- Takeaway: Never derive an absolute URL from a request header. Base URLs for security emails must come from configuration, and any application that templates a reset link deserves this one-request test.
+
+### 2026-10-26 - Password reset link leakage via Host header injection on a DoD application (U.S. Dept Of Defense) - n/a
+- Source: [HackerOne #1108874](https://hackerone.com/reports/1108874)
+- Type: Host header injection - password reset token leakage
+- Summary: A DoD application (host redacted) also constructed password-reset links from the `Host` header, so a forged value placed an attacker-controlled host in the victim's reset email and leaked the token when the victim followed the link. The report cites published research on HTTP Host header attacks and an earlier HackerOne report of the same class.
+- Technique / pattern: The same single-request test as above. The reporting pattern is also instructive - citing established research plus a precedent report is how a well-known bug class is argued as in-scope rather than dismissed as theoretical.
+- Takeaway: Recurring classes are worth re-testing on every target you touch; this one has been public for over a decade and still reaches triage. Bring a reference and a precedent when the impact depends on a victim clicking.
+
+### 2026-10-26 - One-click account takeover via Host header injection (NASA VDP) - n/a (P2)
+- Source: [Bugcrowd #1c0f275a](https://bugcrowd.com/disclosures/1c0f275a-8d00-40d1-96e7-8631ed5928c0/account-take-over-via-host-header-injection)
+- Type: Host header injection - one-click account takeover
+- Summary: A reporter demonstrated account takeover on a NASA asset through Host header injection, described as one-click: the victim need only follow the link in the mail the attacker causes them to receive. Disclosed November 2024, triaged P2, accepted and fixed. Program policy restricts disclosure to CrowdStream, so the page carries no payloads.
+- Technique / pattern: Third instance of the same primitive in one batch, which is itself the point - a header-controlled base URL appears across unrelated stacks and frameworks. The P2 rating here, against informational ratings for bare reflections, shows how framing decides severity: this was argued as an account takeover with a single victim click, not as "the Host header is reflected".
+- Takeaway: Report the outcome, not the symptom. "Host header is reflected in an email" is a note; "one click on a mail we cause the victim to receive takes over their account" is a P2.
+
+### 2026-10-26 - MFA bypass when silent authentication is enabled (TrueLayer) - n/a (P3)
+- Source: [Bugcrowd #505a4748](https://bugcrowd.com/disclosures/505a4748-c242-4a15-8294-60ac8b70786b/mfa-bypass-when-using-silent-authentication)
+- Type: MFA bypass via identity-provider flow configuration
+- Summary: Holding a valid username and password, a researcher bypassed MFA on the TrueLayer Console login when the identity provider's silent-authentication feature was enabled. TrueLayer reproduced it in its own tenant and in others and concluded it was most likely a bug in the Auth0 implementation; Auth0 (now Okta Customer Identity Cloud) worked with triage and rolled out a fix. Disclosed May 2023, resolved.
+- Technique / pattern: Attack the authentication flow's alternate paths rather than the OTP itself. Silent authentication exists to re-establish a session without user interaction; if that path does not re-evaluate the MFA requirement, it becomes an MFA-free login for anyone holding the password. Enumerate every grant type and prompt mode a hosted IdP exposes and test each for whether the second factor is still enforced.
+- Takeaway: MFA is only as strong as the weakest flow that can mint a session. When a target uses a hosted identity provider, test the provider's optional flows - the bug may belong to the IdP and affect every tenant with that feature switched on.
+
+### 2026-10-26 - CSRF protection bypass on the OAuth consumer-info servlet in Confluence Server (Atlassian) - 20 points (P2)
+- Source: [Bugcrowd #5c8e903b](https://bugcrowd.com/disclosures/5c8e903b-70d8-4d9c-9eae-4dc4402d2d6e/csrf-bypass-plugins-servlet-oauth-consumer-info-xxx-in-confluence-server)
+- Type: CSRF protection bypass on a state-changing servlet
+- Summary: A CSRF bypass affecting the `/plugins/servlet/oauth/consumer-info/...` endpoint in Confluence Server. Atlassian accepted and fixed it; disclosed January 2021 at P2. The reporter promised a separate writeup, so the disclosure page itself holds no reproduction detail.
+- Technique / pattern: Plugin and servlet routes frequently sit outside the framework's CSRF filter, which is usually wired only to the main action namespace. Enumerate `/plugins/servlet/...` style paths on Atlassian-family products and check each state-changing one for a missing token - and separately test whether a token that is present is actually validated rather than merely required.
+- Takeaway: CSRF coverage is a per-route property, not an application-wide one. Bolted-on servlets, legacy endpoints and OAuth/integration handlers are where the filter chain has gaps.
+
 ### 2026-10-23 — Session cookie accepting a user ID enabled full account takeover (U.S. Dept Of Defense) — n/a
 - Source: [HackerOne #215859](https://hackerone.com/reports/215859)
 - Type: Broken authentication / unauthenticated session identity forgery

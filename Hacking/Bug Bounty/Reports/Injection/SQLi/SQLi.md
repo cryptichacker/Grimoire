@@ -12,6 +12,27 @@ Disclosed **SQL injection** reports — error/boolean/time-based, UNION, blind, 
 
 ## Reports
 
+### 2026-10-26 - SQL injection on a DoD website via a crafted URL parameter (U.S. Dept Of Defense) - n/a
+- Source: [HackerOne #193436](https://hackerone.com/reports/193436)
+- Type: SQL injection (classic, via URL parameter)
+- Summary: A Department of Defense website passed a URL parameter into a backend SQL query without sanitization. The report states an attacker could execute arbitrary SQL statements and reach sensitive data, demonstrated with a specially crafted URL.
+- Technique / pattern: Classic parameter fuzzing - append quote, comment and boolean payloads to every GET parameter and watch for SQL errors or changed response length. Legacy government and institutional estates often front query code written before any parameterization layer existed.
+- Takeaway: One unparameterized URL parameter is still a full database compromise. On legacy estates, enumerate every query-string parameter rather than only the obvious `id` or `search` fields.
+
+### 2026-10-26 - SQL injection in a URL path segment reaches identity records (MTN Group) - n/a
+- Source: [HackerOne #2633959](https://hackerone.com/reports/2633959)
+- Type: SQL injection (path-segment injection)
+- Summary: An MTN-operated application took an identity number directly from the URL path and concatenated it into a backend SQL query without sanitization. Because the registration flow collected passport/national-ID numbers, organization numbers and supporting documents, the injectable path reached records holding identity data.
+- Technique / pattern: Inject into the path, not only the query string. Where a route looks like `/customer/<idNumber>/details`, the segment is read by a router and handed on as a raw string, missing whatever validation the query-parameter layer applies. Use encoded quotes and time-based payloads, since path segments may reject some characters outright.
+- Takeaway: Treat every dynamic path segment as a parameter. REST-style routes hide user input in a place both automated scanners and developers tend to skip.
+
+### 2026-10-26 - Pre-auth blind NoSQL injection in `getPasswordPolicy` leaks reset tokens (Rocket.Chat) - n/a
+- Source: [HackerOne #1130721](https://hackerone.com/reports/1130721)
+- Type: NoSQL injection (blind, unauthenticated) - database query injection
+- Summary: Rocket.Chat's `getPasswordPolicy` method did not validate or sanitize its `token` parameter, letting an unauthenticated caller inject a MongoDB query operator. The report states this could leak password-reset tokens and lead to account takeover, with admin takeover escalating to code execution.
+- Technique / pattern: Where a parameter is compared against a stored value, submit a query-operator object (a regex or comparison operator) instead of a string so the comparison becomes a search. Repeating that character by character turns a yes/no response into a blind oracle that reconstructs the secret. Unauthenticated methods that accept a token are ideal, because the token is itself the secret being matched.
+- Takeaway: NoSQL backends need type checking, not string escaping - a parameter declared as a string must be rejected when it arrives as an object. Any unauthenticated endpoint that compares a submitted token against a stored one is a blind-extraction target.
+
 ### 2026-10-23 — Full database dump via SQL injection (NASA Vulnerability Disclosure Program) — n/a
 - Source: [Bugcrowd 5fd58c0a](https://bugcrowd.com/disclosures/5fd58c0a-2a45-47f6-9d98-d71792d19bd6/full-database-dump-with-sqli)
 - Type: SQL injection (P1, resolved; disclosed 4 Nov 2024)

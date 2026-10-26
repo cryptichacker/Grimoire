@@ -12,6 +12,27 @@ Disclosed **Insecure Direct Object Reference** reports. Core idea: an object ide
 
 ## Reports
 
+### 2026-10-26 - IDOR in Push Server management exposes any user's FTP/sFTP credentials (U.S. Dept Of Defense) - n/a
+- Source: [HackerOne #228383](https://hackerone.com/reports/228383)
+- Type: IDOR / missing object ownership check
+- Summary: A DoD application's Push Server feature did not verify that the referenced server belonged to the requesting account, so an authenticated user could read the FTP and sFTP credentials stored against any other user's server.
+- Technique / pattern: Register a resource of your own (here a push/transfer server), capture the request that reads its configuration, then substitute or increment the server identifier. Credential-bearing configuration objects - FTP targets, SMTP relays, webhook secrets - are high-value because the config-read endpoint often returns the stored secret in cleartext.
+- Takeaway: Any object that stores credentials on a user's behalf must be authorized on read, not only on create. Enumerable connection identifiers plus a config-read endpoint is a direct path from a low-privilege account to third-party credentials.
+
+### 2026-10-26 - IDOR lets an authenticated user delete records owned by other accounts (Mars) - n/a
+- Source: [HackerOne #1947376](https://hackerone.com/reports/1947376)
+- Type: IDOR / missing authorization on a destructive action
+- Summary: On a Mars-operated site the delete action did not check whether the target record belonged to the requesting user, so any authenticated user could delete another user's records. The report notes the authorization mechanism failed to verify the requester was permitted to reach the protected resource.
+- Technique / pattern: Create your own record, capture the delete request, then replay it with another account's record identifier. Destructive verbs - a `DELETE` request, or a `POST` to a `.../delete` path - are tested less often than read endpoints and frequently skip the ownership check entirely.
+- Takeaway: Test the full CRUD surface of every object and treat delete as its own authorization boundary. An application that correctly hides other users' records from listings may still accept a delete for them.
+
+### 2026-10-26 - IDOR allowing one user to read another user's data (Semrush) - n/a
+- Source: [HackerOne #1464168](https://hackerone.com/reports/1464168)
+- Type: IDOR / cross-account data read
+- Summary: Semrush disclosed an insecure direct object reference that allowed reading data belonging to another user. The published summary states a hotfix shipped quickly and that an investigation found no evidence of exploitation; the public page does not include reproduction steps.
+- Technique / pattern: The generic shape is to take an identifier that appears in a request for your own data, substitute another account's value, and diff the responses for records you should not see. SaaS analytics products expose many per-account objects - projects, reports, scheduled exports - and each one is a separate authorization decision.
+- Takeaway: Worth logging even when details are withheld: a fast hotfix plus an access-log review of whether anyone else exploited it is the expected vendor handling for a cross-account read.
+
 ### 2026-10-23 — IDOR allowing modification of other users' order renewal period (Hostinger) — n/a
 - Source: [HackerOne #837349](https://hackerone.com/reports/837349)
 - Type: IDOR / missing object ownership check

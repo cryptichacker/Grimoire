@@ -12,6 +12,27 @@ Disclosed **exposed API / sensitive information disclosure** reports — leaked 
 
 ## Reports
 
+### 2026-10-26 - Unauthenticated information disclosure via Jira `QueryComponent!Default.jspa` (U.S. Dept Of Defense) - n/a
+- Source: [HackerOne #1067004](https://hackerone.com/reports/1067004)
+- Type: Unauthenticated information disclosure in third-party enterprise software
+- Summary: Outdated Atlassian Jira Server and Data Center instances on DoD infrastructure let an unauthenticated remote user reach `/secure/QueryComponent!Default.jspa` and read custom field names and custom SLA names, disclosing internal configuration.
+- Technique / pattern: Fingerprint the product and version first, then test the known unauthenticated endpoints for that version instead of fuzzing blindly. For Jira the list is short and well documented - `/secure/QueryComponent!Default.jspa`, parts of `/rest/api/2/`, the user-hover and project-picker endpoints - each reachable with a single unauthenticated request.
+- Takeaway: Keep a per-product checklist of unauthenticated endpoints for common enterprise software. On a large estate the same outdated Jira or Confluence build is deployed many times, so one checklist entry scales across dozens of hosts.
+
+### 2026-10-26 - Unauthenticated disclosure of private messages via the Sensei LMS REST API (Automattic) - n/a
+- Source: [HackerOne #1590237](https://hackerone.com/reports/1590237)
+- Type: Missing authorization on a REST API route (CVE-2022-2034)
+- Summary: The Sensei LMS WordPress plugin, up to and including version 4.4.3, exposed users' private messages to unauthenticated callers through its REST API because the route lacked the permission check that should have gated it. Tracked as CVE-2022-2034.
+- Technique / pattern: On WordPress targets, list the registered routes at `/wp-json/` and the plugin namespaces beneath it, then call each one with no cookie at all. The recurring defect is a `register_rest_route` whose `permission_callback` returns true or is absent, which makes a message, order or submission post type world-readable.
+- Takeaway: Plugin REST routes are a separate authorization surface from the plugin's admin screens. Enumerate the route index and test every route unauthenticated - the index itself tells you what to ask for.
+
+### 2026-10-26 - Unauthenticated API access exposing premium content and financial data (XVIDEOS) - n/a
+- Source: [HackerOne #2979176](https://hackerone.com/reports/2979176)
+- Type: Missing authentication / paywall enforced only in the front end
+- Summary: The report describes an open API on `xvideos.red` that let users reach premium channels and videos without a paid membership, with the title also citing exposed financial data. The public page is truncated and does not name the endpoint or the reproduction steps.
+- Technique / pattern: Where the web UI enforces entitlement, the API behind it often does not. Capture the request the player or mobile app makes for content you are entitled to, then replay it with a premium identifier from an unsubscribed - or entirely unauthenticated - session. Paywalls implemented in the front end and checked only at page render are the recurring root cause.
+- Takeaway: Entitlement is an authorization decision and belongs server-side on every content-delivery endpoint. Treat "subscriber only" exactly like "owner only" and test it by replaying API calls rather than by clicking through the UI.
+
 ### 2026-10-23 — Valid API keys recoverable from archived snapshots of API endpoints (Planet Labs) — n/a
 - Source: [HackerOne #1639011](https://hackerone.com/reports/1639011)
 - Type: Credential exposure via third-party web archives

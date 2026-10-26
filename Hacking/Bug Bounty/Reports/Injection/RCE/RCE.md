@@ -12,6 +12,20 @@ Disclosed **Remote Code Execution** reports reached via injection chains — **O
 
 ## Reports
 
+### 2026-10-26 - Deserialization of untrusted data in GitHub Enterprise Server SVNBridge leads to RCE (GitHub) - n/a
+- Source: [HackerOne #1593913](https://hackerone.com/reports/1593913)
+- Type: Insecure deserialization chained with SSRF - RCE
+- Summary: GitHub Enterprise Server's SVNBridge component deserialized untrusted data, which could be escalated to remote code execution. Exploitation required an SSRF primitive so the attacker could control the bytes that reached the deserializer.
+- Technique / pattern: The chain is the lesson. A deserialization sink that is not directly reachable from the internet becomes exploitable the moment an SSRF lets you speak to the internal listener. When auditing an appliance, map the internal services first - bridges, sync daemons, admin RPC - and then hunt separately for any request-forging primitive that can reach one of them.
+- Takeaway: Rate an internal-only deserialization sink as a live finding rather than a theoretical one. Appliances usually contain at least one SSRF, and the two primitives together are code execution.
+
+### 2026-10-26 - Login bypass chained to malicious file upload executed on a NASA system (NASA VDP) - n/a (P1)
+- Source: [Bugcrowd #e31911c3](https://bugcrowd.com/disclosures/e31911c3-1c03-4808-94a6-ed7989b37259/unauthorized-login-bypass-malicious-file-upload-sent-delivered-and-executed-in-nasa-target-system)
+- Type: Authentication bypass chained to unrestricted file upload - code execution
+- Summary: A reporter bypassed login on a NASA target and then uploaded a file that was delivered and executed on the system. Triaged P1 and resolved; the public page carries only the title and metadata, not the reproduction steps.
+- Technique / pattern: The chain shape is the reusable part. An authentication bypass converts a post-auth upload feature into an unauthenticated one, and an upload handler that stores files inside the served web root with an executable extension converts that into code execution. Each half alone is mid-severity; composed, it is P1.
+- Takeaway: Always re-walk the post-authentication feature set after finding an auth bypass. Severity comes from composing primitives, and an upload handler is the most common thing sitting behind a login.
+
 ### 2026-10-23 — Command injection in the create-git npm module via unsanitized input to exec() (Node.js third-party modules) — n/a
 - Source: [HackerOne #694471](https://hackerone.com/reports/694471)
 - Type: OS command injection in a developer-tooling dependency

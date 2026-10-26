@@ -12,6 +12,34 @@ Disclosed **Cross-Site Scripting** reports — reflected, stored, and DOM-based.
 
 ## Reports
 
+### 2026-10-26 - Reflected XSS in the `FORMAT` parameter of NASA SkyView `sia.pl` (NASA VDP) - n/a (P3)
+- Source: [Bugcrowd #2534d5fe](https://bugcrowd.com/disclosures/2534d5fe-6a7e-48bb-9117-ce357cfa0c9f/rxss-at-https-skyview-gsfc-nasa-gov-current-cgi-vo-sia-pl)
+- Type: Reflected XSS
+- Summary: The SkyView service's `sia.pl` CGI endpoint reflected the `FORMAT` parameter into its response without sanitization, so a crafted request could inject markup that executed JavaScript in the victim's browser. The reporter demonstrated it with an SVG element carrying an `onload` handler. Resolved, rated P3.
+- Technique / pattern: Legacy CGI scripts (`.pl`, `.cgi`) frequently echo every parameter into an error or status page. Take the parameter list from the service's own protocol spec rather than from the UI - here the VO/SIA interface defines `FORMAT`, `POS` and `SIZE` - and test each for reflection, then use a tag-plus-event-handler payload such as `svg onload` where angle brackets survive but the word `script` is filtered.
+- Takeaway: Protocol-defined parameters on scientific and data-service endpoints are an under-tested reflection surface. Read the API specification to learn what the endpoint accepts beyond what the front end sends.
+
+### 2026-10-26 - Reflected XSS allowing redirection and JavaScript execution (NASA VDP) - n/a (P5, accepted risk)
+- Source: [Bugcrowd #a8df025a](https://bugcrowd.com/disclosures/a8df025a-8ba6-4f89-9dcf-10c2d66898c8/reflected-xss-allowing-redirection-and-javascript-execution)
+- Type: Reflected XSS (self-XSS, requires user interaction)
+- Summary: User input was echoed into a NASA domain's response without encoding, allowing JavaScript to execute in the browser; the reporter proved it with an `alert()` payload. The program closed it as informational - impact was limited to self-XSS requiring user interaction - and accepted it as a business risk.
+- Technique / pattern: Useful as triage calibration rather than as a technique. Proving script execution is only half a report: reflections that need the victim to paste the payload themselves, or that are not reachable through a URL an attacker can send, are routinely downgraded. Demonstrating a single attacker-delivered link is what lifts a reflection out of P5.
+- Takeaway: Document the delivery path, not just the payload. "Does a URL I can send make this fire?" is the question that decides whether a reflected XSS is triaged or closed as informational.
+
+### 2026-10-26 - Email HTML injection via a user-controlled name field in meeting notifications (HubSpot) - 5 points (P4)
+- Source: [Bugcrowd #9185dfbc](https://bugcrowd.com/disclosures/9185dfbc-1d2a-45e0-8c32-d481bdfe810c/html-injection-in-meeting-owner-email)
+- Type: HTML injection into outbound email (content spoofing)
+- Summary: On `events.hubspot.com` a user could place raw HTML in their first and last name fields. When that user's calendar was disconnected, the notification email delivered to the meeting owner rendered the injected markup. Submitted April 2022, disclosed July 2022, accepted and fixed.
+- Technique / pattern: Plant markup in a profile field, then trigger every workflow that re-renders that field elsewhere - notification emails, PDF exports, back-office dashboards. The injection point and the sink live in different systems, so the mail templating layer often has no encoding even where the web UI does; second-order sinks require finding and deliberately firing the triggering event, here disconnecting the calendar.
+- Takeaway: Follow your own name through the whole product. Identity fields get rendered by mail templates and internal tooling that were never hardened like the main application.
+
+### 2026-10-26 - Team owner injects arbitrary HTML into official globe.gov team email (NASA VDP) - n/a (P4)
+- Source: [Bugcrowd #b7c69659](https://bugcrowd.com/disclosures/b7c69659-7186-4f9b-b88f-a2a020233995/email-html-injection)
+- Type: HTML injection into outbound email (content spoofing / phishing primitive)
+- Summary: An authenticated team owner on `globe.gov` could enter arbitrary HTML in the Message Body field of the Email Team modal; the markup rendered in team members' inboxes, delivered from the official domain. The reporter noted the impact could rise to XSS in admin or webmail contexts. Disclosed November 2025, resolved.
+- Technique / pattern: Any "message your members" feature that accepts rich text is a content-spoofing candidate - submit a styled block such as a fake security alert or sign-in prompt and check whether the receiving mail client renders it. Because the message leaves a trusted domain with valid authentication records, the spoofed content inherits that domain's credibility.
+- Takeaway: Rate injection into outbound email on the trust of the sending domain, not only on whether script executes. A government or brand domain that will render attacker-supplied HTML is a phishing primitive in its own right.
+
 ### 2026-10-23 — Stored XSS through an HTML-embedding feature that accepted eval() (Statuspage / Atlassian) — n/a
 - Source: [Bugcrowd 1357c3ce](https://bugcrowd.com/disclosures/1357c3ce-cc7e-4ce9-b53b-a943deabccbe/application-is-vulnerable-to-stored-xss)
 - Type: Stored XSS via an intentional HTML-embed feature (P5, informational; disclosed 5 Oct 2023)
