@@ -12,6 +12,34 @@ Disclosed **broken authentication & session management** reports — account tak
 
 ## Reports
 
+### 2026-10-28 — Connection reuse ignores an OAuth bearer token mismatch and attaches the wrong Authorization header (curl) — n/a
+- Source: [HackerOne #3595753](https://hackerone.com/reports/3595753)
+- Type: Broken authentication (credential binding on connection reuse)
+- Summary: The connection-pool match function `url_match_conn()` in `lib/url.c` compared `oauth_bearer` only for protocols flagged as needing per-connection credentials. For HTTP the bearer travels as a header, so a reused easy handle could serve a second request over the first connection while `lib/http.c` built an `Authorization: Bearer` header holding the previous tenant's token.
+- Technique / pattern: Audit what is and is not part of a connection-reuse key. A credential that is applied per request (an HTTP header) but checked only under a per-connection gate — here the `PROTOPT_CREDSPERREQUEST` condition — is excluded from the match in exactly the case that matters. Reproduced by setting `CURLOPT_XOAUTH2_BEARER` to two different tokens against the same host on a pooled handle without `CURLOPT_FRESH_CONNECT`. Same class as CVE-2022-22576.
+- Takeaway: Every piece of authentication state must be part of the connection-reuse tuple, and a fix scoped to one protocol family leaves the others exposed. In multi-tenant services sharing one HTTP client, connection pooling is an authorization boundary.
+
+### 2026-10-28 — Authentication requirement bypassed by rewriting the server response from 302 to 200 (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #2665879](https://hackerone.com/reports/2665879)
+- Type: Client-side authentication bypass (response manipulation)
+- Summary: An unauthenticated user could reach `App/createrequest.aspx` and submit requests as another user by intercepting the server's `302` redirect and rewriting it to `200`. With the gate only enforced through the redirect, the form rendered and submitted, and a confirmation email went to the victim's address.
+- Technique / pattern: Where a login gate is expressed as a redirect rather than as a server-side check on the action, intercepting the response and changing the status code leaves the protected page usable. The reporter repeated the rewrite for several dropdown-population responses to get through the multi-step form, then supplied another user's email — enumerable through a separate validation endpoint — in the owner field.
+- Takeaway: A redirect is navigation, not authorization. Every state-changing handler needs its own server-side identity check, and an email-validation endpoint that confirms whether an address exists hands an attacker the victim identifiers to plug in.
+
+### 2026-10-28 — No rate limiting on password reset email requests (per-IP limit insufficient) (Genius) — n/a
+- Source: [Bugcrowd 07312c68](https://bugcrowd.com/disclosures/07312c68-cca6-42f1-97db-3c70596d7976/no-rate-limiting-on-password-reset-email-requests)
+- Type: Broken authentication (missing rate limiting on reset flow)
+- Summary: The password reset endpoint allowed an unlimited number of reset emails to be sent to any user. Because reset mail cannot be unsubscribed from, the existing per-IP rate limiting was insufficient — requests spread across many source addresses let an attacker flood a victim's inbox and disrupt the account.
+- Technique / pattern: Test rate limits along the axis the application cannot vary rather than the one it can: the per-IP counter is defeated by rotating source addresses, while the target account stays fixed. The vendor's fix is the instructive part — a per-account limit keeping at most one outstanding reset per user, with the counter cleared once a reset completes successfully.
+- Takeaway: Rate limit on the scarce, attacker-invariant key (the target account), not only on the client-controlled one (IP). Mail that users cannot opt out of needs the stricter bound, and tokens should be invalidated and counters reset on successful completion.
+
+### 2026-10-28 — Missing Secure flag on the session cookie after a framework migration (Genius) — n/a
+- Source: [Bugcrowd c7f43735](https://bugcrowd.com/disclosures/c7f43735-db00-44c9-a7ee-a7f1b3ec4a6a/missing-secure-flag-in-_rapgenius_session-session-cookie)
+- Type: Session management (cookie attribute regression)
+- Summary: A framework migration briefly stopped setting the `Secure` flag on the `_rapgenius_session` cookie, so the session credential was transmitted over plain HTTP. Users on untrusted networks were exposed to session takeover; the vendor rotated the session key and invalidated potentially exposed sessions.
+- Technique / pattern: An HTTPS redirect does not protect a cookie without `Secure`: the browser attaches it to the initial cleartext request that precedes the redirect, where a network attacker can read it. Check cookie attributes by requesting the `http://` origin directly and watching what is sent before the `301`/`302`, and re-check after framework or platform upgrades, which is when such defaults silently reset.
+- Takeaway: Cookie attributes are a regression-test target, not a one-time configuration. Assert `Secure`, `HttpOnly` and `SameSite` on session cookies in CI, and treat a confirmed exposure as a reason to rotate keys and invalidate sessions, not just to re-add the flag.
+
 ### 2026-10-26 - Password reset link hijacking via Host header injection (Concrete CMS) - n/a
 - Source: [HackerOne #226659](https://hackerone.com/reports/226659)
 - Type: Host header injection - password reset token leakage - account takeover

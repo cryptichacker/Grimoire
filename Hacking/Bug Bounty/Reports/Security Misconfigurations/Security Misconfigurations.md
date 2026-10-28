@@ -12,6 +12,34 @@ Disclosed **security misconfiguration** reports — permissive CORS, default/exp
 
 ## Reports
 
+### 2026-10-28 — CloudFront misconfiguration makes rubygems.org serve and cache content from an unclaimed S3 bucket (Internet Bug Bounty) — n/a
+- Source: [HackerOne #2262939](https://hackerone.com/reports/2262939)
+- Type: Cloud/CDN misconfiguration (dangling origin takeover)
+- Summary: A CloudFront distribution for rubygems.org pointed at the S3 bucket `index.rubygems.org`, which no longer existed. Claiming that bucket name let an outsider serve arbitrary content — with an attacker-chosen content type — from a path on the real `rubygems.org` origin, and CloudFront then cached it.
+- Technique / pattern: The reporter noticed `https://rubygems.org/names` returning an S3 `NoSuchBucket` error naming the missing bucket. Registering that bucket name produced a `TemporaryRedirect` error that revealed the region the distribution expected, and re-creating it in the correct region made the CDN serve the attacker's file. The error bodies themselves were the oracle for both the bucket name and the region.
+- Takeaway: Treat CDN and proxy error bodies as reconnaissance: `NoSuchBucket` names a claimable origin, and a region-mismatch error tells you where to claim it. Audit every CDN origin for names that are no longer owned, and remember CDN caching turns a brief takeover into a persistent one.
+
+### 2026-10-28 — Premium plugin archives with embedded license keys publicly readable in the uploads directory (Essity) — n/a
+- Source: [HackerOne #3839889](https://hackerone.com/reports/3839889)
+- Type: Security misconfiguration / sensitive file exposure
+- Summary: The WordPress media library exposed 29 ZIP archives of paid plugins (Slider Revolution, ACF Pro, Wordfence Premium and others), downloadable without authentication and indexed by the REST API. The archives contained full plugin source and embedded license/purchase verification tokens.
+- Technique / pattern: Enumerate the media library through the REST API rather than guessing paths: `/wp-json/wp/v2/media?per_page=100&media_type=application` lists non-image uploads, including archives whose filenames carry random suffixes that would never be found by brute force. Each `source_url` was then fetched unauthenticated and grepped for `purchase_code`, `license`, `api_key` and `activation`.
+- Takeaway: An unguessable filename is not access control when an API enumerates it for you. Check `/wp-json/wp/v2/media` (and equivalent CMS listing APIs) for archives, backups and configuration files, and keep distributable packages out of web-served upload directories.
+
+### 2026-10-28 — Vercel subdomain takeover via dangling CNAME records on retired marketing subdomains (Settle VDP) — n/a
+- Source: [Bugcrowd af0ecc4f](https://bugcrowd.com/disclosures/af0ecc4f-c7aa-4a72-9653-f5051e79e214/vercel-subdomain-takeover-capitalcalc-settle-com-embed-settle-com)
+- Type: Subdomain takeover (dangling DNS)
+- Summary: Two retired marketing subdomains still had CNAME records pointing at a Vercel deployment that had been deleted or left unclaimed. Claiming the orphaned project would have let an attacker host content on those names, obtain valid TLS certificates for them, and run convincing credential-phishing against users and staff. The records were removed within a day.
+- Technique / pattern: Resolve every subdomain and compare the CNAME target against what the hosting provider actually serves; a provider-specific 404 or "project not found" page on a live CNAME marks a claimable name. The impact is driven by what the name confers rather than by code: a valid certificate under the real domain plus first-party cookie scope.
+- Takeaway: Decommissioning a site means deleting the DNS record, not just the deployment. Inventory CNAMEs pointing at PaaS providers continuously, since the window opens the moment a project is deleted on the provider side.
+
+### 2026-10-28 — Apache Flink Dashboard exposed to the internet with no authentication (NASA VDP) — n/a
+- Source: [Bugcrowd 5f083144](https://bugcrowd.com/disclosures/5f083144-038f-455a-9985-ad4eea855913/broken-acces-control-leads-to-unauthenticated-access-to-apache-flink-dashboard)
+- Type: Security misconfiguration (unauthenticated admin interface)
+- Summary: An Apache Flink Dashboard was reachable from the public internet with no authentication mechanism, letting any remote user monitor cluster activity, read internal job configurations and pull sensitive operational metadata. Rated P1 and since fixed.
+- Technique / pattern: Fingerprint data-platform and orchestration consoles that ship with authentication disabled by default — Flink, Spark, Dagster, Airflow, Kubernetes dashboards, Elasticsearch and similar — on their well-known ports and paths. Job configuration views on these consoles routinely carry connection strings, bucket names and internal hostnames, and several expose a job-submission path that turns read access into code execution.
+- Takeaway: Big-data and workflow components are built to trust their network, so they are secure only as long as that network is private. Treat any such console answering from the internet as a critical finding, and check whether its submit/upload path extends the exposure to RCE.
+
 ### 2026-10-26 - Administrator password hardcoded in client-side JavaScript on an Uber vendor site (Uber) - n/a
 - Source: [HackerOne #344566](https://hackerone.com/reports/344566)
 - Type: Misconfiguration / secret embedded in client-side code

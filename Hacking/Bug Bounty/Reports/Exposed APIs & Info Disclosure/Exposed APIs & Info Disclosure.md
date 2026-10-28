@@ -12,6 +12,34 @@ Disclosed **exposed API / sensitive information disclosure** reports — leaked 
 
 ## Reports
 
+### 2026-10-28 — Authorization header replayed to the redirect target in ssrf_filter leads to credential theft (arkadiyt projects (ssrf_filter)) — n/a
+- Source: [HackerOne #3642600](https://hackerone.com/reports/3642600)
+- Type: Credential leakage via cross-host redirect
+- Summary: `ssrf_filter` rebuilt each redirected request from the original request options, so a redirect crossing to a different host still reapplied caller-supplied sensitive state including the `Authorization` header. An attacker-controlled redirect target received a bearer token meant only for the original origin.
+- Technique / pattern: Stand up a three-server local harness to show reuse rather than mere disclosure: a redirector returning `302` to a collector, a collector that records the inbound `Authorization` header, and a protected API that only answers with the correct bearer. The PoC confirmed the token crossed the origin change, then replayed the captured token against the protected endpoint and received private data.
+- Takeaway: Sensitive headers must be recomputed per hop and dropped on any origin change; carrying request options forward wholesale is the bug. When reporting, demonstrate replay against a protected endpoint — stolen-and-reusable is a materially stronger finding than header disclosure.
+
+### 2026-10-28 — Background sync cache retains outgoing additional transaction secret keys (Monero) — n/a
+- Source: [HackerOne #3749681](https://hackerone.com/reports/3749681)
+- Type: Information disclosure (incomplete data scrubbing)
+- Summary: Monero wallet background sync is documented as scanning with only the view key while the wallet is locked. `wallet2::store_background_cache()` clones the full wallet cache and calls `clear_user_data()` to scrub it, but that function clears `m_tx_keys` while leaving `m_additional_tx_keys` — a serialized cache field of `std::vector<crypto::secret_key>` indexed by transaction hash — in the lower-trust background cache.
+- Technique / pattern: Source-review technique: take the function that is documented as the sanitization boundary, enumerate every serialized field of the structure it is meant to scrub, and diff that against the fields it actually clears. The omitted sibling field here held the same class of secret as the one that was cleared. Not a spend-key or seed disclosure; impact is limited to proof-key material for outgoing transactions.
+- Takeaway: Scrub functions drift behind the schema they clean. Enumerate serialized fields against the clear list — and when a structure has both a singular and an `additional_`/plural variant of a secret, expect only one of them to be handled.
+
+### 2026-10-28 — Mass exposure of workforce records via publicly shared enterprise Box links (NASA VDP) — n/a
+- Source: [Bugcrowd d4905daa](https://bugcrowd.com/disclosures/d4905daa-911e-4898-988c-0a15b1186f51/mass-public-exposure-of-workforce-records-1-500-total-entries-including-nasa-personnel-defense-contractors-and-attendance-telemetry-via-enterprise-box-misconfiguration)
+- Type: Information disclosure (third-party storage misconfiguration)
+- Summary: Files under an enterprise Box tenant were shared publicly and reachable without authentication via links of the form `https://nasagov.app.box.com/s/<id>/file/<id>`. They held structured attendance exports from internal training sessions — roughly 1,500+ entries of participant PII across several organizations, including personnel and defense contractors.
+- Technique / pattern: Open-source reconnaissance against the organization's enterprise cloud-storage tenant rather than its own web assets: search for indexed or referenced `app.box.com/s/` share links (and the equivalents for other suites) scoped to the target's tenant subdomain, then check each for unauthenticated access. Structured exports and attendance or registration reports are the high-density PII targets.
+- Takeaway: The attack surface includes the SaaS tenants an organization uses, not just the domains it runs. "Shared with anyone with the link" is public, and such links get indexed — audit tenant-wide public-share inventories and expire them.
+
+### 2026-10-28 — Port-based VPN tunnel bypass leaks the real IP address with the kill switch enabled (ExpressVPN) — n/a
+- Source: [Bugcrowd 3efaa342](https://bugcrowd.com/disclosures/3efaa342-9f03-4758-9bd1-852dca4b444d/remotely-exploitable-leak)
+- Type: Information disclosure (VPN tunnel bypass / IP leak)
+- Summary: RDP traffic leaked outside the tunnel in the Windows client's default UDP-based Lightway protocols (Turbo and standard) even with the kill switch, Network Lock, enabled, disclosing the user's real IP. The TCP-based Lightway and OpenVPN protocols did not appear affected. Rated P1 and fixed.
+- Technique / pattern: Test the routing policy per protocol and per port rather than trusting a single connectivity check. The leak was triggered by visiting a malicious site or making an RDP connection, needed no JavaScript, and in the opportunistic case no user interaction — so a split-tunnel or port-exclusion rule, not a credential flaw, was the bug. Verify a kill switch against each transport the product ships, since only the default ones were affected here.
+- Takeaway: A kill switch is only as good as the routing rules it covers; per-port or per-application exclusions reintroduce the leak it exists to prevent. When assessing a privacy tool, enumerate every protocol and transport option separately — the default configuration is where the finding counts.
+
 ### 2026-10-26 - Unauthenticated information disclosure via Jira `QueryComponent!Default.jspa` (U.S. Dept Of Defense) - n/a
 - Source: [HackerOne #1067004](https://hackerone.com/reports/1067004)
 - Type: Unauthenticated information disclosure in third-party enterprise software

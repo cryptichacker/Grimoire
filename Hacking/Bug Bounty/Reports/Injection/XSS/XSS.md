@@ -12,6 +12,13 @@ Disclosed **Cross-Site Scripting** reports — reflected, stored, and DOM-based.
 
 ## Reports
 
+### 2026-10-28 — Stored XSS via inline rendering of uploaded HTML attachments, reachable through SameSite (Nextcloud (Roundcube)) — n/a
+- Source: [HackerOne #3594137](https://hackerone.com/reports/3594137)
+- Type: Stored XSS (file upload, missing CSP)
+- Summary: The compose-attachment preview endpoint rendered user-uploaded HTML files inline with no restrictive Content-Security-Policy, so opening an uploaded attachment via the display-attachment path executed JavaScript in the Roundcube origin.
+- Technique / pattern: Two parts: a content-type/CSP gap that turns an upload into script execution in the app origin, and a delivery step that defeats `SameSite` cookies. Because `SameSite` is scoped to the registrable domain rather than the exact host, the reporter set cookies from a sibling subdomain so the victim's authenticated session accompanied the preview request. The PoC authenticated, uploaded `xss.html` through the `upload` action, captured the returned attachment id, and then opened the display-attachment URL.
+- Takeaway: Serving user files inline from the application origin needs a sandbox CSP, a non-renderable content type, or a separate origin. And `SameSite` is not an origin boundary — any XSS or cookie-write on a sibling subdomain can supply the cookies for a cross-site request.
+
 ### 2026-10-26 - Reflected XSS in the `FORMAT` parameter of NASA SkyView `sia.pl` (NASA VDP) - n/a (P3)
 - Source: [Bugcrowd #2534d5fe](https://bugcrowd.com/disclosures/2534d5fe-6a7e-48bb-9117-ce357cfa0c9f/rxss-at-https-skyview-gsfc-nasa-gov-current-cgi-vo-sia-pl)
 - Type: Reflected XSS

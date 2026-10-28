@@ -12,6 +12,34 @@ Disclosed **Insecure Direct Object Reference** reports. Core idea: an object ide
 
 ## Reports
 
+### 2026-10-28 — Cross-tenant ActionText reference resolution in the fizzy.do import flow (Basecamp) — n/a
+- Source: [HackerOne #3543475](https://hackerone.com/reports/3543475)
+- Type: IDOR / improper access control (cross-tenant)
+- Summary: The account import flow accepted ActionText attachment HTML from a user-uploaded ZIP and converted attacker-supplied `gid` values into persisted `sgid` values by resolving the target record globally. No tenant-ownership check ran before minting the signed reference, so an importer could resolve and disclose another account's records.
+- Technique / pattern: Compare the import and export code paths for the same object. The export path in `app/models/account/data_transfer/action_text_rich_text_record_set.rb` checked `record&.account_id == account.id`, but `convert_gids_to_sgids` on the import path resolved the global ID with no equivalent check. The reporter drove the real `import_batch` path with a standalone integration PoC and observed `imported.account_id` and `resolved_account_id` belonging to different tenants.
+- Takeaway: Signed-reference minting is an authorization boundary. Wherever a global identifier is turned into a signed/trusted handle, the ownership check must happen before signing — and asymmetry between an export path that checks and an import path that does not is a reliable place to look.
+
+### 2026-10-28 — KILL authorization trusts the presented login name instead of the authenticated account (MariaDB) — n/a
+- Source: [HackerOne #3897588](https://hackerone.com/reports/3897588)
+- Type: Broken object-level authorization (identity confusion)
+- Summary: When a supplied username fell back to an anonymous MariaDB account, the security context kept the client-supplied login name in `user` while the authenticated identity in `priv_user` stayed empty. `KILL` authorization compared `user`, letting an anonymous session terminate a connection belonging to whatever username the attacker chose to present.
+- Technique / pattern: Look for two identity fields in one security context — one attacker-supplied, one authenticated — and find the check that reads the wrong one. Here `kill_one_thread()` accepted the operation whenever `Security_context::user_matches()` succeeded, and `user_matches()` compared `user` (client-supplied) rather than `priv_user` (the matched ACL account). Repro: create `''@'127.0.0.1'`, connect over TCP presenting a victim's username with no password, and `KILL` the victim's connection id.
+- Takeaway: When a system keeps both a presented identity and an authenticated identity, every ownership comparison must use the authenticated one. An anonymous/fallback account that preserves the attacker's chosen name is a ready-made identity-confusion primitive.
+
+### 2026-10-28 — IDOR on a hidden OpenAltimetry endpoint discloses user emails and names (NASA VDP) — n/a
+- Source: [Bugcrowd 69984e34](https://bugcrowd.com/disclosures/69984e34-6dc4-472e-9bc1-d4c69bf16175/idor-allows-disclosing-emails-first-name-last-name-of-openaltimetry-users)
+- Type: IDOR / sensitive data exposure
+- Summary: An undocumented API endpoint returned other users' records — last login time, share keys, email addresses, first and last names — when the object identifier was changed. The endpoint now returns `403 Forbidden` after the fix.
+- Technique / pattern: The endpoint was found by HTTP verb tampering: the reporter changed the method on a known route and surfaced a handler that was not reachable (or not authorized) via the originally advertised verb. Once the hidden handler responded, iterating the object identifier returned other users' data.
+- Takeaway: Enumerate methods, not just paths. A route that is locked down for `GET` may expose an unprotected handler under `POST`, `PUT` or a non-standard verb, and framework routing often registers those silently.
+
+### 2026-10-28 — Authorization flaw lets staff API keys create customer-only comments via the API (Bugcrowd) — $300
+- Source: [Bugcrowd 6772faed](https://bugcrowd.com/disclosures/6772faed-6654-44b1-82a5-d2c32fb7bf89/authorization-flaw-allows-bugcrowd-staff-to-create-customer-only-comments-via-api)
+- Type: Broken function-level authorization (API)
+- Summary: An authorization flaw in staff API keys allowed creating comments restricted to the customer-only visibility class through the API, letting a holder of those keys manipulate the integrity of report data.
+- Technique / pattern: Compare what a role can do in the UI against what the same role's token can do on the raw API. Visibility or audience fields on a create endpoint (here the comment's customer-only class) are frequently validated only in the front end, so setting the restricted value directly in the API body bypasses the intended role gate.
+- Takeaway: Every visibility, audience or privilege field that the UI renders as non-selectable must be re-validated server-side against the caller's role. API-only paths are where UI-enforced restrictions go to die.
+
 ### 2026-10-26 - IDOR in Push Server management exposes any user's FTP/sFTP credentials (U.S. Dept Of Defense) - n/a
 - Source: [HackerOne #228383](https://hackerone.com/reports/228383)
 - Type: IDOR / missing object ownership check

@@ -12,6 +12,13 @@ Disclosed **SQL injection** reports — error/boolean/time-based, UNION, blind, 
 
 ## Reports
 
+### 2026-10-28 — SQL injection in the entryid parameter of a form-builder confirmation endpoint (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #3127198](https://hackerone.com/reports/3127198)
+- Type: SQL injection (POST parameter)
+- Summary: A POST parameter named `entryid` on `actions/formbuilderv2-confirmation.php` was concatenated into a backend MySQL query, allowing the query to be manipulated and database contents to be enumerated.
+- Technique / pattern: The confirmation/callback endpoint behind a form submission was tested rather than the form itself. The reporter saved the raw request to a file and ran it through `sqlmap` with the parameter pinned and a WAF-evasion tamper script: `sqlmap -r file3.txt --dbs --tamper=between -p 'entryid' --dbms=mysql --batch`. The `between` tamper replaces comparison operators to slip past naive signature filters.
+- Takeaway: Secondary endpoints — confirmation, callback, thank-you and analytics handlers — take identifiers from the primary form and are often missed by the parameterization sweep applied to the visible form. Test the whole flow, and pair sqlmap with a tamper script when a filter blocks the baseline payload.
+
 ### 2026-10-26 - SQL injection on a DoD website via a crafted URL parameter (U.S. Dept Of Defense) - n/a
 - Source: [HackerOne #193436](https://hackerone.com/reports/193436)
 - Type: SQL injection (classic, via URL parameter)

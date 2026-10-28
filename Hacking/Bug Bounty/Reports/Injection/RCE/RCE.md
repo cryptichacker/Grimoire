@@ -12,6 +12,13 @@ Disclosed **Remote Code Execution** reports reached via injection chains — **O
 
 ## Reports
 
+### 2026-10-28 — RCE via OS command injection in an Extranet request parameter (NASA VDP) — n/a
+- Source: [Bugcrowd 97016028](https://bugcrowd.com/disclosures/97016028-5082-4b3f-b21a-74a0aecabcdb/rce-via-command-injection-in-extranet)
+- Type: OS command injection to RCE
+- Summary: An Extranet endpoint accepted unsanitized user input in a request parameter and passed it into a command-execution context, allowing arbitrary shell commands to run on the server. Rated P1 and since fixed.
+- Technique / pattern: Classic shell metacharacter probing on a parameter whose value plausibly reaches a system call — the kind that feeds a file path, host name, archive name or report name into a helper binary. Shell separators such as `;`, `|`, `&&` and command substitution break out of the intended argument once the value is interpolated into a shell string rather than passed as an `argv` element.
+- Takeaway: Any parameter that ends up in a subprocess must be passed as a separate argument with no shell, never interpolated into a command string. Endpoints that wrap command-line tooling are the highest-yield place to probe for this.
+
 ### 2026-10-26 - Deserialization of untrusted data in GitHub Enterprise Server SVNBridge leads to RCE (GitHub) - n/a
 - Source: [HackerOne #1593913](https://hackerone.com/reports/1593913)
 - Type: Insecure deserialization chained with SSRF - RCE
