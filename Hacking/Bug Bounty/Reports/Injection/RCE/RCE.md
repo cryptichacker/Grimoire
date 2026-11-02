@@ -12,6 +12,20 @@ Disclosed **Remote Code Execution** reports reached via injection chains — **O
 
 ## Reports
 
+### 2026-10-29 — WordPress 7.1 Media Processing Race Enables Persistent PHP File Write and Author-to-RCE (WordPress) — n/a
+- Source: [HackerOne #3923967](https://hackerone.com/reports/3923967)
+- Type: Race condition → arbitrary PHP file write → RCE
+- Summary: In WordPress 7.1 pre-release builds (Beta 2 through a 7.1-RC2 source build), a race in media processing let an Author-level user obtain a persistent PHP file write and reach remote code execution; the 7.0 branch was not affected. The demonstrated direct-HTTP execution path required WordPress's selected temporary directory to sit under a PHP-served path, which the reporters reproduced by making `/tmp` non-writable for the PHP user so WordPress fell back to `wp-content`. Rated high and resolved before release.
+- Technique / pattern: Combine two ideas: a file that exists only briefly during processing, and a fallback that decides where that file lives. Check `sys_get_temp_dir()`-style fallback chains and container configurations (`readOnlyRootFilesystem`, a non-writable `/tmp`) that push temporary files under the document root, then race the processing window to fetch the intermediate file before cleanup removes it.
+- Takeaway: Test pre-release branches, where this class is cheapest to fix, and never let a temporary-file fallback resolve inside a web-executable directory.
+
+### 2026-10-29 — Unauthenticated remote code execution on psg.gsfc.nasa.gov via arbitrary file write from a stack overflow in the PSG continuum module (NASA VDP) — n/a
+- Source: [Bugcrowd #421d5219](https://bugcrowd.com/disclosures/421d5219-d430-44ec-af9e-1b4aa1b1f71d/unauthenticated-remote-code-execution-on-psg-gsfc-nasa-gov-via-arbitrary-file-write-from-a-stack-overflow-in-the-psg-continuum-module-surface-type)
+- Type: Stack buffer overflow → arbitrary file write → web shell (unauthenticated RCE)
+- Summary: PSG's native continuum module copied the `<SURFACE-TYPE>` value from the public API into 50-byte stack buffers with an unbounded `strncpy`, overflowing into the adjacent file-log path buffer. Ending the copy at the original path's NUL terminator gave the attacker control of both the output file path and the appended content (`<SURFACE-SURF>`, written verbatim with no check on the file handle), turning the overflow into a silent arbitrary file write; pointing it at the runtime-writable, web-executable `graphs/` web root dropped a persistent PHP web shell from a single anonymous POST, with no crash and an empty session log. Rated P1 and resolved.
+- Technique / pattern: In native CGI backends, look for a filename variable adjacent to an overflowable buffer: overwriting a path turns memory corruption into a clean arbitrary file write with no crash, which is far more reliable than control-flow hijacking and survives modern mitigations. Then find a directory that is both writable at runtime and served by the interpreter. The root cause pairs missing length and charset validation on the token with an unchecked file handle before the write.
+- Takeaway: Validate length and character set on every token entering a native module, check file-handle return values before writing, and keep runtime-writable directories outside the executable web root.
+
 ### 2026-10-28 — RCE via OS command injection in an Extranet request parameter (NASA VDP) — n/a
 - Source: [Bugcrowd 97016028](https://bugcrowd.com/disclosures/97016028-5082-4b3f-b21a-74a0aecabcdb/rce-via-command-injection-in-extranet)
 - Type: OS command injection to RCE

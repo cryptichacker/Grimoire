@@ -12,6 +12,20 @@ Disclosed **SQL injection** reports — error/boolean/time-based, UNION, blind, 
 
 ## Reports
 
+### 2026-10-29 — SHOW [CREATE|GRANTS] and mariadb-dump unescaped SQL generation (MariaDB) — n/a
+- Source: [HackerOne #3848978](https://hackerone.com/reports/3848978)
+- Type: Second-order SQL injection (SQL generated from stored metadata)
+- Summary: Several MariaDB `SHOW ...` paths emit SQL rebuilt from stored metadata without adequate escaping, so attacker-controlled identifiers — the report demonstrates a `DATA DIRECTORY` value on a table the attacker owns — survive into the output of `SHOW CREATE TABLE` and `mariadb-dump`. When a privileged operator dumps the attacker's database and restores it elsewhere, the injected statements (in the PoC, a `SQL SECURITY DEFINER` procedure plus a `GRANT`) execute with the importing user's privileges. Resolved.
+- Technique / pattern: Treat code generators as injection sinks. Store a payload once somewhere the server will later re-emit as executable SQL — identifiers, comments, `DATA DIRECTORY`, column defaults — then look for the privileged job that reads it back: dump and restore, migration, replication, schema-diff and backup tooling. The payload fires at restore time rather than at insert time, which is why it clears the usual input-validation review.
+- Takeaway: Escape identifiers and metadata on output, not only on input, and treat a dump of untrusted data as untrusted input when restoring it.
+
+### 2026-10-29 — [Scan For Good] Unauthenticated Oracle SQL Injection in Solar System Treks Email Check API (NASA VDP) — n/a
+- Source: [Bugcrowd #c10906c0](https://bugcrowd.com/disclosures/c10906c0-d82d-43f2-8954-4d7a22cac431/scan-for-good-unauthenticated-oracle-sql-injection-in-solar-system-treks-email-check-api)
+- Type: SQL injection (unauthenticated, Oracle backend)
+- Summary: An unauthenticated Oracle SQL injection was reported in the email-check API of NASA's Solar System Treks service. Rated P1 and resolved; the published disclosure records the finding, its priority and its triage history without a technical write-up.
+- Technique / pattern: "Check whether this exists" helpers — email and username availability, coupon validation, lookup autocompletes — are a classic unauthenticated injection surface: they sit before login, pass one parameter close to a query, and answer with a boolean, which is already enough for inference-based extraction. Enumerate every pre-auth endpoint that answers a yes/no question about stored data.
+- Takeaway: Pre-authentication validation endpoints deserve the same parameterization and review as the authenticated API; being "just a lookup" is why they get skipped.
+
 ### 2026-10-28 — SQL injection in the entryid parameter of a form-builder confirmation endpoint (U.S. Dept Of Defense) — n/a
 - Source: [HackerOne #3127198](https://hackerone.com/reports/3127198)
 - Type: SQL injection (POST parameter)

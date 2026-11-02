@@ -12,6 +12,13 @@ Disclosed **Cross-Site Scripting** reports — reflected, stored, and DOM-based.
 
 ## Reports
 
+### 2026-10-29 — Reflected XSS in trek.nasa.gov TrekWS rest/light endpoint via unescaped date parameter (NASA VDP) — n/a
+- Source: [Bugcrowd #2b297bb0](https://bugcrowd.com/disclosures/2b297bb0-882b-47d8-b2ae-8a495aa8cd41/reflected-xss-in-trek-nasa-gov-trekws-rest-light-endpoint-via-unescaped-et-date-parameter)
+- Type: Reflected XSS (error-response sink)
+- Summary: The TrekWS light-configuration endpoint `/rest/light` on `trek.nasa.gov` reflected attacker-controlled input supplied through the `et` date parameter into an HTML error response without output encoding, so a crafted URL executed JavaScript in the `trek.nasa.gov` origin when a victim opened it. Rated P3 and resolved.
+- Technique / pattern: Probe typed parameters (dates, integers, enums, ids) rather than only free-text ones, and read the error path: a value that fails parsing is frequently echoed into a hand-built HTML error page that never passes through the template engine's escaping. The 400/500 response is a separate sink from the 200 response, and is often the only one that reflects.
+- Takeaway: Error and validation responses need the same contextual output encoding as normal pages — a parameter that is "only" a date is still a sink.
+
 ### 2026-10-28 — Stored XSS via inline rendering of uploaded HTML attachments, reachable through SameSite (Nextcloud (Roundcube)) — n/a
 - Source: [HackerOne #3594137](https://hackerone.com/reports/3594137)
 - Type: Stored XSS (file upload, missing CSP)

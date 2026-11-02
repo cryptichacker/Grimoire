@@ -12,6 +12,34 @@ Disclosed **broken authentication & session management** reports — account tak
 
 ## Reports
 
+### 2026-10-29 — A disabled account's API key still works on BMO's Mojolicious rest routes (Mozilla) — $4,000
+- Source: [HackerOne #4000084](https://hackerone.com/reports/4000084)
+- Type: Broken authentication (account-state check missing on one API stack)
+- Summary: A Bugzilla instance had inconsistent authentication validation across its API implementations: the newer Mojolicious REST routes did not verify account status when processing an API key, while the legacy REST API and the web interface correctly rejected disabled accounts. A disabled account's key therefore kept working on the newer routes, including for security-group bugs filed after the account was disabled. Rated high, resolved, $4,000.
+- Technique / pattern: Where one application has grown a second API stack, treat them as separate authenticators: the key store is shared, but the surrounding checks — account enabled, password-change timestamp, group refresh, lockout — usually are not. Disable or suspend your own account, then replay the same credential against every API implementation and version prefix you can enumerate.
+- Takeaway: Account state is part of authentication; enforce it in shared middleware so a newly added API surface inherits it instead of re-implementing it.
+
+### 2026-10-29 — Revoked deployment collaborator regains access to private comments after active collaborator interaction (Vercel) — $1,026
+- Source: [HackerOne #3852102](https://hackerone.com/reports/3852102)
+- Type: Broken authentication / revocation not durable
+- Summary: After a deployment collaborator's authorization was revoked, their token correctly returned `403 Forbidden`. When a still-active collaborator then performed a normal deployment-toolbar interaction, the revoked token became authorized again, letting the removed user call the Replicache synchronization endpoint (`POST /api/replicache/pull?docID=...`) and retrieve private deployment collaboration data including comment threads and messages — with no re-invitation and no new grant. Rated medium, resolved, $1,026; the program classified it as an access-control check implemented after the asset is accessed.
+- Technique / pattern: Revocation testing usually stops at "replay the old token, get `403`". Add a third party: after revoking yourself, have an active member perform ordinary activity on the shared resource, then replay the stale token again. Collaboration backends frequently rebuild an authorization set from current session activity and re-admit anyone still present in the document's participant state.
+- Takeaway: Revocation must be recorded as durable state on the principal, not recomputed from resource activity by whoever happens to be online.
+
+### 2026-10-29 — Unauthenticated Account Takeover on NASA SMCE Identity Provider (Keycloak CVE-2026-18963) (NASA VDP) — n/a
+- Source: [Bugcrowd #05196dbc](https://bugcrowd.com/disclosures/05196dbc-1b97-4cda-a3f5-edfd27282e2c/unauthenticated-account-takeover-on-nasa-smce-identity-provider-keycloak-cve-2026-18963)
+- Type: Broken authentication / password-reset verification bypass (CVE-2026-18963)
+- Summary: A vulnerable Keycloak build on NASA's SMCE identity provider let an attacker who knew only a target's username or email bypass the email-verification step of the password-reset flow by relying on a stale authentication note from an earlier step, setting a new password on any account — including administrators — with no token and no victim interaction. Because the identity provider federates a large set of downstream services, one takeover extended across the estate, and a master-realm takeover would have meant full Keycloak admin access. Rated P1; NASA deployed the vendor fix and the reporter retested both affected realms.
+- Technique / pattern: Multi-step authentication flows keep server-side scratch state between steps (Keycloak's authentication notes, session attributes, flow context). Walk the flow once legitimately, then re-enter it at a later step and check whether the earlier step's note is still trusted instead of re-derived. On a federated identity provider, test each realm separately and treat the master realm as the maximum-impact target.
+- Takeaway: Every step of an auth flow must re-derive its precondition from authoritative state, never from a note the previous step left behind.
+
+### 2026-10-29 — Authentication Bypass via Commented Guest Button in CSBF Aquila System (NASA VDP) — n/a
+- Source: [Bugcrowd #6a0a39b7](https://bugcrowd.com/disclosures/6a0a39b7-30b8-466e-919d-f66c3e18d79a/authentication-bypass-via-commented-guest-button-in-csbf-aquila-system)
+- Type: Broken authentication (orphaned server-side event handler)
+- Summary: The NASA CSBF Aquila login page had a "Guest" button commented out of the markup while its server-side event handler remained registered; submitting the form with the postback event target set to that control's id (`btnGuest`) authenticated the request and bypassed login. Rated P4 and resolved.
+- Technique / pattern: On ASP.NET WebForms and similar postback frameworks, removing a control from the rendered page does not unregister its handler. Read the HTML source for commented-out controls and handler names, then post the form with `__EVENTTARGET` set to that control id (and `__EVENTARGUMENT` where the handler expects one). The same reasoning applies to feature-flagged and `display:none` controls in any framework that dispatches on a client-supplied action name.
+- Takeaway: Disable capabilities on the server; markup is a rendering concern and never a control surface.
+
 ### 2026-10-28 — Connection reuse ignores an OAuth bearer token mismatch and attaches the wrong Authorization header (curl) — n/a
 - Source: [HackerOne #3595753](https://hackerone.com/reports/3595753)
 - Type: Broken authentication (credential binding on connection reuse)

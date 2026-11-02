@@ -12,6 +12,34 @@ Disclosed **Insecure Direct Object Reference** reports. Core idea: an object ide
 
 ## Reports
 
+### 2026-10-29 — Missing ownership check in Tables app allows moving columns into tables of other users (Nextcloud) — n/a
+- Source: [HackerOne #3137895](https://hackerone.com/reports/3137895)
+- Type: IDOR / broken object-level authorization (write-side)
+- Summary: Nextcloud's Tables app let a user move a column into a table owned by another user: the handler authorized the column being moved but never checked ownership of the destination table. Rated medium and resolved, classified by the program as Insecure Direct Object Reference (IDOR).
+- Technique / pattern: Two-account diff on a relationship-changing operation: perform a legitimate move inside your own tables, capture the request, then swap only the destination table id for the victim's. Move, transfer and reorder endpoints carry two object references, and the guard is usually written only for the one the UI already proved you can see.
+- Takeaway: Authorize both ends of a move — the object being relocated and the container receiving it.
+
+### 2026-10-29 — Improper Access Control Allows Trip Hijacking and Passenger/Driver PII Disclosure (Bykea) — n/a
+- Source: [HackerOne #2867022](https://hackerone.com/reports/2867022)
+- Type: IDOR / BOLA (broken object-level authorization)
+- Summary: An access-control flaw in Bykea's ride platform let an unauthorized party act on another user's trip and read passenger and driver personal data. Rated medium, resolved, filed under Insecure Direct Object Reference (IDOR).
+- Technique / pattern: In multi-party transactional flows (rides, deliveries, bookings) one trip object is shared between two counterparties and touched by a fleet of service endpoints. Enumerate every route that accepts a trip identifier and replay it from a third, uninvolved account — the check must answer "may this actor act on this trip", not "is this actor authenticated".
+- Takeaway: A shared transaction object needs a participant check on every endpoint that touches it, not only on the one the app's own UI calls.
+
+### 2026-10-29 — Members can enumerate and delete organization invites (PostHog VDP) — n/a
+- Source: [Bugcrowd #2fedba8f](https://bugcrowd.com/disclosures/2fedba8f-00e8-49c4-84a4-1665232ee227/members-can-enumerate-and-delete-organization-invites)
+- Type: IDOR / broken access control (role-asymmetric)
+- Summary: A user holding only the Member role could list pending organization invites — including inviter details — and delete invites created by Admins and Owners through the invites API. Rated P4 and resolved; the reporter framed the impact as information disclosure plus disruption of organization onboarding.
+- Technique / pattern: Pending-state objects (invitations, join requests, pending transfers) have no final owner yet, so an ownership rule is often never written and the route checks only tenant membership. From the lowest role available, enumerate them and then attempt the destructive verbs against objects created by higher roles.
+- Takeaway: Authorize pending objects by the creator's role, not merely by tenant membership — and treat onboarding disruption as real impact.
+
+### 2026-10-29 — IDOR allows leaking student passwords from another district and self-enrolling as a parent (private program) — n/a
+- Source: [Bugcrowd #e5534543](https://bugcrowd.com/disclosures/e5534543-2fac-401a-bb57-fba5a3269aae/idor-i-can-leak-password-of-students-from-other-district-i-can-add-myself-as-an-parent-to-any-student)
+- Type: IDOR → privilege escalation / PII disclosure
+- Summary: The researcher used an IDOR to add users belonging to another school district into their own district, then read those users' temporary passwords and attach themselves as a parent to the victim accounts. Rated P1 and resolved.
+- Technique / pattern: Chain a write-side IDOR with legitimate features: once a foreign record is pulled across the tenant boundary by id, the tenant's own admin tooling — roster management, temporary-password display, guardian linking — operates on it as if it were local data. Ask what your own admin UI would be allowed to do to a record that should never have been there.
+- Takeaway: A single cross-tenant write can turn every in-tenant admin feature into an attack tool; scope the blast radius by what the importing tenant's role can do.
+
 ### 2026-10-28 — Cross-tenant ActionText reference resolution in the fizzy.do import flow (Basecamp) — n/a
 - Source: [HackerOne #3543475](https://hackerone.com/reports/3543475)
 - Type: IDOR / improper access control (cross-tenant)

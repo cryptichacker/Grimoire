@@ -12,6 +12,34 @@ Disclosed **security misconfiguration** reports — permissive CORS, default/exp
 
 ## Reports
 
+### 2026-10-29 — Permission Model filesystem over-grant via wildcard radix lookup (Node.js) — n/a
+- Source: [HackerOne #3996423](https://hackerone.com/reports/3996423)
+- Type: Security misconfiguration / broken permission matcher
+- Summary: Node.js's Permission Model granted filesystem access to paths that did not match its wildcard read or write rules: when a requested path was shorter than a wildcard grant's prefix, the radix-tree lookup stopped comparing early and treated the path as a match. Wildcard grants positioned directly under the root of the permission tree were affected, in Node.js 26.x. Rated low and resolved.
+- Technique / pattern: Attack the matcher, not the policy. For any prefix or glob allowlist — permission models, path allowlists, route guards, CSP source lists — feed inputs that are shorter than the configured prefix, carry trailing separators, or sit at the root of the tree. Early-exit bugs in trie and radix comparisons surface as over-grants exactly at those boundaries, where hand-written tests rarely reach.
+- Takeaway: A path allowlist is only as sound as its comparison function; test boundary-length inputs against every wildcard rule rather than reviewing the rule text.
+
+### 2026-10-29 — Files Confidential tagging can be bypassed with a hash character in the filename (Nextcloud) — n/a
+- Source: [HackerOne #3682163](https://hackerone.com/reports/3682163)
+- Type: Security misconfiguration / data-classification bypass
+- Summary: Nextcloud's "Confidential" file tagging could be evaded by including a `#` character in the filename, so the classification control did not apply to the file. Rated medium and resolved, classified as improper access control.
+- Technique / pattern: Classification, DLP and policy engines usually key on a filename or URL parsed by a library, while the storage layer uses the raw byte string. Insert characters that carry meaning to the parser — `#`, `?`, `%`, `;`, a trailing dot or space, a newline — and compare the name the classifier reports against the name the file is actually stored under; the divergence between the two is the bypass.
+- Takeaway: Normalize once and classify on the stored identifier, never on a re-parsed display name.
+
+### 2026-10-29 — Unauthenticated Access to Dagster Dashboard disclosing Internal Kubernetes Infrastructure (NASA VDP) — n/a
+- Source: [Bugcrowd #75bf4ece](https://bugcrowd.com/disclosures/75bf4ece-f1cd-4697-8337-9ad2d6da992a/unauthenticated-access-to-dagster-dashboard-disclosing-internal-kubernetes-infrastructure)
+- Type: Security misconfiguration (unauthenticated internal dashboard)
+- Summary: A Dagster instance hosted on a NASA staging subdomain was misconfigured to allow full public access with no authentication, exposing the main dashboard and, as the reporter stressed, the deployment configuration of the underlying infrastructure. Rated P3 and resolved.
+- Technique / pattern: Data-orchestration and job-scheduler UIs (Dagster, Airflow, Flink, Prefect, Argo) commonly ship with authentication off because they are assumed to sit on a private network. Sweep subdomains for their well-known paths and asset fingerprints, and once inside read the deployment and configuration views rather than stopping at the landing page — cluster names, image references and environment wiring are where the impact is.
+- Takeaway: Internal tooling placed behind "it is only staging" still needs its own authentication; report the configuration view, because that is what carries the real exposure.
+
+### 2026-10-29 — Prototype Pollution Exposure via Outdated AngularJS Loaded in Production (NASA VDP) — n/a
+- Source: [Bugcrowd #dd976b44](https://bugcrowd.com/disclosures/dd976b44-a6a7-4cfb-b6fc-48110640b5ba/prototype-pollution-exposure-via-outdated-angularjs-loaded-in-production-vendor-js)
+- Type: Security misconfiguration / end-of-life dependency
+- Summary: A production JavaScript bundle (`vendor.js`) shipped AngularJS 1.7.3, an end-of-life framework affected by multiple publicly documented issues; a controlled proof of concept showed how unsafe object handling in such libraries can allow runtime modification of the JavaScript prototype chain. Rated P5 and closed as informational, with no real-world exploitation or user impact observed.
+- Technique / pattern: Inventory third-party libraries from bundle chunks and `//# sourceMappingURL` comments, resolve exact versions, and map each to its advisories. Note the realistic ceiling this report illustrates: without a reachable sink, an end-of-life dependency is accepted as attack surface rather than impact, so look for a concrete gadget before writing it up.
+- Takeaway: Dependency-age findings are usually informational on their own — carry them to a reachable sink, or file them as hygiene and expect P5.
+
 ### 2026-10-28 — CloudFront misconfiguration makes rubygems.org serve and cache content from an unclaimed S3 bucket (Internet Bug Bounty) — n/a
 - Source: [HackerOne #2262939](https://hackerone.com/reports/2262939)
 - Type: Cloud/CDN misconfiguration (dangling origin takeover)
