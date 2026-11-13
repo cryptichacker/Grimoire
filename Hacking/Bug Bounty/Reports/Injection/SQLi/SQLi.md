@@ -12,6 +12,62 @@ Disclosed **SQL injection** reports — error/boolean/time-based, UNION, blind, 
 
 ## Reports
 
+### 2026-11-13 — SQL injection in an exported Android content provider in the Nextcloud client (Nextcloud) — n/a
+- Source: [HackerOne #291764](https://hackerone.com/reports/291764)
+- Type: SQL injection (mobile content provider)
+- Summary: The Nextcloud Android client (`com.nextcloud.client`) exposed content providers that passed caller-supplied selection data into SQL, allowing injection from another app on the same device. The researcher enumerated the providers with Drozer's `scanner.provider.injection` module.
+- Technique / pattern: On Android, exported `ContentProvider` components are a local attack surface reachable by any installed app: enumerate them (`app.provider.info`), then fuzz `query()` projection and selection arguments for injection — Drozer's `scanner.provider.injection` automates the pass and reports which URIs respond to a broken quote. Most providers in a scan come back clean, so the value is in the one that does not.
+- Takeaway: Mobile apps have the same parameterization duty as servers. Set `android:exported="false"` unless a provider is deliberately public, and bind selection arguments rather than concatenating them.
+
+### 2026-11-12 — SQL injection on a Department of Defense web server via specially crafted URLs (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #226211](https://hackerone.com/reports/226211)
+- Type: SQL injection (classic, via URL parameters)
+- Summary: A DoD web server was vulnerable to SQL injection; the researcher demonstrated the flaw by crafting specially formatted URLs, and the disclosed summary states the flaw could have revealed sensitive information. The public page keeps the affected endpoint and parameter redacted.
+- Technique / pattern: A long-standing pattern worth re-reading on large government estates: legacy server-rendered pages take query parameters straight into SQL, and the only discovery step is a parameter sweep across every indexed URL on every in-scope host. Confirm with boolean-differential or error-shape responses before any extraction, and keep proof to a version banner or a single-row metadata read rather than dumping data.
+- Takeaway: In sprawling estates the vulnerability is rarely in the flagship application; it is in an old page nobody owns. Inventory every host and every parameter, and treat confirmation-only evidence as sufficient for a report.
+
+### 2026-11-12 — Blind SQL injection due to request precedence issue in global input registration (Revive Adserver) — undisclosed
+- Source: [HackerOne #3896779](https://hackerone.com/reports/3896779)
+- Type: SQL injection (blind, authenticated) via input-source precedence mismatch
+- Summary: On Revive Adserver's banner-zone and campaign-zone administration pages, permission checks and database queries could read different values for the same request parameter. A restricted manager could exploit that mismatch to extract arbitrary database values, including password hashes and active session identifiers (CVE-2026-107662, High 8.8); reusing an extracted, unexpired administrator session then granted administrative access and the ability to modify configuration or disrupt ad delivery.
+- Technique / pattern: The same GET-versus-POST precedence mismatch that produced the authorization bypass also let a value that had already satisfied the permission check reach the query builder unparameterized — one input-handling defect with two distinct impacts. Where a request-parsing bug lets a single parameter resolve to two different values, test for an authZ bypass *and* an injection.
+- Takeaway: The fix required correcting global input registration *and* the query-side helpers so both read POST before GET, plus excluding cookies from that input path so behaviour no longer depended on PHP's `request_order` configuration — a reminder that interpreter-level config can decide whether an application is exploitable.
+
+### 2026-11-12 — Blind SQL Injection in the IBM Training Course Search API (IBM) — n/a
+- Source: [HackerOne #4152726](https://hackerone.com/reports/4152726)
+- Type: SQL injection (blind) in a public search API
+- Summary: A blind SQL injection in IBM's training course search API, rated Critical (9 to 10) and remediated. IBM publishes only a short vendor summary for its disclosures, so no endpoint, parameter or payload detail is public.
+- Technique / pattern: Search and catalogue APIs remain a high-yield blind-SQLi surface because filter, sort and facet parameters are interpolated into dynamically built queries even in applications whose main CRUD paths parameterize correctly. Probe them with boolean and time-based differentials rather than looking for error strings.
+- Takeaway: Unauthenticated search endpoints on marketing, training and documentation subdomains deserve the same query-parameterization review as the core product — this Critical-rated injection needed no account at all.
+
+### 2026-11-10 — Error-based SQL injection on a DoD login page (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #447742](https://hackerone.com/reports/447742)
+- Type: SQL injection (error-based, Oracle backend)
+- Summary: A `login.php` page on a DoD host returned Oracle SQL errors when control characters were submitted in the username field, showing that input reached the query unparameterized. The reporter did not exploit it further, so the full data impact was left undetermined.
+- Technique / pattern: Submit quote and control characters into pre-authentication fields and read the error text; a database-specific error both confirms injection and fingerprints the backend (here Oracle), which narrows payload syntax for follow-up probing.
+- Takeaway: Login forms are pre-authentication attack surface and are often older code than the rest of the application. Verbose database errors in production are a finding in their own right — they hand over the engine and frequently the query shape.
+
+### 2026-11-06 — Connector/ODBC concatenated unquoted column names into positioned DELETE and UPDATE (MariaDB) — n/a
+- Source: [HackerOne #3891779](https://hackerone.com/reports/3891779)
+- Type: SQL injection in a database driver (identifier interpolation)
+- Summary: `MADB_DynStrGetWhere()` in MariaDB Connector/ODBC escaped column *values* correctly but appended column *names* into positioned `DELETE` and `UPDATE` statements with no quoting or escaping, so anyone able to control a column or table name could execute arbitrary SQL on the application's own connection and privileges — an application asking to delete a single row could delete every row in the table. Confirmed in 3.2.6 and 3.2.10, rated Medium.
+- Technique / pattern: Audit the client library, not just the application. Drivers assemble SQL of their own for positioned cursor operations, metadata lookups and catalog functions. Grep the driver source for string concatenation of identifiers and compare it against the value path, which is usually escaped properly; the asymmetry between escaped values and raw identifiers is the bug.
+- Takeaway: Identifiers need identifier quoting and an allowlist, not value escaping — an application that parameterizes everything can still be injected by the layer beneath it.
+
+### 2026-11-06 — Unauthenticated SQL injection in the ArcGIS queryAnalytic endpoint (NASA VDP) — n/a
+- Source: [Bugcrowd #0108b720](https://bugcrowd.com/disclosures/0108b720-ab65-43fd-8e90-6dac3be632b2/unauthenticated-sql-injection-nasa-gov)
+- Type: SQL injection (PostgreSQL, unauthenticated)
+- Summary: A NASA ArcGIS `queryAnalytic` endpoint interpolated the `analyticWhere` parameter into a PostgreSQL query unfiltered, allowing arbitrary expression execution with no authentication. The reporter confirmed time-based and boolean-based injection, fingerprinted PostgreSQL, and found the database account held `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE` and `CREATE` privileges. Rated P1, resolved.
+- Technique / pattern: Identify the vendor product behind a GIS, BI or reporting host and read its documented API. Parameters named `where`, `filter`, `having`, `orderBy` or `analyticWhere` are designed to carry query fragments, so they reach the engine by design and server-side validation is the only control. Confirm blind injection with timing and boolean differentials, then enumerate the *service account's* privileges, since that is what sets the real impact.
+- Takeaway: A parameter that is a query fragment by design must be rebuilt from an allowlist server-side, and the account behind a read-only analytics endpoint should hold no write or DDL rights.
+
+### 2026-11-02 — Boolean-based blind SQL injection in an order identifier parameter on www.zomato.com (Zomato) — n/a
+- Source: [HackerOne #358669](https://hackerone.com/reports/358669)
+- Type: SQL injection (boolean-based blind)
+- Summary: An `order_id` parameter on a Zomato endpoint was injectable: a crafted value changed the response length, and the reporter confirmed exploitability with a boolean-based technique.
+- Technique / pattern: Treat numeric identifier parameters as injection candidates, not just search and filter inputs. Append a true condition and a false condition in turn and diff response length or body — a stable, repeatable difference is the oracle a blind boolean extraction is built on, and it is often the only signal available when errors are suppressed.
+- Takeaway: Response-length differentials alone are enough to prove blind SQLi; any identifier concatenated into a query needs parameterized binding regardless of how numeric it looks.
+
 ### 2026-10-29 — SHOW [CREATE|GRANTS] and mariadb-dump unescaped SQL generation (MariaDB) — n/a
 - Source: [HackerOne #3848978](https://hackerone.com/reports/3848978)
 - Type: Second-order SQL injection (SQL generated from stored metadata)

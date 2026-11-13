@@ -12,6 +12,167 @@ Disclosed **security misconfiguration** reports — permissive CORS, default/exp
 
 ## Reports
 
+### 2026-11-13 — Broken link hijacking of an abandoned social media account linked from sv.hellosign.com enables brand impersonation (Dropbox) — $300
+- Source: [Bugcrowd #5ae73b2b](https://bugcrowd.com/disclosures/5ae73b2b-0e94-40c6-aa65-d1af4ab9d3ec/impersonation-via-broken-link-hijacking-on-https-sv-hellosign-com)
+- Type: Broken link hijacking (dangling third-party reference)
+- Summary: A social media icon on `sv.hellosign.com` pointed at a Twitter account that was no longer in use. The reporter registered that handle, so anyone following the link from Dropbox's own site landed on an attacker-controlled profile. Dropbox reclaimed the account and resolved the report as P4.
+- Technique / pattern: Treat outbound links as an attack surface alongside DNS records: crawl a target's pages, extract every external reference — social profiles, status pages, app-store entries, documentation and CDN hosts — and resolve each one looking for 404s, 'account not found' pages and expired domains. A claimable handle is the same bug class as a subdomain takeover, with the trust borrowed from the referring page instead of the hostname.
+- Takeaway: Retire the link when you retire the account. Any identifier a third party can re-register is a dangling reference that should be removed from your pages and inventoried like a DNS entry.
+
+### 2026-11-13 — WAF path filtering and IP restrictions bypassed to reach the Matomo admin interface on analytics.starlink.com (SpaceX / Starlink) — n/a (P3, 10 points)
+- Source: [Bugcrowd #899c4bac](https://bugcrowd.com/disclosures/899c4bac-5598-44af-8d11-8c8745c4b5c6/bypass-url-and-ip-address-restrictions-on-analytics-starlink-com)
+- Type: Access-control bypass (WAF path allowlist + header-based IP trust)
+- Summary: The Matomo analytics install was meant to expose only its tracking endpoints (`piwik.php`, `piwik.js`, `matomo.php`), with everything else returning a gateway error. Percent-encoding the dot in the path made a request for `index.php` match the allowlisted `piwik.js` rule, and spoofing `X-Forwarded-For` with a Starlink-owned address satisfied the IP restriction — together exposing the login page and several API endpoints.
+- Technique / pattern: Two reusable primitives. First, an allowlist that matches on the raw path can be desynchronised from the server that later normalises it: try `%2e` for `.`, `%2f` and `..;/` for separators, mixed case, and a trailing suffix that keeps the allowed extension in the string. Second, where access depends on source IP, test whether the application reads `X-Forwarded-For`, `X-Real-IP` or `X-Client-IP` instead of the socket — and seed it with an address from the target's own published ranges rather than a private one.
+- Takeaway: Filter on the normalised path the origin will actually serve, and derive client IP from the connection, trusting forwarded headers only from known proxies. A bypassed allowlist turns an open-source admin panel into the organisation's CVE exposure.
+
+### 2026-11-13 — Statuspage PagerDuty webhook endpoint accepted unauthenticated requests, letting anyone post incidents to a customer's status page (Statuspage) — $300
+- Source: [Bugcrowd #8b892440](https://bugcrowd.com/disclosures/8b892440-3f19-49c8-bb71-9288de175289/no-authentication-of-pagerduty-webhooks)
+- Type: Unauthenticated webhook receiver (server security misconfiguration)
+- Summary: The PagerDuty integration listened at `manage.statuspage.io/pagerduty_webhooks/create` and created status-page incidents from incoming payloads without verifying that the request actually came from PagerDuty. The only value needed was the victim's PagerDuty Service ID, which is not secret and is visible to read-only PagerDuty users.
+- Technique / pattern: Inbound integration endpoints are frequently authenticated by nothing but the shape of the payload. The method here generalises: trigger the integration on your own tenant to capture a genuine payload, swap the tenant identifier inside it for the victim's, replay it with `curl` while copying the provider's user-agent and webhook-id headers, and see whose record changes. Any tenant id that appears in a provider's own UI should be assumed public.
+- Takeaway: A webhook receiver must authenticate the sender — shared secret, request signature, or mTLS plus source-IP allowlisting — and must never treat an identifier in the body as proof of origin.
+
+### 2026-11-13 — Directory listing exposed at /swaggerui/ on the Brave promo-services staging host (Brave Software) — n/a
+- Source: [HackerOne #371464](https://hackerone.com/reports/371464)
+- Type: Directory listing / exposed API documentation on a staging host
+- Summary: The staging host `promo-services-staging.brave.com` returned a browsable directory listing at the `/swaggerui/` path, exposing the Swagger UI assets and the API surface they document.
+- Technique / pattern: After subdomain enumeration, request a small fixed wordlist of documentation and tooling paths against every host — `/swaggerui/`, `/swagger-ui.html`, `/swagger/v1/swagger.json`, `/api-docs`, `/actuator`, `/.git/` — and watch for a 200 with an index listing rather than an application page. Staging hosts are the high-yield target because they are deployed from the same chart with debug and docs flags left on.
+- Takeaway: Disable automatic directory indexes and ship API documentation behind authentication. A staging hostname is not an access control.
+
+### 2026-11-13 — Publicly reachable Grafana on monitoring.prow-canary.k8s.io running a version vulnerable to CVE-2022-21703 (Kubernetes) — n/a
+- Source: [HackerOne #1466765](https://hackerone.com/reports/1466765)
+- Type: Outdated / vulnerable third-party component exposed to the internet
+- Summary: The host `monitoring.prow-canary.k8s.io` ran a Grafana version affected by CVE-2022-21703, which was still unpatched upstream when the report was filed (Grafana's fix landed 1 February 2022). The reporter noted the issue could be combined with an XSS or a subdomain takeover on a same-site origin.
+- Technique / pattern: Fingerprint the version of every self-hosted dashboard, CI and monitoring product on a program's subdomains (Grafana, Kibana, Jenkins, Prometheus) and map it against current advisories, including ones published in the last days — canary, staging and `-canary` hosts lag behind production patching. The chain in this report is the generally useful part: a same-site weakness elsewhere in the organisation becomes the delivery vehicle for a CSRF-style flaw in the monitoring product.
+- Takeaway: Internet-exposed operational tooling inherits every CVE of its upstream. Canary and staging hosts need the same patch SLA as production, or they should not be publicly resolvable.
+
+### 2026-11-12 — SAP server web GUI exposed to the internet with default TMSADM credentials (Starbucks) — n/a
+- Source: [HackerOne #195163](https://hackerone.com/reports/195163)
+- Type: Security misconfiguration (default credentials on an exposed enterprise service)
+- Summary: An SAP server's web GUI was reachable from the internet and accepted the default `TMSADM` credentials. The reporter rated it critical; Starbucks security and the SAP security team reassessed it as medium on the basis that `TMSADM` lacks the privileges needed for the actions the report assumed.
+- Technique / pattern: Default credentials are a recon-and-documentation exercise rather than brute force: fingerprint the product behind each exposed console, then try only the vendor-documented factory account, which keeps the test in scope. The triage outcome is the instructive half — the finding was downgraded because the default account's privileges were limited, so enumerate what the account actually reaches (transactions, tables, file system, onward credentials) and rate from that rather than from the fact that login succeeded.
+- Takeaway: Severity for default credentials comes from the privileges of the specific account, not from the exposure itself. Enumerate the resulting session's reach before claiming impact, and expect a downgrade if you cannot.
+
+### 2026-11-12 — Server-side source code disclosure via login.jsp.bak on maximo.bia.gov (Bureau of Indian Affairs Vulnerability Disclosure Program) — n/a
+- Source: [Bugcrowd #bfb4f27e](https://bugcrowd.com/disclosures/bfb4f27e-af84-4f95-a29c-eee97f2b805d/server-side-source-code-disclosure-via-jsp-bak)
+- Type: Security misconfiguration (backup file served as plaintext source)
+- Summary: Requesting `https://maximo.bia.gov/maximo/webclient/login/login.jsp.bak` returned HTTP 200 with the plain-text JSP source and required no authentication. The exposed source revealed the IBM Maximo login flow, session and timeout handling, login parameters, CSRF token handling, multi-tenant and admin login behaviour, internal file paths and deployment indicators. Rated P3; BIA corrected the misconfiguration so the file is no longer served.
+- Technique / pattern: The discovery step was simply appending `.bak` to a reachable `login.jsp`. A suffix the servlet or interpreter mapping does not recognise stops the file being executed and makes the server hand back the source instead, so for every known server-side handler try `.bak`, `.old`, `.orig`, `.save`, `.txt`, `.swp`, `.swo`, a trailing `~`, a trailing `.1`, and editor temp forms such as `.login.jsp.swp`. This is a targeted request against a page you already know, not a directory-listing find.
+- Takeaway: Keep backup and editor temp files out of web roots and deny unmapped extensions at the server. Offensively, enumerate suffixes on known handlers rather than waiting for a directory index, and read recovered source for the authentication and CSRF logic it documents.
+
+### 2026-11-12 — Hyrax admin interface exposed at opendap.earthdata.nasa.gov/admin (NASA Vulnerability Disclosure Program) — n/a
+- Source: [Bugcrowd #0e3cd057](https://bugcrowd.com/disclosures/0e3cd057-0bb0-47ee-a265-556f4333c5aa/exposed-admin-interface)
+- Type: Security misconfiguration (exposed administrative interface)
+- Summary: The Hyrax OPeNDAP server's administrative interface was reachable at `https://opendap.earthdata.nasa.gov/admin`. Rated P5 and closed as informational, which the program records as an accepted business risk.
+- Technique / pattern: Scientific and data-serving middleware (Hyrax, THREDDS, GeoServer, ERDDAP, Solr, Tomcat manager) ships a documented admin path that the application team rarely inventories. Fingerprint the product from page titles, asset paths and version banners, then walk its vendor-documented admin routes unauthenticated. The outcome here is also the lesson in triage: an exposed console with no demonstrated state-changing action or data read tends to close informational, so establish what the interface actually permits before writing it up.
+- Takeaway: Enumerate the admin surface of every third-party server in the estate, and rate it by the controls the console can change. Without that, an exposed interface is reconnaissance rather than an accepted finding.
+
+### 2026-11-12 — Misconfigured read/write permissions on a NASA Google Drive exposed publicly (NASA Vulnerability Disclosure Program) — n/a
+- Source: [Bugcrowd #10c9e65d](https://bugcrowd.com/disclosures/10c9e65d-1012-4c5e-83a1-251a9f20a1e8/public-access-to-nasa-google-drive)
+- Type: Security misconfiguration (third-party document sharing scope)
+- Summary: A NASA-linked Google Drive was shared with misconfigured read and write access, making it reachable by anyone with the link. Rated P3 and resolved; the public page carries no reproduction detail beyond the summary.
+- Technique / pattern: Cloud-document sharing is configuration the organisation owns but the web tier never shows, so it has to be enumerated separately: harvest Drive, Docs, Sheets, Box, Dropbox and SharePoint links from published PDFs, slide decks, forum posts, mailing lists and cached pages, then open each while signed out and check the *write* level as well as read. Edit or comment access is the finding; read-only link sharing is often intentional.
+- Takeaway: Check sharing scope, not just reachability. Report integrity and availability impact alongside disclosure, because silent modification or deletion of operational documents is harder to detect than a leak, and remediation is re-permissioning the document rather than removing the link to it.
+
+### 2026-11-12 — Open email relay in the WordPress Gutenberg Form block via the formAction parameter (WordPress) — undisclosed
+- Source: [HackerOne #3460138](https://hackerone.com/reports/3460138)
+- Type: Security misconfiguration — unauthenticated AJAX handler trusting a client-supplied recipient
+- Summary: Gutenberg 22.2.0's experimental Form block registered its handler `gutenberg_block_core_form_send_email()` for both `wp_ajax_wp_block_form_email_submit` and `wp_ajax_nopriv_wp_block_form_email_submit`, and the handler passed the client-supplied `formAction` value straight into `wp_mail()` after stripping the `mailto:` prefix. Any unauthenticated attacker could relay mail to arbitrary recipients through the site, with no rate limiting and no sender verification, enabling spam and phishing from the victim's domain.
+- Technique / pattern: The nonce, `ajaxUrl` and `action` were injected into a publicly readable script-module JSON tag with `id="wp-script-module-data-@wordpress/block-library/form/view"` by `lib/experimental/blocks.php`, so the proof of concept just scraped those values off the page and POSTed `formAction=mailto:<victim>` to `admin-ajax.php`. Grep a plugin for `wp_ajax_nopriv_` to enumerate its unauthenticated entry points, then check each handler for validation of the destination it is handed. Vulnerable files were `packages/block-library/src/form/index.php` and `lib/experimental/blocks.php`.
+- Takeaway: A nonce printed into a public page proves intent, not identity. Recipient addresses must come from server-side configuration or an allowlist and never from the request — and experimental, feature-flagged code still ships in released builds.
+
+### 2026-11-12 — Server-side source code disclosure via login.jsp.bak (Bureau of Indian Affairs) — n/a
+- Source: [Bugcrowd #e6311c37](https://bugcrowd.com/disclosures/e6311c37-af3c-40e3-afca-1ec94e2617d1/server-side-source-code-disclosure-via-jsp-bak)
+- Type: Security misconfiguration — backup artifact served as plain text
+- Summary: A backup copy of the IBM Maximo web client login page, `login.jsp.bak`, was left in the web root on `maximotrng.bia.gov`. Because the `.bak` extension was not mapped to the JSP handler, the server returned the raw source as plain text instead of executing it, exposing the authentication flow and login parameters, CSRF token handling, session and timeout logic, multi-tenant and admin login behaviour, and internal deployment paths (P3, resolved — the agency corrected the misconfiguration and blocked access to the file).
+- Technique / pattern: The researcher appended `.bak` to a known `login.jsp` URL and requested it in a browser; no authentication or special tooling was needed. Sweep every known server-rendered page for `.bak`, `.old`, `.orig`, `.save`, `~`, `.swp` and `.txt` siblings and watch for a `200` whose `Content-Type` is `text/plain`. Note that the disclosed source revealed design detail rather than a working bypass — report it as reconnaissance value, not as a proven authentication break.
+- Takeaway: Keep editor and backup artifacts out of deployed web roots, and configure the server to deny unknown extensions by default rather than falling back to serving them as text; an unlinked file is not a protected one.
+
+### 2026-11-12 — Blind SSRF in /api/img on blua.bupa.com.au (Bupa Australia) — n/a
+- Source: [Bugcrowd #5e0c2453](https://bugcrowd.com/disclosures/5e0c2453-730f-4185-a28c-f2d2bc2c62e5/blind-ssrf-in-api-img-on-blua-bupa-com-au-internal-host-discovery-port-scanning-of-internal-bupa-com-au)
+- Type: Security misconfiguration — SSRF via an image proxy with an external-only allowlist
+- Summary: The image proxy endpoint `/api/img` on `blua.bupa.com.au` carried an external host allowlist but still accepted requests aimed at internal resources, which permitted blind internal host discovery and port scanning across `*.internal.bupa.com.au` (P3, resolved). The vendor's remediation tightened destination validation and excluded internal address space.
+- Technique / pattern: Image, thumbnail, preview, favicon and PDF-render proxies are the standard SSRF surface because their whole purpose is fetching a caller-supplied URL. Even where an allowlist is clearly present, probe internal hostnames and private ranges anyway, and use response-time and status-code differentials as the oracle when no body comes back.
+- Takeaway: An allowlist applied to the *requested* hostname is not sufficient — validate the *resolved* address, deny private and link-local ranges, and re-validate after every redirect.
+
+### 2026-11-12 — Unauthorized edit by external user on a linked NASA document (NASA VDP) — n/a
+- Source: [Bugcrowd #8c95858a](https://bugcrowd.com/disclosures/8c95858a-dbcc-4618-a5b9-14f4dd64463c/unauthorized-edit-by-external-user)
+- Type: Security misconfiguration — over-permissive cloud document sharing
+- Summary: A Google Drive document linked from a NASA page as supporting material was shared such that anyone holding the link could *edit* it. The reporter was able to change the title, modify descriptions, add comments and alter the permissions of NASA collaborators, with those changes saved and visible to everyone who viewed the file afterwards (P3, resolved).
+- Technique / pattern: Harvest third-party document links (`docs.google.com`, `sharepoint.com`, Dropbox, Notion, Airtable) from the target's pages and sitemaps, then open each one and check whether link-based access grants view or edit, and whether collaborator permissions are modifiable by a link holder. This is reconnaissance against the organization's content supply chain rather than against its own application code.
+- Takeaway: Externally linked documents are part of the attack surface. Audit their sharing settings so link-based access is view-only, and lock collaborator permissions so outside users cannot change who has access.
+
+### 2026-11-10 — Unauthenticated access to an admin panel with file-write functions (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #1397564](https://hackerone.com/reports/1397564)
+- Type: Security misconfiguration / missing authentication on an administrative interface
+- Summary: An administrative panel on a DoD host was reachable without authenticating, exposing functions to upload, delete and modify files. The reporter noted it was the same underlying issue as an earlier report against a different system in the same estate.
+- Technique / pattern: Enumerate admin paths across every host in scope rather than one, because a misconfigured deployment template reproduces the same exposed panel on sibling systems — and a fix applied to one host often never reaches the others.
+- Takeaway: A missing-authentication finding is rarely isolated; after confirming one instance, sweep the estate for the same product and path. Treat exposed file-write functionality as critical, since it is a direct route to code execution.
+
+### 2026-11-10 — Cross-Origin Resource Sharing misconfiguration on an Acronis origin (Acronis) — n/a
+- Source: [HackerOne #958459](https://hackerone.com/reports/958459)
+- Type: Security misconfiguration (CORS policy)
+- Summary: An Acronis web property returned cross-origin sharing headers that were too permissive, letting a page on another origin read responses it should not have been able to read. Where the affected responses are authenticated, that becomes a cross-origin data-disclosure channel.
+- Technique / pattern: Replay requests with an attacker-controlled `Origin` header and check whether `Access-Control-Allow-Origin` reflects it while `Access-Control-Allow-Credentials` is `true` — that pairing is what makes a loose CORS policy exploitable rather than merely untidy.
+- Takeaway: Reflecting the request `Origin` is equivalent to allowing every origin. Keep allow-lists server-side, and never share credentialed responses with a reflected origin.
+
+### 2026-11-10 — PDF exposed in a public Amazon S3 bucket (NASA VDP) — n/a (P5, informational)
+- Source: [Bugcrowd #aa45924f](https://bugcrowd.com/disclosures/aa45924f-8b67-4f22-8dff-dac7dc9d60e2/exposure-of-pdf-file-in-a-public-amazon-s3-bucket-associated-with-nasa)
+- Type: Security misconfiguration (public cloud object storage)
+- Summary: A PDF stored in an Amazon S3 bucket associated with NASA was publicly readable (disclosed 18 Feb 2025). The program accepted it as informational, treating the exposure of that particular document as a business risk rather than a vulnerability.
+- Technique / pattern: Derive candidate bucket names from page source, CDN hostnames and document links, then test anonymous object reads and bucket listing. The severity of such a finding is decided entirely by what the reachable objects contain.
+- Takeaway: "Public bucket" is only as serious as its contents. Establish and report the sensitivity of the exposed objects — an exposure report with no demonstrated sensitive data closes informational.
+
+### 2026-11-06 — Missing authentication exposed employee-only Checkout Blocks tooling (Shopify) — n/a
+- Source: [HackerOne #3954327](https://hackerone.com/reports/3954327)
+- Type: Security misconfiguration — internal employee-only tooling reachable without authentication
+- Summary: An employee-only Checkout Blocks interface was reachable by unauthenticated visitors because the application performed no authentication check on it, exposing which stores had installed the app, when they installed it, and which features were enabled. A later internal review found the same gap also allowed toggling Checkout Blocks features for stores. Fixed by adding verified employee authentication.
+- Technique / pattern: Treat admin, staff and "internal" tooling as its own attack surface and request those routes with no session at all rather than assuming some upstream control covers them. Internal dashboards are often built on the assumption that only staff know the URL, so enumerate them from JS bundles, sourcemaps, route manifests and error pages, then judge each route by whether its data *and* its write actions answer anonymously — this one leaked installation data on read and accepted feature toggles on write.
+- Takeaway: "Internal" is not an access control — every employee-only route needs an explicit server-side authentication and authorization check in the code that owns the data, and the write side needs testing separately from the read side.
+
+### 2026-11-06 — Windows installer made an executable directory user-writable, enabling binary planting (Monero) — n/a
+- Source: [HackerOne #3619409](https://hackerone.com/reports/3619409)
+- Type: Insecure file permissions / local binary planting
+- Summary: Monero GUI's Inno Setup script set `Permissions: users-full` on the `p2pool` subdirectory inside the machine-wide install path, while the GUI later launched `p2pool.exe` from that directory after checking only that the file existed. Any low-privileged local user could plant or replace that binary and have it execute as whichever user next started P2Pool mining from the GUI. Rated High, resolved.
+- Technique / pattern: Read the installer, not only the application. Inno Setup, MSI and `pkg` scripts hand out ACLs, and a single line granting ordinary users write access inside the install root creates a code-execution surface in trusted territory. Confirm with `icacls` on each directory under the install path, then grep the source for process launches resolved relative to the application directory and check whether anything verifies the binary beyond existence.
+- Takeaway: Directories an application executes from must not be user-writable, and file existence is not an integrity check — sign or hash bundled binaries before launching them.
+
+### 2026-11-06 — Publicly accessible .env file exposed live UAT credentials on a self-hosted Bitbucket (NASA VDP) — n/a
+- Source: [Bugcrowd #a758477f](https://bugcrowd.com/disclosures/a758477f-93ae-4fd7-a5e4-d73969e5b2b6/publicly-accessible-env-file-exposing-hardcoded-credentials-on-nasa-s-git-repository)
+- Type: Security misconfiguration — secrets in a publicly readable self-hosted repository
+- Summary: A publicly accessible `.env` file on NASA's Bitbucket server exposed plaintext credentials that a script actively used to authenticate against the SIT token service at `cmr.sit.earthdata.nasa.gov`, opening the door to unauthorized access, data extraction and API abuse. Rated P3, resolved.
+- Technique / pattern: Treat self-hosted SCM (Bitbucket Server, GitLab CE, Gitea) as a surface distinct from GitHub: first check whether repository browsing and raw-file endpoints answer unauthenticated, then request the dotfiles that are gitignored in public projects but routinely committed internally — `.env`, `.env.uat`, `.npmrc`, `settings.xml`, `*.pem`. Prove the credential is live against exactly the service it names and nothing further.
+- Takeaway: Non-production credentials are real credentials when the environment they open is reachable; the remediation is rotation plus a managed secret store, not deleting the file.
+
+### 2026-11-06 — GitHub-organization allowlist bypassed with a traversal segment, rendering an attacker notebook (NASA VDP) — n/a
+- Source: [Bugcrowd #8c0bef28](https://bugcrowd.com/disclosures/8c0bef28-3ae4-40f8-ab4c-5446255ffa2c/bypassing-the-restrictions-to-load-the-jupyter-notebook-ipynb-from-organizations-other-than-nasa-on-https-lb-gesdisc-eosdis-nasa-gov-meditor)
+- Type: Security misconfiguration — URL allowlist matched as a string prefix, escalating to stored XSS
+- Summary: NASA's mEditor instance at `lb.gesdisc.eosdis.nasa.gov/meditor` exposed an endpoint that fetched and rendered Jupyter notebooks from GitHub, restricted to the `github.com/nasa` organization. Adding a `/../` segment to the URL parameter walked out of the allowed prefix, so the reporter loaded and displayed an attacker-controlled `.ipynb` and achieved script execution in the application's origin. Rated P3, resolved.
+- Technique / pattern: An allowlist written as a string prefix (`github.com/<org>`) is defeated by anything the HTTP client normalizes afterwards — `/../`, encoded separators, `@`-userinfo, duplicated slashes. Locate the loader by reading the product's own public repository, then compare the string the check inspects against the URL the fetcher finally requests. Where fetched content is rendered rather than downloaded, the bypass lands as stored XSS, so check the response content type and sandboxing too.
+- Takeaway: Parse and resolve the URL, then compare the authority and path against an allowlist; and render third-party documents from a sandboxed origin so a fetch bypass is not also script execution.
+
+### 2026-11-02 — Missing CSRF protection on a JPL contact form enables content injection and email bombing from an official domain (NASA VDP) — n/a
+- Source: [Bugcrowd #e075af55](https://bugcrowd.com/disclosures/e075af55-7a4d-41c3-a336-4b2b6ccc294a/email-triggering-abuse-custom-content-injection-email-bombing-via-official-nasa-domain-due-to-missing-csrf)
+- Type: Missing CSRF / email-triggering abuse
+- Summary: A JPL contact form lacked CSRF protection, letting an attacker inject custom content into the resulting message and send it in volume so that it arrived from an official NASA domain. Rated P4 and fixed.
+- Technique / pattern: For any endpoint that causes mail to be sent, test three properties together: whether a CSRF token is required, whether attacker-controlled text reaches the message body or subject, and whether submissions are rate-limited per recipient. The abuse value comes from the sender's reputation, so the same bug on a trusted government or brand domain rates far higher than on an unknown host.
+- Takeaway: Mail-triggering endpoints are abuse primitives as much as CSRF targets, and need a token, server-side content constraints and per-recipient rate limits at the same time.
+
+### 2026-11-02 — Unauthenticated path traversal in the AIT-Core BSC logger allows arbitrary directory and file writes (NASA VDP) — n/a
+- Source: [Bugcrowd #1614d1e0](https://bugcrowd.com/disclosures/1614d1e0-56a7-4fab-bfc9-c6e1ca37e3ee/path-traversal-in-ait-core-bsc-logger-via-unauthenticated-post-request)
+- Type: Missing authentication plus path traversal (arbitrary write)
+- Summary: In AIT-Core v3.0.0 the BSC endpoint `POST /<n>/start` took a `path` form parameter and passed it to `os.path.join()` and then `os.makedirs()` with no validation, and the BSC server required no authentication at all, so anyone with network reach could create directories and write capture files anywhere on the filesystem. The reporter proved it with `path=../../tmp/pwned_ait`; impacts included overwriting configuration files and corrupting telemetry. Rated P1; affected code in `ait/core/bsc.py`.
+- Technique / pattern: For open-source operational and ground-segment tooling, read the route handlers looking for filesystem calls on request input — `os.path.join()` is the classic traversal sink because a leading `../` or an absolute path silently discards the base it was given. Confirm with a benign write just outside the intended root rather than anything destructive, and check the service's authentication separately from the application in front of it.
+- Takeaway: `os.path.join()` is not a confinement primitive: resolve the final path and assert it sits inside the allowed root, and never expose a write-capable service without authentication.
+
+### 2026-11-02 — Educational resource page linked a Google document shared as anyone-with-the-link-can-edit (NASA VDP) — n/a
+- Source: [Bugcrowd #d24aabd4](https://bugcrowd.com/disclosures/d24aabd4-2bf8-49b6-b75e-de081c92be27/nasa-educational-resource-links-to-editable-public-document)
+- Type: Insecure sharing permissions on third-party document storage
+- Summary: A Google Drive link on a NASA science page pointed to a supplementary document configured so that anyone with the link could edit it. Outside users could change the title and descriptions, add comments and alter the permissions of collaborators, with the changes persisting for everyone who viewed the document afterwards. Rated P3 and fixed.
+- Technique / pattern: Harvest every external file-sharing link on in-scope pages (Drive, Dropbox, SharePoint, Box) and check the *effective* permission rather than the link's appearance — open each one in a clean or signed-out profile and look for an edit affordance. The write capability, not the readability, is the finding; note that permissions can also allow editing the collaborator list, which is an integrity impact on the document's own access control.
+- Takeaway: Content-sharing links are part of the attack surface: a page that embeds one inherits whatever permission the document owner set, and remediation means re-permissioning the document, not editing the page.
+
 ### 2026-10-29 — Permission Model filesystem over-grant via wildcard radix lookup (Node.js) — n/a
 - Source: [HackerOne #3996423](https://hackerone.com/reports/3996423)
 - Type: Security misconfiguration / broken permission matcher

@@ -12,6 +12,181 @@ Disclosed **exposed API / sensitive information disclosure** reports — leaked 
 
 ## Reports
 
+### 2026-11-13 — Unauthenticated GraphQL API allowed bulk enumeration of groups and their members' names and emails (NASA Vulnerability Disclosure Program) — n/a (P2)
+- Source: [Bugcrowd #fe712f13](https://bugcrowd.com/disclosures/fe712f13-87e1-4a53-87bb-bdf360f1f962/graphql-api-exposes-all-groups-and-goups-users-leaking-internal-stucture-full-names-and-emails)
+- Type: Missing authorization on a GraphQL resolver (bulk PII exposure)
+- Summary: A publicly reachable GraphQL API returned group and user data to unauthenticated callers. Using a wildcard in the `tags` search argument, the reporter enumerated groups in bulk, exposing internal organisational structure along with members' full names and email addresses. Resolved as P2.
+- Technique / pattern: GraphQL turns one missing authorization check into a bulk export, because a nested selection walks from a group to its members in a single query. Probe the search arguments a resolver accepts for wildcard, empty-string and null semantics — a filter meant to require a specific tag often matches everything when given `*` — and then measure impact by how many records one request returns, not by whether a single record is sensitive.
+- Takeaway: Authorize per field and per resolver, not at the gateway, and treat permissive filter semantics as an access-control bug: a search argument that matches everything is an export endpoint.
+
+### 2026-11-13 — Personal access token bundled inside the Asana Desktop for Mac application (Asana) — $6,100
+- Source: [Bugcrowd #caf10f76](https://bugcrowd.com/disclosures/caf10f76-f1fb-4dea-8434-9ed2c56a40bb/asana-desktop-application-includes-personal-access-token)
+- Type: Hardcoded credential shipped in a distributed binary (P1)
+- Summary: A personal access token was packaged inside the Asana Desktop for Mac build, so anyone holding a copy of the application could extract and use it. Asana revoked and rotated the credentials within hours, then fixed the root cause and hardened its build pipeline.
+- Technique / pattern: Shipped desktop applications are distributable archives: unpack the bundle (an Electron app's `app.asar`, a `.app`'s Resources directory, APK or installer payload) and grep the result for token prefixes, `Authorization` strings, `.env` remnants and build-time configuration. The leak is usually a build-process accident — a developer's local credential swept into the artifact — which is why it survives code review of the repository.
+- Takeaway: Anything inside a binary you distribute is public. Keep credentials out of build artifacts by construction, and scan release artifacts, not just source, before publishing.
+
+### 2026-11-13 — Unauthenticated access to an internal API through its Azure endpoint, discovered in client-side JavaScript (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #1627980](https://hackerone.com/reports/1627980)
+- Type: Missing authentication on an internal API / endpoint disclosure via front-end code
+- Summary: An internal site gated behind Microsoft sign-in named its backend in page JavaScript as `appg3entcalapi.azurewebsites.net`. Several API calls on that Azure host accepted unauthenticated requests, so the internal-only data they served was reachable without going through the sign-in flow.
+- Technique / pattern: Authentication enforced in the front end leaves the API open: pull every JavaScript bundle and source map from a login-walled application (the login page itself usually serves them) and extract hostnames, route templates and API versions, then call each route directly with no credentials. Default platform hostnames such as `*.azurewebsites.net`, `*.cloudfunctions.net` and `*.elb.amazonaws.com` are the ones most likely to bypass whatever gateway protects the branded domain.
+- Takeaway: Enforce authorization in the API, on every host that serves it, and do not rely on a front-door gateway or an unpublished hostname. Front-end bundles are public documentation of your internal topology.
+
+### 2026-11-13 — OpenAPI token committed to source history remained retrievable after the Swagger draft was removed (Sifchain) — n/a
+- Source: [HackerOne #1132690](https://hackerone.com/reports/1132690)
+- Type: Credential in version-control history (secret leak)
+- Summary: Developers removed a draft Swagger spec whose URL contained an access token, but the token stayed in the committed history of several project files, including `ui/core/src/api/transactionsService.ts`, `tendermintService.ts`, `stakingService.ts`, `slashingService.ts`, `sifdistService.ts` and `bankService.ts`.
+- Technique / pattern: Deleting a file does not delete the secret. Search the whole history, not the working tree: `git log -p -S'<token-fragment>'`, `git rev-list --all | xargs git grep` for key prefixes, or a history-aware scanner across every branch and tag. Tokens embedded in a URL inside front-end service modules are a recurring shape, because the spec URL is pasted in during development and the file is later tidied rather than rotated.
+- Takeaway: A secret that reached a commit is compromised and must be rotated, not removed. History rewriting is cleanup, never remediation.
+
+### 2026-11-12 — Vidyard API auth_token exposed by a third-party content provider for 8x8.com (8x8) — n/a
+- Source: [HackerOne #878434](https://hackerone.com/reports/878434)
+- Type: Sensitive information disclosure (third-party integration token exposure)
+- Summary: A third-party content provider for `www.8x8.com` inadvertently disclosed the site's Vidyard API token. Access was resolved and the token replaced.
+- Technique / pattern: The exposure sat with a vendor embedded in the target's own pages, so the hunting ground is the third-party surface rather than the application: enumerate the scripts, widgets, video and chat embeds, tag-manager containers and marketing tooling a site loads, then read each provider's configuration object and the requests it makes for credentials shipped to the browser. Distinguish a public client identifier from a privileged API token by checking what the token authorises before reporting.
+- Takeaway: An organisation inherits the credential hygiene of every vendor it embeds. Inventory third-party scripts as part of the attack surface, keep privileged API tokens server-side, and scope anything the browser must hold by domain and capability.
+
+### 2026-11-12 — Mozilla employee telemetry SQL service API token leaked in a GitHub repository (Mozilla) — n/a
+- Source: [HackerOne #2735646](https://hackerone.com/reports/2735646)
+- Type: Sensitive information disclosure (leaked API credential in a public repository)
+- Summary: A Mozilla employee's API token for the telemetry SQL service was exposed in a GitHub repository, and the token granted access to a service dashboard containing confidential data. The asset was out of scope, but the report was accepted because the issue was rated high. The token has since been rotated and removed from the service.
+- Technique / pattern: Personal repositories of an organisation's staff are a credential source that scanning the organisation's own repositories misses entirely. Pivot from employee identities to their public repositories, gists, forks and full commit history, then grep for the service-specific token formats the organisation's internal tooling uses. Validate liveness without abusing access — a single authenticated metadata call establishes the token still works — and note that a leak reaching confidential data can be accepted on impact even where the host is nominally out of scope.
+- Takeaway: A credential is in scope wherever it is found if it authenticates to something that is. Report on the credential's reach, keep validation to the minimum that proves liveness, and have remediation be rotation rather than deletion of the commit.
+
+### 2026-11-12 — Internal-use-only NASA AEPR financial report publicly accessible (NASA Vulnerability Disclosure Program) — n/a
+- Source: [Bugcrowd #1570570b](https://bugcrowd.com/disclosures/1570570b-5149-493d-b6e3-1a162794ce78/internal-proprietary-financial-report-aepr-for-internal-use-publicly-accessible)
+- Type: Sensitive information disclosure (internal document published without access control)
+- Summary: A proprietary internal financial report (AEPR) was publicly accessible. The researcher identified it as non-public from its own `for internal NASA use only` label and from the ongoing period its contents covered. Rated P4 and resolved.
+- Technique / pattern: Documents carry their own classification, so the discovery technique is to search the estate for the markings rather than for interesting content: handling labels (`for internal use only`, `not for public release`, `proprietary`, `SBU`, `CUI`, `pre-decisional`), document control footers and distribution statements, across the site's own file paths and via search-engine operators restricted to in-scope hosts. The label is what turns a judgement call into an evidenced report, and currency matters — a live reporting period raises impact over a historical one.
+- Takeaway: Let the document's own handling marking carry the argument. Quote the label and the coverage period rather than the contents, and treat publication controls as a process failure needing an estate-wide sweep, not a single file to unpublish.
+
+### 2026-11-12 — Earthdata user and internal employee credentials exposed via publicly indexed infostealer logs (NASA Vulnerability Disclosure Program) — n/a
+- Source: [Bugcrowd #d9c4e0da](https://bugcrowd.com/disclosures/d9c4e0da-3f3e-430c-af99-b9d7f747cf6f/exposure-of-sensitive-earthdata-user-and-internal-employee-credentials-via-publicly-indexed-infostealer-logs)
+- Type: Sensitive information disclosure (credential exposure via third-party leak aggregation)
+- Summary: Credentials belonging to Earthdata users and internal employees were exposed through publicly indexed infostealer logs. Rated P1 and resolved; the public page carries only the disclosure request and no technical detail.
+- Technique / pattern: Credential exposure that originates on users' and employees' own endpoints still lands in the organisation's risk surface, because the credentials authenticate to in-scope systems. The research is passive and open-source — publicly indexed stealer-log collections, paste sites and leak aggregators — and the triage question is whether any exposed pair still authenticates to an in-scope service. Establish that by account state rather than by logging in: never use third-party credentials to access an account, and report the exposure for forced rotation instead.
+- Takeaway: The organisation's credential perimeter extends to the endpoints its people use. Monitor public leak sources against corporate and user identity domains, enforce rotation and MFA on anything found, and keep the proof passive.
+
+### 2026-11-12 — Public Google Drive exposure leaks credentials and grants access to urs.earthdata.nasa.gov (NASA VDP) — n/a
+- Source: [Bugcrowd #4791ed3d](https://bugcrowd.com/disclosures/4791ed3d-3b35-4e8e-a514-e567c40ee6d0/public-google-drive-exposure-on-appliedsciences-nasa-gov-leads-to-credential-disclosure-and-unauthorized-access-to-urs-earthdata-nasa-gov)
+- Type: Information disclosure — publicly shared cloud storage containing live credentials
+- Summary: A Google Drive resource linked from `appliedsciences.nasa.gov` was shared publicly and contained credentials that granted unauthorized access to `urs.earthdata.nasa.gov` (P3, resolved). The disclosure carries only the vendor summary, so the exact document and credential type are not public.
+- Technique / pattern: Treat an organization's linked cloud documents as part of its attack surface: harvest `drive.google.com`, `docs.google.com`, SharePoint, Dropbox and S3 links from pages, sitemaps, cached JS and search-engine results, open each under a clean session, and grep the contents for credential-shaped strings. The impact escalates from disclosure to access when a leaked secret is live on another in-scope host, so always test recovered credentials against the systems they name.
+- Takeaway: Secrets committed to a shared document are exposed the moment the link is public; rotate any credential that touches cloud storage, scope documents to named collaborators, and keep credential distribution out of file-sharing entirely.
+
+### 2026-11-12 — Critical path traversal via the dir parameter enumerates root and user home directories (NASA VDP) — n/a
+- Source: [Bugcrowd #868247c7](https://bugcrowd.com/disclosures/868247c7-2dd1-48fe-842d-e85b7ee0fb0d/critical-path-traversal-enables-enumeration-of-root-and-user-home-directories)
+- Type: Information disclosure — path traversal enabling filesystem enumeration
+- Summary: A `?&dir=` parameter accepted arbitrary directory traversal, letting an attacker enumerate the server filesystem beyond the intended scope, including the root and user home directories (P1, resolved). This is a sibling of the same researcher's `exp`-parameter traversal on the same program, the two differing only in which parameter selects the directory.
+- Technique / pattern: Any parameter that selects a directory or file — `dir`, `path`, `folder`, `file`, `page`, `template`, `lang` — is a traversal candidate; where file reads are blocked, directory *enumeration* is still the finding, because the recovered layout (home directories, config paths) names exactly what to request next. When one such parameter is found on a target, sweep the whole application for the other parameters that feed the same file-serving code.
+- Takeaway: Resolve a user-supplied path to its canonical form and verify it stays within an allowed base directory before use; stripping `../` sequences alone does not stop encoded, double-encoded or absolute-path variants.
+
+### 2026-11-12 — Mass PII exposure: 120,000+ consumer email addresses via WordPress author enumeration (Essity) — undisclosed
+- Source: [HackerOne #3840113](https://hackerone.com/reports/3840113)
+- Type: Information disclosure — user enumeration across several WordPress author surfaces at once
+- Summary: A WordPress loyalty-program site had 123,109+ accounts enumerable by sequential user id via `/?author=N`, and 98.4% of a 250-user sample had the member's full personal email address set as their WordPress display name. That display name was published through author-archive `<title>` tags, the REST route `/wp-json/wp/v2/users/<id>`, author RSS feeds and SHA-256 Gravatar hashes — none requiring authentication — with no `noindex` directive, no `Disallow: /author/` in `robots.txt` and no observed rate limiting, so roughly 121,000 EU consumer addresses were also search-engine indexable (Critical 9 to 10, resolved). A staging host sharing the same database was affected too.
+- Technique / pattern: Establish the user-id ceiling by comparing status codes on `/?author=N` (id 123109 returned `200`, 123110 returned `404`), then sample ids across the whole range and grep the `<title>` for an `@` to *measure* the exposure rate rather than asserting it. Confirm each channel independently — author page, REST users route, author RSS feed, Gravatar hash — and prove indexability by showing the absence of `noindex` in the markup and of an author rule in `robots.txt`.
+- Takeaway: WordPress republishes the display name across several unauthenticated surfaces simultaneously, so a registration flow that defaults the display name to the email address leaks the entire membership list. Report scale from a measured sample and tie it to the applicable regime — here GDPR Articles 5(1)(f), 33 and 34 — to establish severity.
+
+### 2026-11-12 — Full server infrastructure mapping via path traversal in the exp parameter (NASA VDP) — n/a
+- Source: [Bugcrowd #738dba19](https://bugcrowd.com/disclosures/738dba19-14d6-474e-94aa-38350984af7b/full-server-infrastructure-mapping-via-path-traversal-in-exp-parameter)
+- Type: Information disclosure — path traversal used for directory enumeration
+- Summary: Unsanitized input in the `exp` parameter allowed path traversal, letting an attacker enumerate internal server directories and map the entire filesystem structure (P2, resolved). The same researcher separately disclosed an unpatched variant and a patch bypass of this traversal, so the first remediation was incomplete.
+- Technique / pattern: Any parameter naming an experiment, dataset, report, template, theme or locale is a path-fragment candidate — traverse it and treat *directory enumeration* as the finding even when file reads are blocked, because the recovered layout names the config and credential paths worth requesting next. Re-test after remediation: this one was fixed, bypassed, and reported again.
+- Takeaway: Resolve user-supplied path fragments against an allowlist of known identifiers rather than filtering traversal sequences, and always re-verify a traversal fix with encoded, double-encoded and mixed-separator variants.
+
+### 2026-11-10 — Service tokens exposed in the production JavaScript bundle (Semrush) — n/a
+- Source: [HackerOne #1717210](https://hackerone.com/reports/1717210)
+- Type: Sensitive information disclosure (build-time secret leakage)
+- Summary: Environment variables the application did not need at runtime were added to the webpack configuration during the build and so were baked into the shipped JavaScript bundle, exposing service tokens publicly. An internal review found no evidence that unauthorized parties had used them.
+- Technique / pattern: The root cause is the build pipeline, not the code: a bundler configured to inject a broad set of environment variables publishes every one of them. Pull the production bundles and source maps, then grep for key formats and for config object keys that look server-side (`*_SECRET`, `*_TOKEN`, internal hostnames).
+- Takeaway: Anything the bundler can see can reach the browser. Allow-list the exact variables a front end needs rather than passing the environment through, and treat any secret that ever entered a build as leaked and due for rotation.
+
+### 2026-11-10 — Hard-coded credentials in a JavaScript file granting Docker Hub and SonarQube access (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #2312609](https://hackerone.com/reports/2312609)
+- Type: Sensitive information disclosure / credential exposure pivoting to third-party services
+- Summary: A JavaScript file on a DoD host contained hard-coded usernames, passwords, possible API keys and internal IP addresses. The reporter used them to reach a Docker Hub account and SonarQube projects while assessing the scope of the exposure.
+- Technique / pattern: After finding credentials in client-side code, the impact comes from establishing *where they are valid* — developer-platform accounts (container registries, code-quality and CI dashboards, package registries) are the usual landing spots, and they in turn expose source and build artifacts. Validate liveness and scope carefully, and stay within program rules while doing so.
+- Takeaway: A credential in a served file is only as serious as the systems it opens; the write-up has to make that chain explicit. Internal IPs alongside the credentials also hand over an infrastructure map for later pivoting.
+
+### 2026-11-10 — Missing access control on the WP REST API edit context exposes all users' data (WP API) — n/a
+- Source: [HackerOne #138244](https://hackerone.com/reports/138244)
+- Type: Exposed API / missing access control on a privileged serializer context
+- Summary: The WP REST API plugin did not enforce access controls for its `edit` context, so a single unauthenticated HTTP request returned, for every registered user, the username, email address, first and last name, registration date and detailed privilege information — a ready-made target list for follow-on attacks.
+- Technique / pattern: Many REST APIs expose a `context` (or `view`/`fields`/`expand`) parameter that switches the serializer to a richer, privileged field set. Request every endpoint with the privileged context value and diff the response against the default — the route may be authorized while the context is not.
+- Takeaway: Authorize the *field set*, not only the route. A parameter that changes which attributes are serialized is a privilege boundary and needs its own capability check on every request.
+
+### 2026-11-10 — Retool database credentials exposed via the resources API (Retool) — n/a (P2, 5 points)
+- Source: [Bugcrowd #80631e79](https://bugcrowd.com/disclosures/80631e79-048c-430e-a632-d9ee73483772/retool-database-credentials-exposed-via-resources-api)
+- Type: Exposed API / credential disclosure in an API response — resolved, disclosed 19 Aug 2024
+- Summary: The `/api/resources` endpoint in Retool-built applications returned the application's database credentials in its JSON response. Each app is backed by a Postgres database (typically on AWS RDS) holding its data and users, so the exposed credentials allowed logging in as a root user with admin write access and full control of that database.
+- Technique / pattern: On low-code and app-builder platforms, inspect the calls the generated front end makes to the platform's own management API — resource, datasource and connection endpoints are built for the builder UI and are frequently reachable from the published app, where they hand the connection details to any viewer.
+- Takeaway: Connection secrets must stay server-side and never appear in a response the client can read, however privileged the UI that normally calls that endpoint. On a hosted platform, one such endpoint leaks every tenant app that uses it.
+
+### 2026-11-10 — Test-drive form user data leaked through an exposed .git folder (Tesla) — n/a (P1, 40 points)
+- Source: [Bugcrowd #8dd058a6](https://bugcrowd.com/disclosures/8dd058a6-1479-4103-bda9-32c5cd2fd266/testdrive-form-user-data-info-leak-via-3rdparty-exploit)
+- Type: Exposed source control / sensitive information disclosure — resolved, disclosed 23 Aug 2021
+- Summary: A `.git` folder left reachable on a third-party-operated host let the reporter retrieve data associated with Tesla, including user data submitted through a test-drive form. The exposure sat on a vendor-run property rather than Tesla's core application.
+- Technique / pattern: Request `.git/HEAD` and `.git/config` on every host in scope, including marketing, campaign and vendor-hosted sites; where they answer, reconstruct the repository from the object store and read the committed configuration and data files. Campaign microsites are the usual offenders because they are deployed by copying a working directory.
+- Takeaway: Lead-capture and campaign sites hold real customer PII while sitting outside the main application's review and deployment hygiene. Deploy from a build artifact rather than a git working copy, and block dot-directories at the web server.
+
+### 2026-11-06 — Inverted operator in a nonce-and-capability gate allowed unauthenticated export of organizer PII (WordPress) — n/a
+- Source: [HackerOne #3871816](https://hackerone.com/reports/3871816)
+- Type: Sensitive information disclosure — broken authorization check (inverted boolean operator)
+- Summary: A WordCamp Reports plugin served a private CSV export of Meetup organizer PII — email addresses, physical addresses, messaging handles, usernames and notes — to unauthenticated attackers, because the security gate verifying nonce validity and user capability used an inverted logical operator, so the protection applied only to callers who *did* hold a session and a valid nonce. Rated High, resolved.
+- Technique / pattern: Read the guard clause's boolean algebra instead of trusting that a check exists; `!A || !B` versus `!(A && B)`, an `||` where `&&` was intended, or an early `return` placed in the wrong branch all read as "there is a permission check" in review. The behavioural test is to send the request with no session and no nonce and diff it against the authenticated response — an export that succeeds anonymously but fails when logged in is the signature of an inverted gate.
+- Takeaway: Negative test cases belong in the suite for every authorization gate: assert that the unauthenticated request is refused, not only that the authorized one succeeds.
+
+### 2026-11-06 — Core read-permission bypass disclosed private, draft and password-protected post content (WordPress) — n/a
+- Source: [HackerOne #4152553](https://hackerone.com/reports/4152553)
+- Type: Sensitive information disclosure — missing read-permission check in a post-retrieval helper
+- Summary: A WordPress plugin's SCF reference-field functionality retrieved posts of any status without enforcing read-permission checks, exposing full content, excerpts, author information, timestamps and plaintext passwords of private, draft and password-protected posts to unauthenticated users. The same unchecked helper was reachable from several code paths including render functions and JSON-LD formatters, and because no pagination limit applied, many post ids could be submitted in one request to bulk-exfiltrate unpublished content. Rated High, resolved.
+- Technique / pattern: Where a framework offers both a permission-aware and a raw fetch function, grep for the raw one and enumerate every caller — reference and relation fields, render callbacks, structured-data and `oEmbed` formatters, sitemap and feed builders are the usual offenders. Then test whether the id parameter accepts an array, because an unbounded id list converts a single-object leak into a bulk export.
+- Takeaway: Status filtering is not authorization; the permission check belongs inside the retrieval helper, and any id parameter that accepts a list needs a cap.
+
+### 2026-11-06 — Unauthenticated user-context API disclosed internal usernames, roles and ACLs (NASA VDP) — n/a
+- Source: [Bugcrowd #87458826](https://bugcrowd.com/disclosures/87458826-6d92-4102-ad25-2d697efeea30/nasa-nlsp-api-discloses-internal-usernames-and-system-role-mappings-to-unauthenticated-users)
+- Type: Exposed API / information disclosure — verbose identity-context endpoint
+- Summary: A public API endpoint on the NASA NLSP domain, used by the LSDA/NLSP web interface to determine user context, returned internal user identifiers, NASA staff usernames, access-control lists and detailed role and group mappings with no authentication — material for phishing, password spraying and mapping the platform's permission model and backend structure. Rated P4, resolved.
+- Technique / pattern: Front ends bootstrap themselves from a context call — `/whoami`, `/session`, `/me`, `/user-context`, `/permissions` — and those responses routinely carry far more than the UI consumes. Load the application unauthenticated and watch which of its first API requests still return 200, then read each response for internal identifiers, group names and ACL structures rather than only for obvious PII.
+- Takeaway: Bootstrap endpoints need authentication and a response shape trimmed to what the view renders; internal usernames and group mappings are reconnaissance material, not harmless metadata.
+
+### 2026-11-06 — Anonymous Jira filter API exposed internal usernames, emails and team structure (U.S. Fish and Wildlife Service) — n/a
+- Source: [Bugcrowd #9171dd56](https://bugcrowd.com/disclosures/9171dd56-954e-4510-9955-7a5eb276f13b/anonymous-access-to-jira-filter-api-exposes-internal-usernames-emails-and-organizational-structure)
+- Type: Exposed API / information disclosure — anonymous access to a Jira REST endpoint
+- Summary: A Jira instance accepted anonymous requests (answering with `X-AUSERNAME: anonymous`) on its filter REST API, which returned the filter owner's full name, corporate email address, internal authentication username, account activity status and internal group and team names with their permissions. Filter ids are numeric and predictable, so iterating them enumerated users, teams and project structure at scale. Rated P3, resolved.
+- Technique / pattern: For any Atlassian-style product, test the REST API separately from the UI and read the `X-AUSERNAME` response header to confirm you really are anonymous; then target the endpoints whose objects embed an owner record — filters, dashboards, boards, saved searches. Numeric sequential ids are what turn one owner disclosure into a directory, so measure enumerability explicitly rather than reporting a single record.
+- Takeaway: Anonymous-access permissions must be audited per REST endpoint, and the internal authentication username should never appear in object metadata — it is reused across enterprise systems and enables targeted spraying.
+
+### 2026-11-02 — Directory traversal on an intranet application exposed 93+ user directories and internal file structure (NASA VDP) — n/a
+- Source: [Bugcrowd #438b8d36](https://bugcrowd.com/disclosures/438b8d36-1c4a-47fa-919e-a20e1599b196/arbitrary-directory-traversal-and-sensitive-data-exposure-across-user-directories)
+- Type: Broken access control / directory traversal leading to sensitive data exposure
+- Summary: Arbitrary directory traversal on an intranet application allowed full user enumeration and exposed the internal file structure together with 93+ individual user directories and their contents, including user information and intranet content. Rated P1 and fixed.
+- Technique / pattern: Where a path or user segment appears in a URL, test traversal sequences *and* sibling identifiers together — the combination turns a single-file read into enumeration of every user's private directory. Quantify the breadth you can reach (how many users, which file types) because the count, not the single proven read, is what moves the severity.
+- Takeaway: Per-user storage paths need an authorization check bound to the session rather than a hard-to-guess path; traversal combined with enumeration is a mass-disclosure chain, not an isolated file read.
+
+### 2026-11-02 — Third-party file-picker API key exposed in client traffic and usable from any domain (Statuspage) — n/a
+- Source: [Bugcrowd #83e91e92](https://bugcrowd.com/disclosures/83e91e92-5785-439a-8f68-7029e20ad351/filepicker-api-key-without-domain-restriction-can-be-abused-can-be-used-by-anyone-on-any-website)
+- Type: Third-party API key without a vendor-side domain restriction
+- Summary: The brand-logo upload on `manage.statuspage.io` carried the Filepicker/Filestack API key in URL-encoded form in the upload request, and that key had no domain allowlist configured. The reporter reused it with the vendor's public JavaScript example on an unrelated site and uploads succeeded, consuming the paid upload quota. Rated P4 and fixed.
+- Technique / pattern: Intercept and URL-decode third-party widget traffic to recover client-side keys, then read that vendor's own documentation for the restriction the key is supposed to carry — domain allowlist, referrer check, scope. Demonstrating the missing restriction from an off-domain test page is what turns a key-in-JavaScript observation into a real finding, and billing or quota abuse is a legitimate impact to argue.
+- Takeaway: Client-side keys are public by design; their security comes entirely from vendor-side restrictions, so every embedded third-party key needs its domain allowlist verified rather than assumed.
+
+### 2026-11-02 — Database credentials and a private key committed to a public source repository (Mars) — n/a
+- Source: [HackerOne #2396630](https://hackerone.com/reports/2396630)
+- Type: Credential leak via public source repository
+- Summary: A public GitHub repository contained a configuration file holding a database username, password and a private key in plaintext, usable by anyone able to view the repository.
+- Technique / pattern: Scope-map the program's GitHub organizations and the personal repositories of its engineers, then search for configuration filenames and high-entropy strings. Walk commit history as well as the current tree, since a secret removed in `HEAD` almost always survives in an earlier commit, and check whether the exposed value is still live before reporting it.
+- Takeaway: Credentials belong out of version control entirely, and any exposure must be treated as compromise — deleting the file does not revoke the key.
+
+### 2026-11-02 — AWS and database credentials shipped inside a public Docker Hub image (Mozilla) — n/a
+- Source: [HackerOne #2401648](https://hackerone.com/reports/2401648)
+- Type: Secret exposure in a published container image
+- Summary: A Docker Hub image associated with Mozilla's Common Voice project contained live AWS access keys and database credentials in a configuration file inside the image at `/code/scripts/test/config.json`, readable by anyone who pulled the image.
+- Technique / pattern: Pull the program's public images and inspect every layer rather than only the running container — `docker save` plus layer extraction surfaces files a later layer deleted, which a running filesystem hides. Configuration, test-fixture and build-script paths are where live keys most often survive, and the image tag history gives you more than one shot at it.
+- Takeaway: A container image is a published artifact: secrets must arrive from the runtime environment, and any key that ever shipped inside a layer has to be rotated, not merely deleted.
+
 ### 2026-10-29 — Launchpad file read leaks production keys (Basecamp) — $9,337
 - Source: [HackerOne #3962925](https://hackerone.com/reports/3962925)
 - Type: Path traversal → production secret disclosure

@@ -12,6 +12,174 @@ Disclosed **Insecure Direct Object Reference** reports. Core idea: an object ide
 
 ## Reports
 
+### 2026-11-13 — Additional driver can list the add-driver invitation links issued for a vehicle (Tesla) — n/a (P3, 10 points)
+- Source: [Bugcrowd #3a018a8c](https://bugcrowd.com/disclosures/3a018a8c-1842-4194-bd0a-821929e7621d/improper-authorization-second-additional-driver-can-list-add-driver-invitation-links)
+- Type: Improper authorization (horizontal, within a shared resource)
+- Summary: An authorized (second) driver of a vehicle could list the existing `add-driver` invitations issued for that vehicle, information that was meant to be restricted to the vehicle owner. Resolved and disclosed by Tesla as P3.
+- Technique / pattern: Shared-resource products have tiers inside the resource — owner, co-owner, invited user — and read endpoints frequently check only "do you have access to this vehicle/board/account" rather than "are you the owner". Enumerate the owner-only screens, then call each backing endpoint as the lower tier that still has legitimate access to the parent object.
+- Takeaway: Access to a parent object is not authorization for every child collection under it. Invitation and membership listings leak identities and need an explicit owner-level check.
+
+### 2026-11-13 — Importing a modified GitLab project export archive overwrites other users' uploads (GitLab) — n/a
+- Source: [HackerOne #534794](https://hackerone.com/reports/534794)
+- Type: IDOR via import/restore path (cross-tenant file overwrite)
+- Summary: A crafted GitLab project export archive could be imported so that it replaced the content served for uploads belonging to other users. Knowing an upload's secret token and filename was enough, and for files referenced from public repositories both are easy to discover.
+- Technique / pattern: Import, restore and migration features write files using identifiers carried inside the uploaded bundle, so they are an under-tested write primitive: unpack a legitimate export, repoint the paths or secrets inside it at another tenant's object, repack and import. Values that are treated as unguessable secrets are worth checking against public rendering — upload URLs in a public README leak them.
+- Takeaway: Treat every identifier inside an uploaded archive as attacker-controlled and re-scope it to the importing namespace. A secret that appears in public HTML is not an authorization check.
+
+### 2026-11-13 — Full-access staff member can delete private apps by changing the app ID in the URL (Shopify) — n/a
+- Source: [HackerOne #155704](https://hackerone.com/reports/155704)
+- Type: IDOR / broken access control (privilege boundary)
+- Summary: A full-access staff account could not see private apps in the Shopify admin interface, but by taking the normal app URL and substituting the private app's ID the staff member could still delete it, crossing a permission boundary the UI implied existed.
+- Technique / pattern: When a role is denied visibility of a resource class, test whether the denial is enforced on the action or only on the listing: create the hidden resource as the owner, note its id, then drive the same endpoint as the lower-privileged role. Reproduction here was simply shop + app + private app + a full-access staff member, then an id swap.
+- Takeaway: "Not shown in the UI" and "not permitted" are different controls. Role checks belong on the handler for each object type, including object types a role is never meant to see.
+
+### 2026-11-13 — IDOR on deleting drafts via the discardDraftId parameter (Lab45) — n/a
+- Source: [HackerOne #868590](https://hackerone.com/reports/868590)
+- Type: IDOR / broken object-level authorization (destructive)
+- Summary: The drafts page `viewmydrafts.action` discarded a draft named by the `discardDraftId` URL parameter without checking that the draft belonged to the requesting session, so any authenticated user could delete other users' drafts by substituting an id.
+- Technique / pattern: Destructive IDORs are often hidden in the same screen as a legitimate delete: capture the request the UI sends for your own object (here a GET carrying `discardDraftId`), then replay it with another object's id from a second test account. Legacy Struts-style `*.action` endpoints are a good hunting ground because authorization is frequently implemented in the UI layer that hides the button, not in the action handler.
+- Takeaway: Every state-changing handler must re-derive ownership from the session, not from an id supplied by the client. Hiding the delete control is not authorization.
+
+### 2026-11-12 — Broken access control on the NASA GMAO Extranet /browse/ subdirectory exposes internal source and usernames (NASA Vulnerability Disclosure Program) — n/a
+- Source: [Bugcrowd #eaf683cd](https://bugcrowd.com/disclosures/eaf683cd-2b9e-48d6-8ee2-5fc21b47682b/broken-access-control-leads-to-information-disclosure)
+- Type: Broken access control (directory-scoped authentication not inherited)
+- Summary: The `/browse/` subdirectory of the GMAO Extranet did not inherit the authentication controls applied to its parent directories, so unauthenticated users reached internal development tools, data-processing scripts and unreleased scientific models. The exposed material included absolute file paths on the internal `Discover` cluster, active employee usernames and proprietary visualisation source code. Rated P3 and resolved.
+- Technique / pattern: Server-level authentication in Apache and nginx is attached per location or per directory block, not to a subtree, so a child path can be unprotected while its parent demands credentials. When a protected directory is found, enumerate its children and sibling paths unauthenticated instead of concluding the whole tree is covered; a 200 on one child disproves subtree protection.
+- Takeaway: Authorization scoped to a URL prefix in server configuration is not inherited by every descendant. Verify protection by requesting children directly, and prefer deny-by-default on the parent with explicit allow rules below it.
+
+### 2026-11-12 — Insecure direct member disclosure via an API left outside the main permission sets (Veris) — n/a
+- Source: [HackerOne #123501](https://hackerone.com/reports/123501)
+- Type: IDOR / broken object-level authorization (enumeration)
+- Summary: One API endpoint was not included in the application's main permission sets, so it sat outside the core access-control layer and let an attacker enumerate member data.
+- Technique / pattern: Compare the application's route inventory against whatever declarative permission configuration it uses (middleware list, policy table, annotation set, route guards) and look for routes present in one and absent from the other. The omission is usually a single endpoint added after the permission model was written, so newer and secondary routes are the ones to enumerate first.
+- Takeaway: Centralised permission sets fail by omission rather than by misconfiguration; a deny-by-default posture plus a test that every registered route is covered by a policy catches the endpoint nobody remembered to register.
+
+### 2026-11-12 — Dubsmash UpdateSound API IDOR allows editing any user's sound titles (Reddit) — n/a
+- Source: [HackerOne #1102365](https://hackerone.com/reports/1102365)
+- Type: IDOR / broken object-level authorization (write)
+- Summary: The Dubsmash `UpdateSound` API honoured the sound track's identifier without checking that the caller owned it, so any authenticated user could rename another user's sound tracks. Exploitation needed only the track's `uuid`, which the report notes is publicly known.
+- Technique / pattern: The report's value is the pairing: a publicly readable object identifier plus a write endpoint that trusts it. Harvest `uuid` values from public listings, embeds and page source, then replay the update/rename/delete call with a valid token of your own account. A UUID is a lookup key, not an authorization token, so non-sequential ids are no reason to skip the write-side test.
+- Takeaway: Unguessability is not authorization. Any endpoint that mutates an object must check session ownership of that object, and write verbs deserve the same IDOR sweep as reads — especially where the id is already public.
+
+### 2026-11-12 — Email-change IDOR on indiehackers.com leads to account takeover (Stripe) — n/a
+- Source: [HackerOne #1250037](https://hackerone.com/reports/1250037)
+- Type: IDOR / missing authorization on an account-mutation endpoint
+- Summary: The email-change flow on `indiehackers.com` let an attacker set the email address on another user's account to an address they controlled, which in some cases escalated to taking over the victim's account. Stripe's fix added authentication checks to account actions.
+- Technique / pattern: Treat profile-mutation endpoints (change email, change phone, change password) as IDOR surfaces rather than only as auth flows: replay the request while substituting the victim's account identifier and watch whether the server re-derives the subject from the session or accepts it from request input. The `email` field is the highest-value one because whoever owns it can drive password recovery afterwards.
+- Takeaway: An account-mutation endpoint must derive the subject account from the session, never from a client-supplied id; changing an identity-bearing field is an authentication-grade action and deserves ownership checks plus step-up verification.
+
+### 2026-11-12 — Cross-agency delivery rule set creation (Revive Adserver) — n/a
+- Source: [HackerOne #3929216](https://hackerone.com/reports/3929216)
+- Type: IDOR / broken object-level authorization (cross-tenant object creation)
+- Summary: An authenticated manager could tamper with the submitted `agencyid` parameter on `channel-edit.php` and create a delivery rule set belonging to another agency; the server trusted the submitted agency identifier when inserting the new rule set (CVE-2026-82978, Medium 4.3).
+- Technique / pattern: The agency identifier travelled in a hidden form field, so the test was simply to edit it to another agency's id and submit the create form. Two researchers found it independently, which is the usual signature of a hidden-field trust bug — enumerate every hidden `*id` field a create form posts and swap it for a tenant you do not own.
+- Takeaway: Creation endpoints must derive the owning tenant from the authenticated session, never from form data; the fix both re-derived the agency id server-side and removed it from the form's hidden fields.
+
+### 2026-11-12 — Access control bypass due to request precedence issue in global input registration (Revive Adserver) — undisclosed
+- Source: [HackerOne #3831102](https://hackerone.com/reports/3831102)
+- Type: IDOR / authorization bypass (input-source precedence mismatch)
+- Summary: In Revive Adserver 6.0.0 through 6.0.8 the object identifiers used for permission checks were read with GET precedence, while form submissions could select a different object through POST parameters — so a manager could put an id from their own agency in the URL and another agency's id in the body, gaining unauthorized changes, campaign reassignment and access to other agencies' inventory (CVE-2026-107247, High 8.1). The regression was introduced in commit `156dee7bc` during an input-helper simplification; 5.5.3 kept the original POST-first behaviour and was unaffected.
+- Technique / pattern: Send the same parameter name twice — once in the query string with a value you are allowed to touch, once in the POST body with the victim's value — and observe which source the authorization code reads versus which one the write uses. Reviewing the refactor commit that touched the shared input helper is what located it.
+- Takeaway: A permission check and the operation it guards must read each identifier from one canonical, explicitly ordered source; a framework-level change to input precedence silently re-points every authorization check in the application at once.
+
+### 2026-11-12 — Missing campaign ownership check in zone bulk linking (Revive Adserver) — undisclosed
+- Source: [HackerOne #3958112](https://hackerone.com/reports/3958112)
+- Type: IDOR / broken object-level authorization (relationship-forming endpoint)
+- Summary: The bulk-linking operation in `zone-include.php` did not check campaign ownership, and neither did the single-link operation nor the XML-RPC campaign-linking method, so a manager or a trafficker with zone-linking permission could associate another agency's campaign with their own zone (CVE-2026-68486, Medium 5.4).
+- Technique / pattern: Agency filtering stopped foreign *banners* from being linked, but the campaign association itself was unguarded, and the linked-campaign listing then echoed the foreign campaign's name, type and identifier back — a link-two-objects action used as a read channel. Test the bulk variant, the single variant and the RPC/API twin of the same capability as three separate surfaces.
+- Takeaway: Authorize both ends of a relationship, on every transport that can create it; a partial guard one level down (banners) does not cover the object actually being linked (campaigns).
+
+### 2026-11-12 — Cross-agency disclosure in website listing (Revive Adserver) — n/a
+- Source: [HackerOne #3883840](https://hackerone.com/reports/3883840)
+- Type: IDOR / cross-tenant information disclosure
+- Summary: A cross-agency information disclosure in Revive Adserver's website listing, fixed in the same coordinated advisory as the other agency-scoping findings (CVE-2026-68485, Medium 4.3). The report body was not published, so only the title, weakness class, CVE and severity are public.
+- Technique / pattern: Part of a coordinated audit that worked through every agency-scoped listing and create path in one codebase. Listing and index views are a recurring weak spot because the tenant filter tends to live in the query that builds the page rather than in a guard on the route, so it is easy to omit on one view.
+- Takeaway: Treat listing endpoints as access-control surfaces in their own right, and when one tenant-scoping bug is found in a codebase, sweep every sibling listing and create path instead of patching the single report.
+
+### 2026-11-10 — Account takeover via user-info IDOR on Rocket.Chat 3.0.1 (Rocket.Chat) — n/a
+- Source: [HackerOne #842625](https://hackerone.com/reports/842625)
+- Type: IDOR / broken object-level authorization
+- Summary: A low-privileged user authenticated through LDAP could read other accounts' password-reset hash and related security fields from the `/api/v1/users.info` endpoint. Returning reset material to any caller turned a read-only profile endpoint into an account-takeover primitive.
+- Technique / pattern: The reporter replaced the `username` parameter in the request with a `userId` value belonging to another account; the alternate lookup branch did not carry the same authorization check as the username branch.
+- Takeaway: When one endpoint accepts several interchangeable identifiers (`username`, `userId`, email), every lookup branch needs its own authorization check — and response objects should never carry password-reset or token fields at all.
+
+### 2026-11-10 — Chain vulnerability leading to IDOR in the TikTok LIVE backend (TikTok) — n/a
+- Source: [HackerOne #3027478](https://hackerone.com/reports/3027478)
+- Type: IDOR / privilege escalation chain
+- Summary: An insecure direct object reference in a TikTok LIVE backend platform let a user reach access controls beyond their own account privileges. The report is presented as a chain, in which the IDOR was the step that converted limited access into broader control.
+- Technique / pattern: Enumerate object identifiers on the internal or partner-facing platform behind a feature rather than on the consumer app surface, then chain the resulting access to escalate privileges.
+- Takeaway: Backend and partner consoles routinely inherit weaker object-level checks than the flagship product; the less visible platform behind a user-facing feature is frequently where authorization gaps survive.
+
+### 2026-11-10 — IDOR in profile update allows changing any account's email (Mars) — n/a
+- Source: [HackerOne #1952771](https://hackerone.com/reports/1952771)
+- Type: IDOR / account takeover
+- Summary: An authenticated attacker could change the email address bound to any user account by altering an identifier parameter in a profile-update `POST` request. Controlling the account email is normally enough to drive a password reset and complete a takeover.
+- Technique / pattern: Submit a legitimate profile-update request, then substitute another account's identifier in the body and observe whether the write succeeds; the endpoint and parameter names are redacted in the disclosure.
+- Takeaway: Write endpoints deserve more scrutiny than read endpoints — an IDOR on a profile update is an account takeover, not merely a disclosure. Bind the target of a profile write to the session, never to a client-supplied id.
+
+### 2026-11-10 — Broken access control on the notary.acronis.com control panel (Acronis) — n/a
+- Source: [HackerOne #833735](https://hackerone.com/reports/833735)
+- Type: Broken access control / forced browsing
+- Summary: `notary.acronis.com` blocked unauthenticated users from its control panel, but some panel functions stayed reachable by appending `.html` to the URL. The access check covered the canonical route and missed an alternate spelling of the same resource.
+- Technique / pattern: After an access-denied response, retry the same path with suffix and extension variants (`.html`, a trailing slash, differing case, double slashes) to find a route the authorization filter does not match.
+- Takeaway: Authorization wired to URL patterns rather than to the resource itself breaks the moment the server serves that resource under a second path. Decide access on the object, then route to it.
+
+### 2026-11-06 — Participants could blindly delete other users' poll drafts by ID (Nextcloud) — n/a
+- Source: [HackerOne #3247386](https://hackerone.com/reports/3247386)
+- Type: IDOR / missing ownership check on a destructive action
+- Summary: In the Nextcloud Polls app a participant could delete another user's *draft* poll by supplying its numeric id; the delete path never verified that the session owned the draft. Tracked as CVE-2025-66556, rated Medium (4.2) and fixed per advisory `GHSA-pr9f-vqgg-m2jh`.
+- Technique / pattern: A destructive IDOR needs no readable response, so judge delete and archive endpoints by the status code and by whether the object vanishes from the owner's view rather than by the response body. Draft, unpublished and trash-state objects are high-yield because listing queries filter them out, so the ownership check is often written only in the list view and never in the mutation.
+- Takeaway: Every state-changing handler needs its own ownership check; a blind write still carries full impact, and an object hidden from listings is not thereby protected.
+
+### 2026-11-06 — Private-account video descriptions readable through the translation API (TikTok) — n/a
+- Source: [HackerOne #2921830](https://hackerone.com/reports/2921830)
+- Type: IDOR (auxiliary API path missing the privacy check)
+- Summary: TikTok's translation API endpoint returned description text for videos belonging to private accounts, so an unauthorized caller could read content the normal video API withholds. Weakness recorded as IDOR, rated Low (3.7), resolved.
+- Technique / pattern: Once the primary read path enforces a privacy setting, go after the derivative features that reach the same record through a different code path — translate, share-preview, embed, export, print, caption and recommendation endpoints. They are usually built later, often by another team, and are handed the object id directly, so the privacy flag never gets consulted.
+- Takeaway: A visibility setting has to be enforced in the data layer, not in the one endpoint the UI happens to call.
+
+### 2026-11-06 — Unauthenticated deep links bypassed the extranet login gateway (NASA VDP) — n/a
+- Source: [Bugcrowd #e49344c4](https://bugcrowd.com/disclosures/e49344c4-263e-4463-a445-c9e694f71bf9/broken-access-control-leads-to-full-experiment-data-disclosure)
+- Type: Broken access control / direct object reference on a protected directory
+- Summary: The GMAO extranet enforced authentication only at its login gateway, so requesting deep-linked experiment directories directly returned restricted NASA experiment data and private researcher material to unauthenticated users. Remediated by enforcing session validation on every request under `/extranet/`.
+- Technique / pattern: A login page does not imply the tree behind it is gated. Harvest sub-resource paths from site search, directory indexes, archived copies and the login page's own HTML, then replay each one with no cookies. Front-controller gating protects the route it is attached to; static files and deep-linked sub-resources are served by the web server, which never consults it.
+- Takeaway: Authentication belongs on every path inside the protected tree, not on the entry point alone.
+
+### 2026-11-06 — BFLA in the NASA RMS funding-manager directory exposed internal PII (NASA VDP) — n/a
+- Source: [Bugcrowd #9784efbe](https://bugcrowd.com/disclosures/9784efbe-db60-4276-8c38-625ad6917600/broken-function-level-authorization-allows-standard-users-to-access-internal-funding-manager-directory-and-pii)
+- Type: Broken function-level authorization + excessive data exposure
+- Summary: An authenticated endpoint in the NASA Request Management System returned a complete internal funding-manager directory — internal email addresses, phone numbers and administrative metadata — to ordinary standard users, and changing the `directId` parameter enumerated managers across directorates, even though the front end needed only the manager's name. Rated P3, resolved.
+- Technique / pattern: Diff what the UI renders against what the response actually contains; an endpoint backing a single autocomplete field but returning whole records is both an authorization and an over-exposure finding. Then walk the id parameter to measure scale, because enumerability is what turns one record into a directory.
+- Takeaway: Authorize per function and serialize only the fields the view needs — "the front end only shows the name" is not a control.
+
+### 2026-11-02 — Viewer role could create, rename and delete organization labels over GraphQL (Settle VDP) — n/a
+- Source: [Bugcrowd #cb2f2d67](https://bugcrowd.com/disclosures/cb2f2d67-e3d1-42b6-a562-ef34190a88b7/graphql-label-settings-operations-allow-viewer-role-changes)
+- Type: Broken access control (missing per-resolver role check)
+- Summary: Users holding the read-only Viewer role could create, rename and delete organization labels through GraphQL operations because the resolvers never verified the caller's role. Rated P4; the fix added server-side permission checks to the label create, update and delete operations.
+- Technique / pattern: Enumerate the schema's full mutation list via introspection, then call each one from the lowest-privilege role available. Low-impact ancillary objects — labels, tags, saved views, custom fields — are typically added after the permission layer was written and quietly miss its checks.
+- Takeaway: Authorization has to be enforced per resolver; a role the UI renders as read-only still reaches every mutation the schema exposes.
+
+### 2026-11-02 — Cross-tenant bank account disclosure via a foreign-key field in a GraphQL mutation (Settle VDP) — n/a
+- Source: [Bugcrowd #8acdd1c4](https://bugcrowd.com/disclosures/8acdd1c4-7825-4117-af08-e64e9c230fe9/cross-tenant-bank-account-disclosure-via-payerlocalbusinessid-in-updatereceivableinvoice)
+- Type: IDOR / cross-tenant data exposure (GraphQL)
+- Summary: The `payerLocalBusinessId` field on the `updateReceivableInvoice` mutation did not enforce tenant ownership validation, so an authenticated user could point an invoice at another tenant's business and read back its bank account number, routing number, beneficiary details, contact email and address. Rated P2 and fixed.
+- Technique / pattern: In GraphQL mutations, test every ID-bearing *input field*, not only the top-level object id — swap in an identifier belonging to a second tenant. Then re-read the object through the ordinary invoice listing query: because the unauthorized reference was persisted, a write-side IDOR became a durable read channel rather than a one-shot response leak.
+- Takeaway: Ownership must be checked on each id argument a mutation accepts; validating only the record being edited leaves every foreign-key field open, and a persisted bad reference keeps leaking after the request that set it.
+
+### 2026-11-02 — GitHub App user-to-server token escalates to owner/admin on GitHub Enterprise Server (GitHub) — n/a
+- Source: [HackerOne #1732595](https://hackerone.com/reports/1732595)
+- Type: Improper authorization / privilege escalation via delegated token
+- Summary: A GitHub App token scoped as user-to-server could be used to obtain full owner or admin privileges on GitHub Enterprise Server, given an account that could install a malicious app; fixed in 3.3.17, 3.4.12, 3.5.9 and 3.6.5.
+- Technique / pattern: Install an app you control, then test whether its user-to-server token is accepted on endpoints that should require the installing user's own elevated session. Compare what the token actually grants against the app's declared permission scopes rather than trusting the consent screen's description.
+- Takeaway: Delegated credentials (OAuth grants, app installations, service tokens) carry a narrower identity than the user who created them — each endpoint must re-derive effective permissions from the token type, not from the user record alone.
+
+### 2026-11-02 — Editor role can disable a workspace-wide admin-only setting (Lovable VDP) — n/a
+- Source: [HackerOne #3371414](https://hackerone.com/reports/3371414)
+- Type: Broken access control / vertical privilege escalation
+- Summary: A user holding only the Editor role could call `/workspaces/<WORKSPACE_ID>/tool-preferences/supabase/enable` and toggle Lovable Cloud, a workspace-wide feature intended to be admin-only; the API enforced no server-side role check for the action.
+- Technique / pattern: Run two accounts at different privilege levels: capture the admin-only action in the privileged session, then replay the identical request with the lower-privileged session's credentials and diff the responses. Settings and `tool-preferences` style endpoints that the UI simply hides from non-admins are the highest-yield targets, because the gate was written in the front end.
+- Takeaway: Hiding a control in the UI is not authorization — every state-changing endpoint needs its own server-side role check, especially workspace- or tenant-scoped toggles.
+
 ### 2026-10-29 — Missing ownership check in Tables app allows moving columns into tables of other users (Nextcloud) — n/a
 - Source: [HackerOne #3137895](https://hackerone.com/reports/3137895)
 - Type: IDOR / broken object-level authorization (write-side)

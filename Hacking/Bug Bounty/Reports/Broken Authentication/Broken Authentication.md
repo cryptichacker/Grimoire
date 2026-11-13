@@ -12,6 +12,174 @@ Disclosed **broken authentication & session management** reports — account tak
 
 ## Reports
 
+### 2026-11-13 — Password reset token leak on third-party sites (Aspen) — n/a
+- Source: [HackerOne #272379](https://hackerone.com/reports/272379)
+- Type: Secret in URL leaked via Referer (password reset)
+- Summary: The application leaked referrer tokens, including password reset tokens, to third-party sites; a malicious third party in possession of such a token could reset the victim's password.
+- Technique / pattern: Worth logging as a recurrence rather than a novelty: the same referrer-leak pattern appears independently across unrelated programs, which makes it a cheap first check on any application that mails a link containing a credential. Enumerate all such links — reset, email verification, invitation, magic-link sign-in, unsubscribe — because they usually share one URL-building helper and therefore one fix.
+- Takeaway: Audit every emailed link as a credential channel at once. One leaky helper usually explains all of them.
+
+### 2026-11-13 — Password reset token leaked to third parties through referrer, allowing account takeover (UPchieve) — n/a
+- Source: [HackerOne #1177287](https://hackerone.com/reports/1177287)
+- Type: Secret in URL leaked via Referer (password reset)
+- Summary: Requesting a password reset produced a link whose token was exposed to third-party sites through referrer leakage; a party receiving the token could complete the reset and take over the victim's account.
+- Technique / pattern: The reproduction is short enough to run on any target: request a reset for an account you control, open the emailed link, and read the `Referer` value on every request the page makes off-origin. Where a token is single-use, confirm whether merely loading the page consumes it — if not, the leaked value stays valid and the finding is a full takeover rather than an information leak.
+- Takeaway: Scope the blast radius of a leaked reset token by making it single-use and short-lived, and keep it out of the URL in the first place.
+
+### 2026-11-13 — Password reset tokens leaked to third-party sites through the Referer header (Deriv.com) — n/a
+- Source: [HackerOne #297198](https://hackerone.com/reports/297198)
+- Type: Secret in URL leaked via Referer (password reset)
+- Summary: The password-reset page carried the reset token in its URL, and the browser forwarded that URL to third-party origins in the `Referer` header of subresource and outbound requests, handing the token to those parties. The team initially closed the report believing an earlier fix covered it, and reopened it after the researcher supplied a video proof of concept.
+- Technique / pattern: Load the reset link and inspect outgoing requests rather than only reading the page: any third-party script, font, analytics beacon or user-clickable outbound link receives the full URL unless `Referrer-Policy` suppresses it. The second lesson is procedural — when a program closes a referrer-leak report as already fixed, a recording of the actual request headers on the live flow is what reopens it.
+- Takeaway: Single-use credentials do not belong in a URL. Deliver the token in a POST body or exchange it immediately for a session, and set a strict `Referrer-Policy` plus token invalidation on first use.
+
+### 2026-11-12 — Session fixation in the login flow via cookies pre-set on first visit (Enter) — n/a
+- Source: [HackerOne #135797](https://hackerone.com/reports/135797)
+- Type: Session fixation (pre-authentication cookies reused after login)
+- Summary: The login flow was vulnerable to session fixation, which could let an attacker steal a valid user session. The reproduction starts on the sandbox wallet site while not logged in, where the cookies `romit.sandbox.session` and `SANDBOX-XSRF-TOKEN` are already set on the first visit.
+- Technique / pattern: The tell is a session cookie issued to an anonymous visitor: if the server hands you one before authentication and keeps the same value afterwards, it is fixable. Enumerate every cookie set on an unauthenticated first request, note which are security-relevant (session, CSRF token, device id), log in, and diff. The CSRF token deserves the same check, since a token minted pre-login and not rotated can be paired with a planted session.
+- Takeaway: Anonymous and authenticated sessions must use different identifiers. Rotate both the session id and the CSRF token at login, and treat any pre-authentication security cookie that survives authentication as a finding.
+
+### 2026-11-12 — Session fixation on Slack: session identifier carried in the URL and valid indefinitely, disclosing the user's email (Slack) — n/a
+- Source: [HackerOne #2582](https://hackerone.com/reports/2582)
+- Type: Session fixation / sensitive token in URL
+- Summary: The session identifier was carried in the URL. A valid session URL should have worked once, but it stayed active indefinitely, and because a browser or cache could store the URL it could expose the user's email address. The reproduction begins at registration, where the user is redirected to a unique URL ending in a `#signup` fragment.
+- Technique / pattern: Watch for session or verification state travelling in the URL rather than in a cookie: a value in the path, query string or fragment is recoverable from browser history, bookmarks, proxy and server logs, the `Referer` header on outbound requests, and public archives. Having found one, test two properties separately — whether it is single-use, and whether it expires — because a non-expiring link is a permanently replayable credential wherever the URL has been stored.
+- Takeaway: Session and one-time state belong in cookies with `HttpOnly`, `Secure` and `SameSite`, never in a URL. Anything that has been placed in a URL should be treated as leaked, made single-use and time-bounded.
+
+### 2026-11-12 — No session expiry after logout on the Shopify Exchange Marketplace (Shopify) — n/a
+- Source: [HackerOne #1162443](https://hackerone.com/reports/1162443)
+- Type: Broken session management (session not invalidated at logout; session fixation)
+- Summary: Sessions on Shopify's Exchange Marketplace were not expired at logout, and the disclosed summary also classifies the issue as session fixation. An attacker with access to a shared computer could take the session cookies and sign in as the victim. The affected marketplace has since been shut down and the issue is resolved.
+- Technique / pattern: Test logout as a server-side state transition rather than a UI action: capture the session cookie while authenticated, log out through the interface, then replay the cookie against an authenticated API route rather than reloading the web page. A cleared cookie jar proves only that the client discarded it. Shared-device and kiosk scenarios are the realistic threat model that makes this worth reporting.
+- Takeaway: Logout must revoke the session on the server, across devices, and the identifier must not be reusable afterwards. Prove it by replaying the captured token at the API layer, not by observing the browser.
+
+### 2026-11-12 — Session fixation on Acronis: session identifier not reissued after authentication (Acronis) — n/a
+- Source: [HackerOne #1486341](https://hackerone.com/reports/1486341)
+- Type: Session fixation (session id not rotated on login)
+- Summary: The application did not issue a new session identifier in its cookie after an authentication attempt, so a session id fixed before login remained valid and privileged afterwards. The reporter demonstrated it with a browser cookie-editor extension.
+- Technique / pattern: The whole test is three steps and needs no tooling beyond a cookie editor: visit the site unauthenticated and record the session cookie, log in, then compare the cookie value. If it is unchanged, any value an attacker can plant beforehand — via a crafted link carrying a session parameter, a subdomain write, an XSS, or physical access to a shared browser — becomes an authenticated session once the victim logs in. The cookie diff is the finding; no payload is required.
+- Takeaway: Regenerate the session identifier at authentication and at every privilege-raising step, and invalidate the pre-authentication id server-side. Record the cookie before and after login as a routine check on any login flow.
+
+### 2026-11-12 — Broken access control chain on healthwatch.trellix.com (Trellix) — n/a
+- Source: [HackerOne #3417759](https://hackerone.com/reports/3417759)
+- Type: Broken authentication — registration and approval bypass chained to a missing API authorization check
+- Summary: Three chained flaws on `healthwatch.trellix.com` (Medium 5.3, resolved). Registration validated the email domain only before the request left the browser, so intercepting the request and rewriting the address to an arbitrary external domain still created an account pending admin approval. The "Forgot password" flow then activated that pending account and authenticated it to the dashboard without any approval. Finally, the API endpoint `/api/ApiV1/GetCustomerDetailByEmail` enforced no authorization, letting the newly created low-privileged account enumerate all customer business names, the internal employee email addresses of account creators, and customer relationship metadata.
+- Technique / pattern: Register with a value that satisfies the client-side check, intercept the request and swap in an address you control; then use password reset as the *activation* primitive for an account stuck in a pending state. The researcher corroborated the harvested addresses against LinkedIn to prove they belonged to real employees, which is what established the phishing and business-email-compromise impact.
+- Takeaway: Password reset is an authentication flow and must re-check account status — an account pending approval should not be resettable. Validate email domains server-side, keep the approval requirement enforced in authentication middleware, and put role-based authorization on every API route rather than relying on an upstream approval gate.
+
+### 2026-11-12 — CSRF in the tracker invocation page (Revive Adserver) — n/a
+- Source: [HackerOne #3981932](https://hackerone.com/reports/3981932)
+- Type: CSRF — leftover state-changing handler with no token verification
+- Summary: `tracker-invocation.php` contained a leftover state-changing handler that did not verify a CSRF token and was not used by the normal invocation-tag interface. It could modify a tracker's name, description or advertiser assignment using the victim's own permissions, given an authenticated victim and a request path carrying their session credentials (CVE-2026-77168, Medium 4.3). The fix removed the unused handler entirely.
+- Technique / pattern: Dead code is unguarded surface. In an open-source target, enumerate every request handler a page registers and diff that list against what the UI actually submits — handlers the interface no longer calls are exactly the ones nobody retrofitted with a token check. Against a black-box target, fuzz known action and parameter names at pages whose visible forms do not use them.
+- Takeaway: Delete unreachable handlers rather than leaving them in place, and enforce CSRF validation centrally for every state-changing request instead of per form, so an orphaned handler cannot silently opt out.
+
+### 2026-11-12 — Account takeover on gitlab.smce.nasa.gov (NASA VDP) — n/a
+- Source: [Bugcrowd #13e938f6](https://bugcrowd.com/disclosures/13e938f6-9461-4280-9c11-3bd217d91cd9/account-take-over-at-https-gitlab-smce-nasa-gov)
+- Type: Broken authentication — OAuth misconfiguration on a self-hosted GitLab, tied to CVE-2023-7028
+- Summary: An OAuth misconfiguration on the self-hosted GitLab instance `gitlab.smce.nasa.gov` permitted account takeover, which the report links to CVE-2023-7028 (P1, resolved). The disclosure gives no endpoint detail or exploitation steps beyond that CVE reference.
+- Technique / pattern: Fingerprint self-hosted developer platforms (GitLab, Jenkins, Gitea, Keycloak, Grafana) across an organization's subdomains, read the version from `/help`, a footer or a static asset hash, then map it against known authentication CVEs. Self-hosted instances on research and mission subdomains lag the vendor's patch cadence far behind the organization's primary estate.
+- Takeaway: A known-CVE account takeover on an internal code-hosting instance is effectively a source-code and CI/CD compromise, so version pinning and patch SLAs for self-hosted platforms belong in scope alongside custom application bugs.
+
+### 2026-11-12 — Reusable token for email update (NASA VDP) — n/a
+- Source: [Bugcrowd #eff9438e](https://bugcrowd.com/disclosures/eff9438e-476e-4c7c-a68d-1117bd3321af/reusable-token-for-email-update)
+- Type: Broken authentication / session management — one-time token not invalidated after use
+- Summary: The token issued when a user requested an email-address change was not invalidated once consumed, so it remained valid and could be replayed to change the address repeatedly. The report notes that such tokens can be recovered from archival sources such as the Wayback Machine, turning a single leaked link into a repeatable account-modification primitive (P5; Bugcrowd records it as an accepted business risk rather than a required fix).
+- Technique / pattern: Capture a one-time link, use it, then replay the identical URL and watch for a second success — the simplest possible test for missing single-use enforcement. Then check whether that token ever appears in a URL that could be archived, cached, logged by a proxy, or forwarded in a `Referer` header to a third party.
+- Takeaway: Security tokens must be invalidated at first use and given short expiries, and should travel in a request body rather than in a URL. A replayable email-change token feeds directly into password-reset-based account takeover, so a low-rated finding on its own is a takeover precursor in combination.
+
+### 2026-11-10 — Improper authentication allows login as any user without registration (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #2334420](https://hackerone.com/reports/2334420)
+- Type: Broken authentication / improper authentication, with session fixation
+- Summary: An endpoint accepted a `signin` parameter in a way that let an unregistered attacker authenticate as any user. The reporter also described being able to alter a victim's session so the victim ended up authenticated as a different account.
+- Technique / pattern: Inspect sign-in flows for parameters that *name* the account to be authenticated rather than proving control of it; where identity is an input instead of a value derived from a verified secret, the check has been inverted.
+- Takeaway: Authentication must derive identity from a verified credential, never accept it as a request parameter. The session-fixation half of this report is a reminder to mint a fresh session identifier at every privilege transition.
+
+### 2026-11-10 — Missing CSRF protection on the Enjin Platform GraphQL API (Enjin) — n/a
+- Source: [HackerOne #2312217](https://hackerone.com/reports/2312217)
+- Type: Broken session management / CSRF on a state-changing API
+- Summary: The Enjin Platform GraphQL interface accepted session-token-authenticated requests without proper cross-site request forgery protection, which the reporter used to reach an API-token revocation operation. An attacker page could therefore drive authenticated mutations on a visiting user's behalf.
+- Technique / pattern: GraphQL is easy to overlook for CSRF because every operation shares one URL and one HTTP method, so a single route audit looks clean. Test whether a mutation is accepted with a cookie alone — a simple content type, no anti-CSRF token, and no `Origin` or `Referer` validation.
+- Takeaway: Cookie authentication on a single-endpoint API still needs CSRF defenses. Prefer bearer tokens in a header for APIs, or enforce `SameSite` cookies plus origin checks on every mutation rather than per route.
+
+### 2026-11-10 — Forged Connect app installation via an unvalidated JWT qsh claim in the JSM widget (Atlassian) — $10,000
+- Source: [Bugcrowd #be80097a](https://bugcrowd.com/disclosures/be80097a-2ec4-41b2-979c-61a75a81313d/malicious-reinstallation-of-jsm-widget-app-installed-by-default-in-jsm-allows-extracting-private-oauth-tokens-and-user-data)
+- Type: Broken authentication (incomplete JWT claim validation) leading to OAuth token theft — P1, disclosed 19 Jul 2023
+- Summary: The JSM for Cloud widget, an Atlassian Connect app installed by default on Jira Service Management, did not validate the `qsh` (query-string hash) claim on JWTs at its `/installed` endpoint. An attacker could lift a JWT from the browser console and replay it as a forged installation request that rewrote the app's stored base URL, redirecting the widget server's callbacks to an attacker host and capturing private OAuth tokens and user data.
+- Technique / pattern: Treat the app *lifecycle* endpoints (`/installed`, `/uninstalled`, `/enabled`) as authentication surface, not plumbing. Where a token is signed but unbound to the specific request, any token the signer ever issued satisfies the gate — so check which claims are actually verified, and whether an install or configuration write can repoint the integration's base URL.
+- Takeaway: A valid signature is not an authorization decision until every binding claim (`qsh`, `aud`, `sub`, purpose) is verified. A writable base URL on an integration is a credential-redirection primitive, because the platform keeps sending real tokens to whatever host is recorded there.
+
+### 2026-11-10 — Basic-auth restriction bypassed with an X-Forwarded-For header on dev.globe.gov (NASA VDP) — n/a (P5, informational)
+- Source: [Bugcrowd #a42fd6b7](https://bugcrowd.com/disclosures/a42fd6b7-b562-48ea-9b0a-a1f1afd3072e/dev-globe-gov-authentication-bypass)
+- Type: Broken authentication (trusted-header bypass)
+- Summary: Adding `X-Forwarded-For: 127.0.0.1` to requests for `dev.globe.gov` bypassed the application's access restriction (disclosed 4 Nov 2024). The program closed it informational because the development environment behind the restriction held nothing sensitive.
+- Technique / pattern: Where access is gated on client IP, resend the request with each forwarding header spoofed to a loopback or internal address — `X-Forwarded-For`, `X-Real-IP`, `X-Originating-IP`, `X-Client-IP`, `Forwarded`. An application that reads the header instead of the connection's peer address trusts a value the client supplies.
+- Takeaway: Derive the client address from the connection, or from a forwarding header only where a trusted proxy is known to overwrite it. Note too that a confirmed bypass of a non-production gate still rates informational when nothing behind it is sensitive — scope the impact before writing it up.
+
+### 2026-11-06 — OAuth server issued victim-bound tokens to unverified attacker redirect URIs (Basecamp) — n/a
+- Source: [HackerOne #3955956](https://hackerone.com/reports/3955956)
+- Type: Broken authentication — OAuth2 redirect-URI verification plus a live implicit grant
+- Summary: The custom authorization server at `launchpad.37signals.com` accepted client registrations with self-chosen redirect URIs without ownership verification, approval or structural validation, then treated them as trusted destinations. The deprecated implicit grant was still enabled, delivering access tokens in the URL fragment with no client authentication or code exchange, and cleartext HTTP loopback addresses, custom application schemes and wildcard hosts and paths were all honoured. A victim-bound token delivered to an attacker redirect was demonstrated reading the victim's project list, renaming projects with confirmed persistence, and permanently deleting them. Rated High, resolved.
+- Technique / pattern: Register your own OAuth client and treat the registration form itself as the attack surface — submit `http://` loopback addresses, custom schemes, wildcard hosts and wildcard paths and see which the server stores without any proof of domain ownership. Then enumerate which grant types remain enabled: an implicit grant plus an unverified redirect is a complete token-exfiltration chain that needs no client secret.
+- Takeaway: Redirect URIs must be ownership-verified and exact-matched after normalization, and legacy grants that hand tokens to the browser should be disabled rather than merely documented as deprecated.
+
+### 2026-11-06 — Private-content view token derived from the requester's own IP address (WordPress) — n/a
+- Source: [HackerOne #4043537](https://hackerone.com/reports/4043537)
+- Type: Broken authentication — guessable capability token built from attacker-controlled input
+- Summary: CampTix's `camptix_private` shortcode gated content behind a view token derived from an attendee's email address combined with the requester's own IP address, so anyone who knew an attendee's email could mint a valid token and read the gated content without holding a ticket. Requesting a token also overwrote the legitimate ticket holder's stored token, locking them out on their next visit. Rated Medium, resolved; only installs using the private shortcode were affected.
+- Technique / pattern: Whenever a feature hands out an access token, ask what the token is computed *from*. If every input is supplied or knowable by the requester — email, username, IP, user agent, timestamp — then it is a derived value rather than a secret and the authorization check is circular. Test the write side as well: token generation that overwrites a stored value is also a denial of service against the legitimate holder.
+- Takeaway: Capability tokens must come from a CSPRNG, be stored server-side against the entitlement, and be issued only after that entitlement has been proven.
+
+### 2026-11-06 — Exposed admin interface on a NASA subdomain accepted default credentials (NASA VDP) — n/a
+- Source: [Bugcrowd #b14596f7](https://bugcrowd.com/disclosures/b14596f7-3e6a-472b-9c0f-83996e53969a/critical-admin-access-vulnerability-on-nasa-s-satcorps-smce-nasa-gov-subdomain)
+- Type: Broken authentication — default credentials on an internet-facing administrative console
+- Summary: An administrative interface on `*.satcorps.smce.nasa.gov` was reachable from the internet and accepted the product's factory default credentials, granting unauthorized administrative access. Rated P1, resolved.
+- Technique / pattern: Fingerprint the product behind every exposed console from its login page title, favicon, asset paths and cookie names, then try only the vendor-documented factory pair — that stays in scope and is not brute force. Rate the finding by what the resulting session actually controls, and stop at proving access rather than exercising it.
+- Takeaway: Default credentials on an administrative console are critical regardless of how unimportant the host looks; installers should force a credential change on first run and management interfaces should not be publicly routable.
+
+### 2026-11-06 — Valid production database credentials recovered by search-engine and code-host dorking (NASA VDP) — n/a
+- Source: [Bugcrowd #c3213329](https://bugcrowd.com/disclosures/c3213329-654e-4b51-93ff-086c70215610/leaked-valid-credentials-for-the-edrn-focus-biomarker-database-bmdb)
+- Type: Broken authentication — leaked valid credentials for production and development
+- Summary: Google dorking that pivoted into GitHub code search turned up a credential set that logged into the EDRN Focus Biomarker Database (BMDB); the account could create, edit and delete records in both the production and development environments. Rated P1, resolved.
+- Technique / pattern: Dorking is a login-bypass technique, not only reconnaissance. Pivot from the application's hostnames, database names, internal project names and unusual parameter names into code-search queries, and check commit history and gists as well as current file contents. Verify with a single authentication and record the privileges the account holds without exercising the destructive ones.
+- Takeaway: Any credential that has ever been committed is public — rotate it and move secrets into a managed store, and require MFA so that a recovered password is not sufficient on its own.
+
+### 2026-11-02 — SDTP trusted an unsigned Cert-UID header, chained with path traversal to unauthenticated arbitrary file read (NASA VDP) — n/a
+- Source: [Bugcrowd #7e877296](https://bugcrowd.com/disclosures/7e877296-6344-4a91-9f28-8333f3a24e89/arbitrary-file-read-via-path-traversal-in-sdtp-file-download-endpoint)
+- Type: Authentication bypass via trusted header, chained to path traversal
+- Summary: NASA's Science Data Transfer Protocol server authenticated callers from a plain, unsigned `Cert-UID` HTTP header, so any client could claim any identity including an administrator; its download endpoint separately accepted a `file:` location prefix and passed the path to Flask's `send_file()` with no directory confinement. Chaining the two gave unauthenticated reads of a PostgreSQL configuration file containing plaintext database credentials and a Kubernetes service account token. Mapped to CWE-306 and CWE-22; identified from the project's public source and fixed.
+- Technique / pattern: When a service sits behind a proxy that is supposed to inject the caller's identity, send that identity header yourself and see whether the application verifies it — proxy-injected headers are routinely trusted unconditionally. Then look for a file-serving route taking a location, prefix or scheme argument: an authentication bypass plus an unconfined read is a complete credential-harvesting chain, and reviewing the published source finds both faster than probing the live host.
+- Takeaway: Identity headers must be stripped at the edge and cryptographically verified by the application; a client-settable header is never authentication, and the blast radius is whatever secrets the unconfined read can reach.
+
+### 2026-11-02 — Guest account escalated to admin by self-assigning a role whose permission allowed scripting (Rocket.Chat) — n/a
+- Source: [HackerOne #501081](https://hackerone.com/reports/501081)
+- Type: Privilege escalation via self-assignable role plus server-side scripting permission
+- Summary: A guest account could add itself to the `bot` group, which carries the `manage-own-integrations` permission; it then created a custom integration containing a script that added the account to the `admin` group when the integration was triggered.
+- Technique / pattern: Enumerate the role and permission table and look for an intermediate role a low-privilege user can assign to themselves, then look within that role for any permission that allows running code — integrations, webhook scripts, custom actions, report formulas. Chain the two: self-assign the role, then use its scripting permission to perform the privileged action the role itself was never granted.
+- Takeaway: Group-membership changes are privileged operations in their own right, and any permission that allows server-side scripting is effectively an admin permission however it is labelled.
+
+### 2026-11-02 — Client impersonation in UCRM lacked validation, escalating a read-only account to Admin (Ubiquiti Inc.) — n/a
+- Source: [HackerOne #221454](https://hackerone.com/reports/221454)
+- Type: Privilege escalation through an impersonation feature
+- Summary: UCRM 2.3.0-beta4 and earlier failed to validate use of the Client Impersonation functionality, so an account with read-only access could obtain Admin privileges. Fixed in UCRM 2.3.0.
+- Technique / pattern: Support and log-in-as features are an authorization shortcut by design: check who may invoke them, whose session they produce, and whether the resulting session retains the impersonator's role or inherits the target's. Call the impersonation endpoint directly from a low-privilege account instead of going through the admin UI that normally offers it.
+- Takeaway: Impersonation must re-check the caller's privilege on every invocation, and the session it issues must never carry more authority than the target account itself holds.
+
+### 2026-11-02 — A victim's second factor could be reset, enabling account takeover (HackerOne) — n/a
+- Source: [HackerOne #2492631](https://hackerone.com/reports/2492631)
+- Type: MFA bypass via the 2FA reset / recovery path
+- Summary: The reporter showed that a victim's 2FA could be reset so an attacker already holding the victim's email and password could complete a takeover within about a day — defeating the protection 2FA is meant to add on top of known credentials.
+- Technique / pattern: Attack the *recovery* path rather than the OTP check: examine how a device-lost or reset-2FA request is authorized, what it accepts as proof of identity, and how long the pending window stays open. Measure the full timeline, because a flow that looks safe within a minute can be exploitable over hours or days.
+- Takeaway: MFA is only as strong as its reset flow: a reset must require a factor the attacker cannot already possess, and the pending window should be short, notified to the account owner and revocable.
+
+### 2026-11-02 — Account email address could be changed without verification, enabling takeover (Nextcloud) — n/a
+- Source: [HackerOne #2305880](https://hackerone.com/reports/2305880)
+- Type: Missing verification on an identity-attribute change
+- Summary: An account's email address could be changed to an address the user did not control without completing a verification step; the reporter noted this could sidestep OTP, CAPTCHA and 2FA safeguards and lead to full takeover of a victim account.
+- Technique / pattern: Map the whole lifecycle of every identity attribute — email, phone, recovery address: who may set it, whether a confirmation is required before it becomes authoritative, and whether password-reset and MFA flows then trust the new value. Change it to an address you do not own and check whether the previous verified value stays bound to recovery.
+- Takeaway: An unverified identifier must never become the authoritative one: bind recovery flows to the verified value only, and keep the previous address active until the new one is confirmed.
+
 ### 2026-10-29 — A disabled account's API key still works on BMO's Mojolicious rest routes (Mozilla) — $4,000
 - Source: [HackerOne #4000084](https://hackerone.com/reports/4000084)
 - Type: Broken authentication (account-state check missing on one API stack)

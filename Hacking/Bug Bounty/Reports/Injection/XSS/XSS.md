@@ -12,6 +12,83 @@ Disclosed **Cross-Site Scripting** reports — reflected, stored, and DOM-based.
 
 ## Reports
 
+### 2026-11-13 — X-Forwarded-Host handling allows response manipulation, open redirect and reflected XSS (NASA Vulnerability Disclosure Program) — n/a (P5, informational)
+- Source: [Bugcrowd #3f102232](https://bugcrowd.com/disclosures/3f102232-685e-4f53-ae90-1a1ba2392491/host-header-injection-open-redirection-leading-to-cross-site-scripting-xss)
+- Type: Host header injection → open redirect / reflected XSS
+- Summary: The application trusted the `X-Forwarded-Host` request header when building response headers and body content, which let a manipulated header produce an open redirect and reflected script. NASA closed it as informational because the demonstrated XSS required the victim to inject the header themselves.
+- Technique / pattern: Test `Host`, `X-Forwarded-Host` and `X-Forwarded-Proto` on every endpoint that emits an absolute URL — redirects, canonical tags, password-reset links, asset paths — and check whether the value is reflected into a `Location` header or into HTML. Note the caveat this report illustrates: a header-only vector is self-inflicted unless it is cached, reachable through a proxy the attacker can influence, or used to build a link that is emailed to a third party, so chain it to a cache or a mail flow before claiming impact.
+- Takeaway: Build absolute URLs from configuration, not from request headers. Header-reflection findings need a delivery path — cache poisoning or an out-of-band link — to rise above informational.
+
+### 2026-11-13 — Starlink router and dish firmware: CSRF-to-XSS in the first-run captive portal page (SpaceX / Starlink) — $500
+- Source: [Bugcrowd #e59286cf](https://bugcrowd.com/disclosures/e59286cf-c2b1-44c9-9b84-d47a36db183a/the-firmware-of-the-starlink-router-and-satellite-dish-is-vulnerable-to-csrf-to-xss)
+- Type: XSS reached via CSRF (embedded device / captive portal)
+- Summary: The initial captive-portal page of the second-generation Starlink router was vulnerable to cross-site scripting reachable through cross-site request forgery, which the reporter described as allowing an attacker to take control of the router and the dish. Accepted and fixed as P3.
+- Technique / pattern: Consumer network devices serve an unauthenticated local web UI on a predictable address, so a page the victim merely visits can reach it: a cross-origin form post or image request sets device state, and if that state is reflected without encoding the result is script in the device's own origin — where the device API lives and there is usually no CSRF token or SameSite protection. Setup and captive-portal flows are the weakest part because they run before any credential exists.
+- Takeaway: First-run and captive-portal pages need the same CSRF tokens, origin checks and output encoding as the authenticated UI. Unauthenticated local access is reachable from the internet through the victim's browser.
+
+### 2026-11-13 — Blind stored XSS via an unfiltered contact form fires in the back-end administrative panel (U.S. Dept Of Defense) — n/a
+- Source: [HackerOne #1036877](https://hackerone.com/reports/1036877)
+- Type: Stored (blind) XSS — second-order, admin context
+- Summary: A contact form on a `.mil` site did not filter angle brackets or other dangerous characters from submitted input. The payload was stored and later executed in the back-end administrative panel that staff used to read submissions.
+- Technique / pattern: Blind XSS pays where the attacker never sees the sink: submit a callback payload (an external script or image beacon carrying `document.domain` and the page URL) into every free-text field of contact, feedback, support and registration forms, then wait for the hit from an internal origin. Fields with no visible rendering anywhere in the public app are the best candidates, because that is exactly where output encoding is forgotten.
+- Takeaway: Untrusted input must be encoded at every sink, including internal admin views that developers assume only staff can see. Logging a payload and rendering it are the same risk.
+
+### 2026-11-12 — XSS on the NASA GMAO intranet leads to session cookie disclosure and account takeover (NASA Vulnerability Disclosure Program) — n/a
+- Source: [Bugcrowd #eda11136](https://bugcrowd.com/disclosures/eda11136-fe69-42f7-b461-247c7d94f7f2/xss-on-intranet-leads-to-account-takeover)
+- Type: Cross-Site Scripting (intranet application, cookie theft chain)
+- Summary: A `.php` page on the NASA GMAO intranet reflected unsanitised input, so attacker-controlled JavaScript ran in the context of intranet users and disclosed the session cookies of authenticated members. Rated P3 and resolved.
+- Technique / pattern: Intranet and extranet applications are reachable through an employee's browser, so an internal-only hostname does not blunt XSS: the payload executes when a staff member opens a crafted link. Older server-rendered `.php` and `.jsp` pages on internal estates frequently echo parameters with no encoding and no `HttpOnly` on the session cookie, which is what turns reflection into session theft. Chain the two before rating: reflection alone is a lower finding than reflection plus a readable session cookie.
+- Takeaway: Rate XSS by what the page's cookies and same-origin API reach, not by whether the host is public. `HttpOnly` plus contextual output encoding breaks the chain, and internal applications need the same hardening as external ones.
+
+### 2026-11-12 — DOM-based XSS in playground.wordpress.net via a service-worker-synthesized page (WordPress) — undisclosed
+- Source: [HackerOne #3863343](https://hackerone.com/reports/3863343)
+- Type: XSS — DOM-based (service-worker sink, fragment-only payload)
+- Summary: The Playground service worker at `https://playground.wordpress.net/sw.js` intercepted any request whose path ended `/wp-includes/empty.html` beneath an arbitrary, unvalidated `/scope:<id>/` prefix and returned a synthesized page that ran `document.write(decodeURIComponent(location.hash))` with no Content-Security-Policy. A single crafted link therefore executed attacker JavaScript on the real top-level origin, with no authentication required.
+- Technique / pattern: The researcher read `sw.js` rather than the server's routes — upstream WordPress ships `wp-includes/empty.html` as a genuinely blank file, so the executable behaviour existed only in the client-side worker. Exploitation required only that the victim had loaded Playground once, which registers the worker. The write-up confirmed `window.top === window.self` to prove execution in the top frame rather than the sandboxed iframe, then exfiltrated `document.cookie` and `localStorage` keys cross-origin with `fetch()` to a Burp Collaborator listener — which also demonstrated the absence of any `connect-src` restriction.
+- Takeaway: A service worker is server-side routing that lives in the client, so enumerate its intercepted paths and synthesized responses as part of the attack surface. Because the payload sits entirely in the URL fragment it never reaches the server, making it invisible to access logs and WAFs; a CSP on the synthesized response is the control that would have contained it.
+
+### 2026-11-12 — Stored XSS via arbitrary file upload on the GLOBE platform (NASA VDP) — n/a
+- Source: [Bugcrowd #5c4a754b](https://bugcrowd.com/disclosures/5c4a754b-c7b7-441f-b3db-89e1c82c78dc/stored-cross-site-scripting-xss-via-arbitrary-file-upload)
+- Type: XSS — stored, via unrestricted file upload served as `text/html`
+- Summary: NASA's GLOBE platform did not properly validate uploaded files: it accepted HTML files containing JavaScript and served them back with a `text/html` content type, so the browser executed the script in the `globe.gov` origin. A shared link then ran arbitrary JavaScript in victims' browsers with the credibility of a trusted government domain (P2, resolved).
+- Technique / pattern: Upload an `.html` file through any attachment or media feature, request the stored file directly, and inspect the response's `Content-Type` and `Content-Disposition` headers — a `text/html` response served inline from the application origin makes the upload feature a stored-XSS sink. Check the serving origin too: uploads returned from the app's own hostname are far more valuable than ones on a separate CDN domain.
+- Takeaway: Validate upload types server-side by content rather than extension, serve user files from a separate sandboxed origin, and force `Content-Disposition: attachment` plus a restrictive CSP on any path that returns user-supplied bytes.
+
+### 2026-11-10 — Stored XSS in merge requests via a crafted branch name (GitLab) — n/a
+- Source: [HackerOne #977697](https://hackerone.com/reports/977697)
+- Type: Stored XSS (same-origin hosted payload)
+- Summary: GitLab rendered branch names on merge-request pages without properly escaping HTML, so a branch whose name contained markup — an iframe wrapping a script tag — executed when a victim viewed the merge request. The script itself was served from a job artifact on the same instance.
+- Technique / pattern: Create a project, then push a branch whose name carries the payload; version-control metadata travels from `git push` straight into the web UI without passing any form validation. Hosting the script as a job artifact on the same origin satisfies a CSP that allows `self`.
+- Takeaway: Input that never passes through a web form still reaches the page — audit every field git can carry (branch and tag names, commit messages, author fields). And an attacker who can upload to the same origin defeats a `self`-based CSP by construction.
+
+### 2026-11-10 — Reflected XSS in a Name field triaged as self-XSS (NASA VDP) — n/a (P5, informational)
+- Source: [Bugcrowd #5d068cfc](https://bugcrowd.com/disclosures/5d068cfc-57ac-44f6-8f00-cbed253642cb/cross-site-scripting-xss-vulnerability-in-name-input-field)
+- Type: Reflected XSS, closed as self-XSS
+- Summary: A researcher reported reflected XSS through a `Name` input field on a NASA subdomain (disclosed 17 Jan 2025). The program closed it P5 informational because the payload could only be injected by the victim themselves, with no attacker-controlled delivery path.
+- Technique / pattern: The triage decision, not the payload, is the lesson: before reporting a reflection, establish how an attacker delivers it — whether the field is reachable through `GET` parameters, a cross-origin form post, or a stored value another user renders.
+- Takeaway: A firing payload is half a finding; the delivery path is the other half. Spend the effort proving reachability, or expect an informational close regardless of whether the script executes.
+
+### 2026-11-06 — Large-site Quick Edit reparsed a Contributor display name into active HTML (WordPress) — n/a
+- Source: [HackerOne #3878399](https://hackerone.com/reports/3878399)
+- Type: Stored DOM XSS (Contributor payload executing in an administrator's context)
+- Summary: On WordPress Core 7.0.2 sites with more than 10,000 users, `wp_is_large_user_count()` switches the Posts list to a Quick Edit fallback in `wp-admin/js/inline-edit-post.js` that reads the stored display name with jQuery `.text()` and reinserts it through `.prepend()`, reparsing it as live HTML. A Contributor could save entity-encoded HTML as their display name, and it executed when a user holding `edit_others_posts` opened an attacker-supplied Posts-page URL and clicked Quick Edit on the attacker's pending post. At exactly 10,000 users the normal author dropdown prevents the branch. Rated Medium, resolved.
+- Technique / pattern: Hunt the branches that only run at scale or behind a feature flag — row-count thresholds, `is_large_*` helpers, "too many results" fallbacks, pagination cut-offs. They are rarely exercised in review or tests, and the cheap way to reach them is to force the threshold in a local container rather than hoping to find a large target. Then look for a decode-then-reinsert pair: a value read as text and written back through an HTML-parsing API is a sink even when the stored value was encoded.
+- Takeaway: Encoding at storage time is undone by any later `.text()`-then-`.prepend()`/`.html()` round trip, and data-volume feature switches select code paths nobody reviewed.
+
+### 2026-11-02 — Stored iframe injection in Dependency Map tooltips via unsanitized Jira issue summaries (FindOut InfoVis AB Marketplace) — $300
+- Source: [Bugcrowd #d80f8c79](https://bugcrowd.com/disclosures/d80f8c79-0427-48dc-9800-ef7c34eccbb2/stored-iframe-injection-in-dependency-map-tooltips-via-unsanitized-jira-issue-summaries)
+- Type: Stored HTML / iframe injection (markup injection)
+- Summary: Dependency Map for Jira copied Jira issue summaries into a `data-tooltip-html` attribute without escaping, and the React Tooltip component then rendered that attribute through `dangerouslySetInnerHTML`. Anyone able to edit an issue could store an `<iframe srcdoc>` payload that rendered attacker-controlled content inside the trusted app for every viewer, enabling persistent content spoofing and phishing. Rated P3; the fix HTML-encodes untrusted field values.
+- Technique / pattern: Grep the front end for `dangerouslySetInnerHTML`, `innerHTML` and any `data-*-html` attribute, then trace backwards to find which server-supplied field feeds the sink. Fields pulled from a *host* product across an integration boundary — Jira issue summaries, SCM commit messages, chat display names — are the easiest to overlook, because the add-on treats the host's data as trusted.
+- Takeaway: Data crossing an integration boundary is still untrusted input; a sanitizer-free `dangerouslySetInnerHTML` sink turns any upstream text field into a stored injection point.
+
+### 2026-11-02 — Stored XSS in the post title field (Imgur) — n/a
+- Source: [HackerOne #942859](https://hackerone.com/reports/942859)
+- Type: Stored XSS
+- Summary: The post title accepted script-bearing input that was later rendered unescaped on the public gallery page, giving an attacker access to the cookies and session data of anyone who viewed the post.
+- Technique / pattern: Enumerate every free-text field that is echoed somewhere other than the form it was typed into — titles, captions and display names are frequently escaped on the edit screen but not on the public view. Submit a unique marker string first, find every page that reflects it, then tailor a payload to the output context at each sink.
+- Takeaway: Escape at output and per context: a field that is safe in one template can be a live stored sink in another that renders the same value.
+
 ### 2026-10-29 — Reflected XSS in trek.nasa.gov TrekWS rest/light endpoint via unescaped date parameter (NASA VDP) — n/a
 - Source: [Bugcrowd #2b297bb0](https://bugcrowd.com/disclosures/2b297bb0-882b-47d8-b2ae-8a495aa8cd41/reflected-xss-in-trek-nasa-gov-trekws-rest-light-endpoint-via-unescaped-et-date-parameter)
 - Type: Reflected XSS (error-response sink)

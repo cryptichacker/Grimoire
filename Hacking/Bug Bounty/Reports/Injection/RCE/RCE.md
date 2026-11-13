@@ -12,6 +12,62 @@ Disclosed **Remote Code Execution** reports reached via injection chains — **O
 
 ## Reports
 
+### 2026-11-13 — OGNL sandbox bypass in Confluence (Atlassian) — n/a (P2, 20 points)
+- Source: [Bugcrowd #b9d30fbc](https://bugcrowd.com/disclosures/b9d30fbc-bf8d-4e1d-89a5-31b2a9a8e009/confluence-ognl-sandbox-bypass)
+- Type: Expression-language injection / sandbox escape (OGNL)
+- Summary: Confluence restricts the Object-Graph Navigation Language expressions it will evaluate with a sandbox; this report bypassed those restrictions. Atlassian accepted and fixed it as an OGNL sandbox bypass (P2, disclosed July 2023).
+- Technique / pattern: Where a product has already shipped a denylist or sandbox around an expression language, the bug class moves from "can I inject" to "can I reach a blocked capability by another route": alternative accessor syntax, reflection through an allowed class, member access via a different property chain. The useful habit is reading the sandbox's own allow/deny implementation and enumerating what it fails to cover rather than reusing public payloads.
+- Takeaway: A sandbox around a Turing-complete expression language is a mitigation, not a boundary. Prefer not evaluating untrusted expressions at all, and treat each sandbox bypass as recurring rather than one-off.
+
+### 2026-11-13 — Unsafe deserialization in a JSON wrapper allows instantiating arbitrary Java objects in the PayPal Android app (PayPal) — undisclosed
+- Source: [HackerOne #453791](https://hackerone.com/reports/453791)
+- Type: Insecure deserialization (type-confusion via a JSON wrapper)
+- Summary: A JSON wrapper in the PayPal Android app could be driven to instantiate arbitrary Java objects. A malicious app on the same device could use this to read a class holding a user's session data, including API tokens. PayPal reported finding no evidence of abuse.
+- Technique / pattern: Deserialization bugs are not limited to native Java serialization: JSON and XML mappers that record a concrete class name in the document (polymorphic typing) are equally dangerous, because the type, not just the data, becomes attacker-controlled. Look for wrappers that accept a class or type field, then test whether an unexpected class is constructed; on mobile, the attacker is an installed app, so IPC entry points count as untrusted input.
+- Takeaway: Deserialize into a fixed, allowlisted set of types. Any format that lets the document choose its own class is a gadget-chain entry point regardless of whether the bytes look like JSON.
+
+### 2026-11-12 — Unauthenticated path traversal in the NASA PSG Cluster Manager leads to remote code execution (NASA Vulnerability Disclosure Program) — n/a
+- Source: [Bugcrowd #0aec42ff](https://bugcrowd.com/disclosures/0aec42ff-92e9-4613-b0ee-3dc41d07298e/unauthenticated-path-traversal-in-nasa-psg-cluster-manager-leads-to-remote-code-execution)
+- Type: Path traversal chained to RCE (unauthenticated)
+- Summary: An unauthenticated path traversal in the NASA Planetary Spectrum Generator Cluster Manager was escalated to remote code execution. Rated P1 and resolved; the public page deliberately withholds the endpoint, the payload and the operational details.
+- Technique / pattern: The generalisable shape is traversal reaching a location the runtime later executes from, rather than traversal used only to read files. Where a traversal primitive is found, enumerate what the application does with the resolved path next: a write primitive landing in a web root, a cron or job directory, a module or plugin search path, or a configuration file consumed at startup converts file access into execution. Unauthenticated job-management and cluster-control services are a high-yield place to look because they are built for a trusted network.
+- Takeaway: Rate a traversal by the destinations it reaches on write, not just by what it reads. Resolve the final path and assert it is inside the allowed root, and keep cluster-manager style control planes off public addresses with their own authentication.
+
+### 2026-11-12 — Net::FTP gettextfile command injection via an attacker-controlled remote filename (Ruby) — n/a
+- Source: [HackerOne #294462](https://hackerone.com/reports/294462)
+- Type: OS command injection in a client library (server-supplied metadata as a command argument)
+- Summary: Ruby's `NET::FTP` `gettextfile` method defaults its `localfile` parameter to `File.basename(remotefile)`, so a maliciously named file on the remote FTP server could lead to command execution on the client that downloaded it. The reporter noticed the behaviour while using the library in ordinary code.
+- Technique / pattern: The interesting direction here is inbound: the untrusted input is metadata returned by the *remote server*, not a request parameter, and the sink is reached by a client that is merely fetching a file. When reviewing client libraries and sync agents, trace every value derived from server-controlled responses — filenames, redirect targets, content-disposition names, directory listings — into path construction and process invocation. Shell-style constructs in a path argument (a leading pipe, metacharacters, a leading dash) are the payloads to test.
+- Takeaway: A client is an attack surface too. Treat filenames and other metadata from a remote peer as untrusted, sanitise them before they become paths or command arguments, and never let a default argument be derived from remote input.
+
+### 2026-11-12 — 1-click Remote Code Execution via Link Embed (Asana) — $5,000
+- Source: [Bugcrowd #495cc609](https://bugcrowd.com/disclosures/495cc609-bd77-4f03-a750-f6dbf730673f/1-click-remote-code-execution-via-link-embed)
+- Type: RCE — Electron desktop chain (untrusted embed to privileged window to prototype pollution to updater child process)
+- Summary: A chain in the Electron-based Asana desktop application turned one click inside a link embed into code execution on the victim's machine (P1, $5,000). Attacker-controlled third-party content ran inside an allowlisted Wistia-style embed; a single click led the allowlisted Asana authentication flow to open an `IntegrationWindow` the attacker could control; a browser memory-corruption primitive (cited in the report as CVE-2026-15776) gave limited memory access that reached internal Electron interfaces and main-process information; prototype pollution in the main process then altered object behaviour, and the polluted values were carried into the updater's process launch, causing a signed updater binary to load attacker-supplied code.
+- Technique / pattern: Every individual link is low severity on its own — an allowlisted embed, a redirectable privileged window, an object merge that does not guard reserved keys, and configuration inherited by a spawned child process. The chain comes from asking which *privileged* window untrusted embedded content can influence, then following attacker-controlled data from the renderer into the main process and out into a child process.
+- Takeaway: Treat embedded third-party content as untrusted even when the embedding flow is allowlisted, never let it redirect a window carrying privileged authentication context, guard object merges in privileged processes against `__proto__` and `constructor` keys, and explicitly scrub the environment and configuration that a signed child process inherits.
+
+### 2026-11-10 — RCE in Nexus Repository Manager 3 via CVE-2020-15871 (Central Security Project) — n/a
+- Source: [HackerOne #917843](https://hackerone.com/reports/917843)
+- Type: Remote code execution (CVE-2020-15871, unsafe expression evaluation in a privileged feature)
+- Summary: Nexus Repository Manager 3 allowed a user holding certain permissions to run arbitrary code as the operating-system account running the Nexus server. An attacker could also reach the same outcome by inducing such a user to run the code on their behalf.
+- Technique / pattern: Look for administrative features that evaluate user-supplied expressions or scripts — task definitions, scripting consoles, capability settings, templated configuration. Where a privileged UI exposes an evaluation sink, "authenticated admin" collapses into a shell as the service account.
+- Takeaway: Build and artifact infrastructure runs with broad credentials, so code execution there is a supply-chain compromise. Features that evaluate expressions should ship disabled, not merely permission-gated.
+
+### 2026-11-06 — Zip Slip in the CMR shapefile upload gave unauthenticated arbitrary file write as root (NASA VDP) — n/a
+- Source: [Bugcrowd #6f9e5cf2](https://bugcrowd.com/disclosures/6f9e5cf2-23e8-474c-b402-7bf5ed0a8e52/unauthenticated-arbitrary-file-write-zip-slip-via-shapefile-clj-on-cmr-earthdata-nasa-gov)
+- Type: Zip Slip / path traversal in archive extraction, arbitrary file write escalating toward RCE
+- Summary: The NASA CMR Search API accepts shapefiles as ZIP uploads on `/search/collections` and `/search/granules`, and the extraction routine in `shapefile.clj` did not validate entry names against `../` sequences, letting an unauthenticated attacker write files outside the extraction directory. The service ran as root, so the write was chainable to full system compromise; the reporter verified it with a benign marker file. Rated P2, resolved.
+- Technique / pattern: Any endpoint accepting an archive — shapefile, theme, plugin, backup, `.docx`, firmware bundle — is an extraction sink. Build an archive whose entry names carry traversal sequences, and test absolute-path and symlink entries separately, then confirm with a harmless marker outside the intended directory before reasoning about execution. Establish the service's uid and which writable directories are actually interpreted (cron, web root, systemd units, startup scripts) to set the impact.
+- Takeaway: Resolve every archive entry against the destination root and reject anything that escapes it; running the extractor as root turns a traversal into host compromise.
+
+### 2026-11-02 — OS command injection in a legacy intranet PHP entry point (NASA VDP) — n/a
+- Source: [Bugcrowd #2a29545b](https://bugcrowd.com/disclosures/2a29545b-4d8d-4b8f-a3c4-218c40cb5714/remote-command-execution-in-intranet_index-php)
+- Type: OS command injection leading to RCE
+- Summary: An endpoint in `intranet_index.php` accepted unsanitized request input and passed it into a command-execution context, allowing arbitrary shell commands to run on the server. Rated P1 and fixed.
+- Technique / pattern: Legacy single-file entry points on intranet and extranet hosts (`intranet_index.php`, `index.<date>.php`, forgotten `.cgi` wrappers) are high-yield: parameters there are commonly fed straight to `system()`, `exec()` or backticks and never received the input handling the main application got. Probe with shell metacharacters and time-based separators and judge on execution side effects rather than reflected output.
+- Takeaway: Any parameter that reaches a shell needs an allowlist or a no-shell exec API; abandoned legacy scripts are the part of the estate least likely to have been reviewed.
+
 ### 2026-10-29 — WordPress 7.1 Media Processing Race Enables Persistent PHP File Write and Author-to-RCE (WordPress) — n/a
 - Source: [HackerOne #3923967](https://hackerone.com/reports/3923967)
 - Type: Race condition → arbitrary PHP file write → RCE
